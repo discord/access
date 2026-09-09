@@ -38,9 +38,11 @@ from tests.factories import (
     OktaUserGroupMemberFactory,
     RoleGroupFactory,
 )
+from api.models.app_group import app_owners_group_description
 from tests.helpers import db_count
 from tests.request_factories import (
     AppGroupCreateBodyFactory,
+    AppGroupUpdateBodyFactory,
     GroupMemberFactory,
     OktaGroupCreateBodyFactory,
     OktaGroupUpdateBodyFactory,
@@ -327,14 +329,12 @@ async def test_put_group(
     rep = await client.put(group_url, json=data)
     assert rep.status_code == 400
 
-    # Updating tags is allowed, but nothing else
+    # Tags may be updated. The payload has to be type-correct and free of a rename: an
+    # owner group's type, name and app binding are structural, and a request carrying any
+    # of them is rejected outright rather than having them quietly ignored.
     update_group_spy.reset_mock()
-    data.update(
-        {
-            "tags_to_add": [tag_id],
-        }
-    )
-    rep = await client.put(group_url, json=data)
+    tags_only: dict[str, Any] = AppGroupUpdateBodyFactory.json(tags_to_add=[tag_id])
+    rep = await client.put(group_url, json=tags_only)
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
@@ -346,12 +346,8 @@ async def test_put_group(
     assert await db_count(db.session, select(OktaGroupTagMap).where(OktaGroupTagMap.ended_at.is_(None))) == 1
 
     update_group_spy.reset_mock()
-    data.update(
-        {
-            "tags_to_remove": [tag_id],
-        }
-    )
-    rep = await client.put(group_url, json=data)
+    tags_only = AppGroupUpdateBodyFactory.json(tags_to_remove=[tag_id])
+    rep = await client.put(group_url, json=tags_only)
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
@@ -2040,3 +2036,83 @@ async def test_get_group_member_details_search_paginates(client: AsyncClient, db
     assert set(emails1).isdisjoint(emails2)
     assert all(e.startswith("match-") for e in emails1 + emails2)
     assert sorted(emails1 + emails2) == [f"match-{i:02d}@example.com" for i in range(15)]
+
+
+async def test_put_group_app_owner_group_description_is_editable(
+    client: AsyncClient, db: Db, mocker: MockerFixture, url_for: Any
+) -> None:
+    """An owner group's description is ordinary free text, editable like any other group's."""
+    owner_app = AppFactory.build()
+    owner_group = AppGroupFactory.build(
+        app_id=owner_app.id,
+        is_owner=True,
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{owner_app.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        description=app_owners_group_description(owner_app.name),
+    )
+    db.session.add_all([owner_app, owner_group])
+    await db.session.commit()
+    owner_group_id = owner_group.id
+
+    mocker.patch.object(okta, "update_group")
+    edited = "Owners of the billing stack; also approvers for its quarterly access review."
+    rep = await client.put(
+        url_for("api-groups.group_by_id", group_id=owner_group_id),
+        json=AppGroupUpdateBodyFactory.json(description=edited),
+    )
+    assert rep.status_code == 200
+    assert rep.json()["description"] == edited
+
+    db.session.expire_all()
+    refreshed = await db.session.get(AppGroup, owner_group_id)
+    assert refreshed is not None
+    assert refreshed.description == edited
+
+
+async def test_put_group_app_owner_group_structural_fields_stay_locked(
+    client: AsyncClient, db: Db, mocker: MockerFixture, url_for: Any
+) -> None:
+    """Name, type, app binding and plugin config are structural for an owner group.
+
+    Membership in one confers app-owner permissions, so none of these may be changed
+    through the group endpoint even though the description now can be.
+    """
+    owner_app = AppFactory.build()
+    other_app = AppFactory.build()
+    owner_group = AppGroupFactory.build(
+        app_id=owner_app.id,
+        is_owner=True,
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{owner_app.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        description=app_owners_group_description(owner_app.name),
+    )
+    db.session.add_all([owner_app, other_app, owner_group])
+    await db.session.commit()
+    owner_group_id = owner_group.id
+    original_name = owner_group.name
+    original_app_id = owner_group.app_id
+    other_app_id = other_app.id
+
+    mocker.patch.object(okta, "update_group")
+    group_url = url_for("api-groups.group_by_id", group_id=owner_group_id)
+
+    rename = await client.put(group_url, json=AppGroupUpdateBodyFactory.json(name="App-Whatever-Renamed"))
+    assert rename.status_code == 400
+
+    retype = await client.put(group_url, json=OktaGroupUpdateBodyFactory.json(name=original_name))
+    assert retype.status_code == 400
+
+    rebind = await client.put(group_url, json=AppGroupUpdateBodyFactory.json(app_id=other_app_id))
+    assert rebind.status_code == 400
+
+    plugin = await client.put(group_url, json=AppGroupUpdateBodyFactory.json(plugin_data={"some_plugin": {"a": 1}}))
+    assert plugin.status_code == 400
+
+    # Nothing was applied by any of the four rejected requests.
+    db.session.expire_all()
+    refreshed = await db.session.get(AppGroup, owner_group_id)
+    assert refreshed is not None
+    assert refreshed.name == original_name
+    assert refreshed.app_id == original_app_id
+    assert refreshed.type == "app_group"
+    assert not refreshed.plugin_data
