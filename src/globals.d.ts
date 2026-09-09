@@ -12,3 +12,9 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+interface Window {
+  // The per-response CSP nonce, stamped into the SPA shell by `api.app.serve_spa`.
+  // Undefined under `vite dev`, which serves index.html without one.
+  __webpack_nonce__?: string;
+}
