@@ -43,9 +43,14 @@ def build_csp(nonce: str) -> str:
     `script-src`/`style-src` allow `'self'` plus a per-response nonce (see
     `SecurityHeadersMiddleware`, threaded into the served `index.html` by
     `api.app.serve_spa`): the nonce authorizes the inline bootstrap `<script>`
-    and styled-components' runtime `<style>` injections, while same-origin
+    and Emotion's runtime `<style>` injections, while same-origin
     bundles/stylesheets are covered by `'self'` and Google Fonts by its host
     allowance.
+
+    The frontend half of that contract is the Emotion cache built in
+    `src/index.tsx`, which reads the nonce off `window.__webpack_nonce__` and
+    stamps it on every element it inserts. Without it the browser rejects all
+    of MUI's styles and the app renders unstyled.
 
     Two classes of *benign* console warnings are expected under this policy and
     are intentionally not accommodated — silencing either would weaken the

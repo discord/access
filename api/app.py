@@ -46,8 +46,9 @@ def _inject_csp_nonce(html: str, nonce: str) -> str:
     `script-src`/`style-src` authorize inline content by nonce (see
     `api.middleware.build_csp`), so every inline `<script>`/`<style>` the build
     emitted (e.g. Vite's module-preload polyfill) must carry the nonce, and
-    styled-components' runtime `<style>` injections are authorized by seeding
-    `window.__webpack_nonce__` before the app bundle runs. External same-origin
+    Emotion's runtime `<style>` injections are authorized by seeding
+    `window.__webpack_nonce__` before the app bundle runs, which the Emotion
+    cache in `src/index.tsx` reads. External same-origin
     bundles and `<link>` stylesheets need no nonce (they're covered by `'self'`
     / the font-host allowance), so this only touches inline tags.
     """
