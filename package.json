@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
     "@mui/base": "^5.0.0-beta.28",
     "@mui/icons-material": "^6.5.0",
     "@mui/lab": "^6.0.1-beta.36",
     "@mui/material": "^6.5.0",
-    "@mui/styled-engine-sc": "^6.4.9",
     "@mui/x-data-grid": "^7.29.13",
     "@mui/x-date-pickers": "^7.29.4",
     "@sentry/react": "^8.34.0",
@@ -21,8 +22,7 @@
     "react-hook-form": "^7.51.2",
     "react-hook-form-mui": "^7.6.2",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.18.2",
-    "styled-components": "^6.1.13"
+    "react-router-dom": "^7.18.2"
   },
   "scripts": {
     "tsc": "./node_modules/.bin/tsc",
@@ -65,7 +65,6 @@
     "@types/node": "^24.2.0",
     "@types/react": "^18.2.74",
     "@types/react-dom": "^18.2.24",
-    "@types/styled-components": "^5.1.26",
     "@vitejs/plugin-react": "^6.1.0",
     "@vitest/ui": "^4.1.8",
     "husky": "^8.0.3",
