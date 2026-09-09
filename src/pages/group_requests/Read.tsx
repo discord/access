@@ -999,7 +999,7 @@ export default function ReadGroupRequest() {
                                       {inheritedAppTags.length > 0 && (
                                         <Box sx={{marginTop: '8px'}}>
                                           <Typography variant="caption" color="text.secondary">
-                                            Also inherited from {appName}
+                                            Also inherited from {appName}:
                                           </Typography>
                                           <Box sx={{display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px'}}>
                                             {inheritedAppTags.map((tag) => (
