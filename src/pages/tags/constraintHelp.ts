@@ -149,8 +149,10 @@ const EDIT_HELP: Record<string, HelpParagraph[]> = {
         'role—half the story.',
     },
   ],
-  // The self-add pair has no "without propagation" paragraph: `#617` rejects
-  // that combination on every write, so there is no such behaviour to describe.
+  // The self-add pair has no "without propagation" paragraph: the backend
+  // rejects that combination on every write
+  // (`PROPAGATION_REQUIRED_CONSTRAINT_KEYS` in `api/models/tag.py`), so there is
+  // no such behaviour to describe.
   // Saying why here is the point -- an admin meets the rule while deciding,
   // rather than bouncing off the inline conflict message after toggling.
   [DISALLOW_SELF_ADD_OWNERSHIP]: [
@@ -228,8 +230,8 @@ function selfAddRead(side: 'member' | 'owner', propagateToRoles: boolean): HelpP
       },
     ];
   }
-  // `#617` rejects this combination on every write and the column shipped
-  // defaulting to on, so only a direct database edit reaches it. Kept as a
+  // The backend rejects this combination on every write and the column defaults
+  // to on, so only a direct database edit reaches it. Kept as a
   // guardrail: if such a tag exists, its reader is exactly the person who needs
   // to know the restriction is being sidestepped. The closing clause is a nudge
   // rather than a description, deliberately unlike the rest of this copy.

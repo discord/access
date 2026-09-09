@@ -67,7 +67,8 @@ describe('constraintEditHelp', () => {
   });
 
   it('describes only the propagating case for the self-add pair, and says why', () => {
-    // `#617` rejects "self-add restriction + propagation off" on every write, so
+    // The backend rejects "self-add restriction + propagation off" on every
+    // write (`PROPAGATION_REQUIRED_CONSTRAINT_KEYS` in `api/models/tag.py`), so
     // there is no second case to describe -- describing one would document a
     // configuration the backend refuses.
     for (const key of SELF_ADDS) {
