@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 class AccessTarget(Enum):
-    """Which dimension(s) of direct grant a prune run considers.
+    """Which access type(s) of direct grant a prune run considers.
 
     The values match the strings the `--target` CLI option accepts, so the
     command converts its raw option value straight into this enum.
@@ -65,13 +65,13 @@ def _later(a: datetime | None, b: datetime | None) -> datetime | None:
 
 @dataclass(frozen=True)
 class RedundantGrant:
-    """One (user, group, dimension) triple holding both a direct grant and
+    """One (user, group, access type) triple holding both a direct grant and
     active role-derived coverage.
 
     The two end dates are aggregated across every active row on their side of
     the triple, with `None` meaning indefinite. They are aggregated rather than
     compared row by row because `ModifyGroupUsers` ends *every* direct row for a
-    user, group, and dimension in one statement: the decision has to be
+    user, group, and access type in one statement: the decision has to be
     all-or-nothing per triple, or acting on one row could destroy a sibling that
     would have failed the guard.
 
@@ -123,16 +123,16 @@ async def find_redundant_grants(
     group_ids: set[str] | None = None,
     user_ids: set[str] | None = None,
 ) -> list[RedundantGrant]:
-    """Find every (user, group, dimension) triple holding both an active direct
+    """Find every (user, group, access type) triple holding both an active direct
     grant and active role-derived coverage.
 
     Args:
-        target: Which dimension(s) of direct grant to consider.
+        target: Which access type(s) of direct grant to consider.
         group_ids: Restrict to these groups, or None for every group.
         user_ids: Restrict to these users, or None for every user.
 
     Returns:
-        The candidates, ordered by group name, then user email, then dimension.
+        The candidates, ordered by group name, then user email, then access type.
         Membership rows sort before ownership rows within a group and user.
     """
     derived = aliased(OktaUserGroupMember)
@@ -150,10 +150,7 @@ async def find_redundant_grants(
         .join(OktaGroup, OktaGroup.id == OktaUserGroupMember.group_id)
         # Pairing a direct grant with its role-derived coverage in the join means
         # the database returns only genuine candidates, and returns both end
-        # dates together. Matching the two sides in Python instead would mean
-        # binding one parameter per candidate user and group, which asyncpg
-        # refuses above 32767 of them -- a whole-database sweep would fail
-        # outright rather than run slowly.
+        # dates together.
         .join(
             derived,
             and_(
@@ -170,8 +167,6 @@ async def find_redundant_grants(
         .where(OktaUserGroupMember.role_group_map_id.is_(None))
         .where(OktaUserGroupMember.is_owner.in_(target.is_owner_values()))
     )
-    # These two lists are bounded by what the operator typed on the command
-    # line, so they raise none of the parameter-count concern above.
     if group_ids is not None:
         stmt = stmt.where(OktaUserGroupMember.group_id.in_(group_ids))
     if user_ids is not None:
@@ -375,7 +370,7 @@ async def prune_redundant_direct_access(
     """Remove direct group grants that a role already provides to the same user.
 
     Args:
-        target: Which dimension(s) of direct grant to prune.
+        target: Which access type(s) of direct grant to prune.
         dry_run: When True, decide and report without writing anything.
         allow_shortening: When True, also remove direct grants that outlive their
             role coverage, ending the user's access sooner than it would have.
@@ -385,7 +380,7 @@ async def prune_redundant_direct_access(
 
     Returns:
         The decision for every candidate, ordered by group name, user email, and
-        dimension.
+        access type.
 
     Raises:
         FilterResolutionError: A filter value matched no active record. Raised
@@ -435,6 +430,6 @@ async def prune_redundant_direct_access(
 
 
 def _decision_sort_key(decision: GrantDecision) -> tuple[str, str, bool]:
-    """Order decisions by group, then user, then dimension, so a run's report is
+    """Order decisions by group, then user, then access type, so a run's report is
     reproducible regardless of the order groups were processed in."""
     return (decision.grant.group_name, decision.grant.user_email, decision.grant.is_owner)
