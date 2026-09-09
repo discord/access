@@ -2,10 +2,22 @@
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from api.extensions import Db
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
-from api.redundant_access import AccessTarget, RedundantGrant, _later, find_redundant_grants
+from api.redundant_access import (
+    AccessTarget,
+    FilterResolutionError,
+    RedundantGrant,
+    _later,
+    find_redundant_grants,
+    resolve_group_ids,
+    resolve_user_ids,
+)
 from tests.factories import (
+    AppFactory,
+    AppGroupFactory,
     OktaGroupFactory,
     OktaUserFactory,
     OktaUserGroupMemberFactory,
@@ -389,3 +401,115 @@ class TestFindRedundantGrants:
         assert by_user[user.id].latest_role_ended_at is None
         assert by_user[user_b.id].group_id == group_b.id
         assert by_user[user_b.id].latest_role_ended_at is None
+
+
+class TestResolveGroupIds:
+    async def test_no_filters_means_no_narrowing(self, db: Db) -> None:
+        assert await resolve_group_ids((), ()) is None
+
+    async def test_resolves_a_group_by_name_and_by_id(self, db: Db, okta_group: OktaGroup) -> None:
+        db.session.add(okta_group)
+        await db.session.commit()
+
+        assert await resolve_group_ids((okta_group.name,), ()) == {okta_group.id}
+        assert await resolve_group_ids((okta_group.id,), ()) == {okta_group.id}
+
+    async def test_app_expands_to_its_active_app_groups(self, db: Db) -> None:
+        test_app = AppFactory.build(name="Payments")
+        db.session.add(test_app)
+        await db.session.commit()
+        first = AppGroupFactory.build(app_id=test_app.id, name="App-Payments-Admins")
+        second = AppGroupFactory.build(app_id=test_app.id, name="App-Payments-Users")
+        other_app = AppFactory.build(name="Billing")
+        db.session.add_all([first, second, other_app])
+        await db.session.commit()
+        db.session.add(AppGroupFactory.build(app_id=other_app.id, name="App-Billing-Admins"))
+        await db.session.commit()
+
+        assert await resolve_group_ids((), ("Payments",)) == {first.id, second.id}
+
+    async def test_group_and_app_filters_union(self, db: Db, okta_group: OktaGroup) -> None:
+        test_app = AppFactory.build(name="Payments")
+        db.session.add_all([okta_group, test_app])
+        await db.session.commit()
+        app_group = AppGroupFactory.build(app_id=test_app.id, name="App-Payments-Admins")
+        db.session.add(app_group)
+        await db.session.commit()
+
+        assert await resolve_group_ids((okta_group.name,), ("Payments",)) == {okta_group.id, app_group.id}
+
+    async def test_app_with_no_active_groups_narrows_to_nothing(self, db: Db) -> None:
+        # Resolved, but contributes no groups. An empty set is not None: it means
+        # the sweep is narrowed to nothing, which is the honest answer.
+        db.session.add(AppFactory.build(name="Empty"))
+        await db.session.commit()
+
+        assert await resolve_group_ids((), ("Empty",)) == set()
+
+    async def test_unknown_group_raises(self, db: Db) -> None:
+        with pytest.raises(FilterResolutionError, match="No active group matches 'Nope'"):
+            await resolve_group_ids(("Nope",), ())
+
+    async def test_unknown_app_raises(self, db: Db) -> None:
+        with pytest.raises(FilterResolutionError, match="No active app matches 'Nope'"):
+            await resolve_group_ids((), ("Nope",))
+
+    async def test_soft_deleted_group_does_not_resolve(self, db: Db, okta_group: OktaGroup) -> None:
+        okta_group.deleted_at = datetime.now(UTC)
+        db.session.add(okta_group)
+        await db.session.commit()
+
+        with pytest.raises(FilterResolutionError):
+            await resolve_group_ids((okta_group.name,), ())
+
+    async def test_soft_deleted_app_group_is_not_expanded(self, db: Db) -> None:
+        test_app = AppFactory.build(name="Payments")
+        db.session.add(test_app)
+        await db.session.commit()
+        live = AppGroupFactory.build(app_id=test_app.id, name="App-Payments-Admins")
+        gone = AppGroupFactory.build(app_id=test_app.id, name="App-Payments-Old", deleted_at=datetime.now(UTC))
+        db.session.add_all([live, gone])
+        await db.session.commit()
+
+        assert await resolve_group_ids((), ("Payments",)) == {live.id}
+
+
+class TestResolveUserIds:
+    async def test_no_filters_means_no_narrowing(self, db: Db) -> None:
+        assert await resolve_user_ids(()) is None
+
+    async def test_resolves_by_email_case_insensitively_and_by_id(self, db: Db, user: OktaUser) -> None:
+        db.session.add(user)
+        await db.session.commit()
+
+        assert await resolve_user_ids((user.email,)) == {user.id}
+        assert await resolve_user_ids((user.email.upper(),)) == {user.id}
+        assert await resolve_user_ids((user.id,)) == {user.id}
+
+    async def test_unknown_user_raises(self, db: Db) -> None:
+        with pytest.raises(FilterResolutionError, match="No active user matches 'nobody@example.com'"):
+            await resolve_user_ids(("nobody@example.com",))
+
+    async def test_soft_deleted_user_does_not_resolve(self, db: Db, user: OktaUser) -> None:
+        user.deleted_at = datetime.now(UTC)
+        db.session.add(user)
+        await db.session.commit()
+
+        with pytest.raises(FilterResolutionError):
+            await resolve_user_ids((user.email,))
+
+    async def test_email_matching_is_like_based_with_underscore_wildcard(self, db: Db) -> None:
+        # The value goes into ILIKE unescaped, so `_` is a single-character
+        # wildcard. This matches the id-or-email resolution idiom used across
+        # the codebase in ~10 call sites. A caller wanting exact matching would
+        # need `func.lower(...) == func.lower(...)` instead.
+        user_no_underscore = OktaUserFactory.build(email="janexdoe@example.com")
+        db.session.add(user_no_underscore)
+        await db.session.commit()
+
+        # Querying with `jane_doe` (with underscore) matches `janexdoe` (with x)
+        # via ILIKE because `_` is a wildcard matching any single character.
+        # This test fails if someone changes to exact matching.
+        result_ids = await resolve_user_ids(("jane_doe@example.com",))
+
+        assert result_ids == {user_no_underscore.id}

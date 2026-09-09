@@ -15,13 +15,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Sequence
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import aliased
 
 from api.extensions import db
-from api.models import OktaGroup, OktaUser, OktaUserGroupMember
+from api.models import App, AppGroup, OktaGroup, OktaUser, OktaUserGroupMember
 
 
 class AccessTarget(Enum):
@@ -223,3 +223,96 @@ async def find_redundant_grants(
             )
         )
     return sorted(grants, key=lambda g: (g.group_name, g.user_email, g.is_owner))
+
+
+class FilterResolutionError(ValueError):
+    """A `--group`, `--user`, or `--app` filter value matched no active record.
+
+    Raised rather than silently narrowing to nothing: a mistyped name would
+    otherwise report as a clean sweep with nothing to prune.
+    """
+
+
+async def resolve_group_ids(group_filters: Sequence[str], app_filters: Sequence[str]) -> set[str] | None:
+    """Resolve group and app filters to the set of group ids they name.
+
+    Group filters match a group id or exact name. App filters match an app id or
+    exact name and expand to that app's active app groups. The two kinds union.
+
+    Args:
+        group_filters: Group ids or exact names.
+        app_filters: App ids or exact names.
+
+    Returns:
+        The group ids to restrict a sweep to, or None when neither filter was
+        supplied, meaning do not narrow by group. An empty set means the filters
+        resolved but name no groups.
+
+    Raises:
+        FilterResolutionError: A value matched no active group or app.
+    """
+    if len(group_filters) == 0 and len(app_filters) == 0:
+        return None
+
+    group_ids: set[str] = set()
+    for value in group_filters:
+        group_id = await db.session.scalar(
+            select(OktaGroup.id)
+            .where(OktaGroup.deleted_at.is_(None))
+            .where(or_(OktaGroup.id == value, OktaGroup.name == value))
+        )
+        if group_id is None:
+            raise FilterResolutionError(f"No active group matches {value!r}")
+        group_ids.add(group_id)
+
+    for value in app_filters:
+        app_id = await db.session.scalar(
+            select(App.id).where(App.deleted_at.is_(None)).where(or_(App.id == value, App.name == value))
+        )
+        if app_id is None:
+            raise FilterResolutionError(f"No active app matches {value!r}")
+        group_ids.update(
+            (
+                await db.session.scalars(
+                    select(AppGroup.id).where(AppGroup.deleted_at.is_(None)).where(AppGroup.app_id == app_id)
+                )
+            ).all()
+        )
+
+    return group_ids
+
+
+async def resolve_user_ids(user_filters: Sequence[str]) -> set[str] | None:
+    """Resolve user filters to the set of user ids they name.
+
+    Matches a user id or email; email comparison is case-insensitive, matching
+    how the `init-builtin-apps` command resolves its admin. Email filters are
+    matched via ILIKE, so `_` and `%` in the filter value act as SQL LIKE
+    wildcards.
+
+    Args:
+        user_filters: User ids or emails.
+
+    Returns:
+        The user ids to restrict a sweep to, or None when no filter was supplied.
+
+    Raises:
+        FilterResolutionError: A value matched no active user.
+    """
+    if len(user_filters) == 0:
+        return None
+
+    user_ids: set[str] = set()
+    for value in user_filters:
+        user_id = await db.session.scalar(
+            select(OktaUser.id)
+            .where(OktaUser.deleted_at.is_(None))
+            # Email matching is LIKE-based, consistent with the rest of the codebase,
+            # so `_` and `%` in a filter value act as wildcards.
+            .where(or_(OktaUser.id == value, OktaUser.email.ilike(value)))
+        )
+        if user_id is None:
+            raise FilterResolutionError(f"No active user matches {value!r}")
+        user_ids.add(user_id)
+
+    return user_ids
