@@ -15,6 +15,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from typing import Any
+
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import aliased
+
+from api.extensions import db
+from api.models import OktaGroup, OktaUser, OktaUserGroupMember
 
 
 class AccessTarget(Enum):
@@ -95,3 +102,124 @@ class RedundantGrant:
         if self.latest_direct_ended_at is None:
             return True
         return self.latest_direct_ended_at > self.latest_role_ended_at
+
+
+def _active(model: Any) -> Any:
+    """SQL predicate matching membership rows that have not ended.
+
+    Takes the model or alias to filter, so the same predicate applies to both
+    sides of the direct/role-derived self-join.
+    """
+    return or_(model.ended_at.is_(None), model.ended_at > func.now())
+
+
+async def find_redundant_grants(
+    *,
+    target: AccessTarget,
+    group_ids: set[str] | None = None,
+    user_ids: set[str] | None = None,
+) -> list[RedundantGrant]:
+    """Find every (user, group, dimension) triple holding both an active direct
+    grant and active role-derived coverage.
+
+    Args:
+        target: Which dimension(s) of direct grant to consider.
+        group_ids: Restrict to these groups, or None for every group.
+        user_ids: Restrict to these users, or None for every user.
+
+    Returns:
+        The candidates, ordered by group name, then user email, then dimension.
+        Membership rows sort before ownership rows within a group and user.
+    """
+    derived = aliased(OktaUserGroupMember)
+    direct_stmt = (
+        select(
+            OktaUserGroupMember.user_id,
+            OktaUser.email,
+            OktaUserGroupMember.group_id,
+            OktaGroup.name,
+            OktaUserGroupMember.is_owner,
+            OktaUserGroupMember.ended_at,
+        )
+        .join(OktaUser, OktaUser.id == OktaUserGroupMember.user_id)
+        .join(OktaGroup, OktaGroup.id == OktaUserGroupMember.group_id)
+        .where(OktaUser.deleted_at.is_(None))
+        .where(OktaGroup.deleted_at.is_(None))
+        .where(_active(OktaUserGroupMember))
+        .where(OktaUserGroupMember.role_group_map_id.is_(None))
+        .where(OktaUserGroupMember.is_owner.in_(target.is_owner_values()))
+        # Pair each direct grant with role-derived coverage in the database, so
+        # only genuine candidates cross the wire rather than every active
+        # membership in the system.
+        .where(
+            select(1)
+            .where(derived.user_id == OktaUserGroupMember.user_id)
+            .where(derived.group_id == OktaUserGroupMember.group_id)
+            .where(derived.is_owner == OktaUserGroupMember.is_owner)
+            .where(derived.role_group_map_id.isnot(None))
+            .where(_active(derived))
+            .exists()
+        )
+    )
+    if group_ids is not None:
+        direct_stmt = direct_stmt.where(OktaUserGroupMember.group_id.in_(group_ids))
+    if user_ids is not None:
+        direct_stmt = direct_stmt.where(OktaUserGroupMember.user_id.in_(user_ids))
+
+    # Aggregation happens here rather than in SQL: `bool_or` is Postgres-only
+    # and the suite also runs on SQLite, where `max()` over a DateTime column
+    # loses the type and hands back a string.
+    direct_latest: dict[tuple[str, str, bool], datetime | None] = {}
+    identities: dict[tuple[str, str, bool], tuple[str, str]] = {}
+    for user_id, user_email, group_id, group_name, is_owner, ended_at in (await db.session.execute(direct_stmt)).all():
+        key = (user_id, group_id, is_owner)
+        identities[key] = (user_email, group_name)
+        # Keyed on presence, not truthiness: a stored None means indefinite and
+        # must not read as "nothing recorded yet".
+        direct_latest[key] = _later(direct_latest[key], ended_at) if key in direct_latest else ended_at
+
+    if len(direct_latest) == 0:
+        return []
+
+    role_stmt = (
+        select(
+            OktaUserGroupMember.user_id,
+            OktaUserGroupMember.group_id,
+            OktaUserGroupMember.is_owner,
+            OktaUserGroupMember.ended_at,
+        )
+        .where(_active(OktaUserGroupMember))
+        .where(OktaUserGroupMember.role_group_map_id.isnot(None))
+        .where(OktaUserGroupMember.user_id.in_({key[0] for key in direct_latest}))
+        .where(OktaUserGroupMember.group_id.in_({key[1] for key in direct_latest}))
+    )
+    role_latest: dict[tuple[str, str, bool], datetime | None] = {}
+    for user_id, group_id, is_owner, ended_at in (await db.session.execute(role_stmt)).all():
+        key = (user_id, group_id, is_owner)
+        # The user/group pairs are filtered as a cross product, so this query can
+        # return triples that were never candidates. Keeping them out holds
+        # `role_latest` to the candidate set; the loop below reads it only at
+        # keys drawn from `direct_latest`, so a non-candidate entry would be
+        # ignored rather than wrong.
+        if key not in direct_latest:
+            continue
+        role_latest[key] = _later(role_latest[key], ended_at) if key in role_latest else ended_at
+
+    grants = []
+    for key, latest_direct in direct_latest.items():
+        user_id, group_id, is_owner = key
+        user_email, group_name = identities[key]
+        # The EXISTS clause above guarantees coverage for every candidate.
+        assert key in role_latest
+        grants.append(
+            RedundantGrant(
+                user_id=user_id,
+                user_email=user_email,
+                group_id=group_id,
+                group_name=group_name,
+                is_owner=is_owner,
+                latest_direct_ended_at=latest_direct,
+                latest_role_ended_at=role_latest[key],
+            )
+        )
+    return sorted(grants, key=lambda g: (g.group_name, g.user_email, g.is_owner))
