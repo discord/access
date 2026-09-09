@@ -66,7 +66,7 @@ class TestAccessTarget:
     def test_owners_covers_only_ownership(self) -> None:
         assert AccessTarget.OWNERS.is_owner_values() == (True,)
 
-    def test_both_covers_both_dimensions(self) -> None:
+    def test_both_covers_both_access_types(self) -> None:
         assert set(AccessTarget.BOTH.is_owner_values()) == {False, True}
 
     def test_values_match_the_cli_choice_strings(self) -> None:
@@ -213,7 +213,7 @@ class TestFindRedundantGrants:
         self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
     ) -> None:
         # A direct membership covered by role *ownership* is not redundant: the
-        # dimensions grant different things.
+        # access types grant different things.
         db.session.add_all([user, okta_group, role_group])
         await db.session.commit()
         await _direct_grant(user=user, group=okta_group, is_owner=False)
@@ -718,7 +718,7 @@ class TestPruneDriver:
         assert remove_member.call_count == 0
         assert remove_owner.call_count == 0
 
-    async def test_both_dimensions_prune_in_one_pass(
+    async def test_both_access_types_prune_in_one_pass(
         self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
     ) -> None:
         db.session.add_all([user, okta_group, role_group])
@@ -896,7 +896,7 @@ class TestCliOptions:
         for flag in ("--target", "--apply", "--allow-shortening", "--group", "--user", "--app"):
             assert flag in result.output
 
-    def test_defaults_are_dry_run_both_dimensions_and_guarded(self) -> None:
+    def test_defaults_are_dry_run_both_access_types_and_guarded(self) -> None:
         params = {p.name: p for p in prune_redundant_direct_access_command.params}
 
         assert params["target"].default == "both"
