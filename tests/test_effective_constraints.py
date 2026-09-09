@@ -263,7 +263,7 @@ async def test_nothing_propagates_onto_an_unmanaged_role(db: Db) -> None:
     """An unmanaged role enforces nothing, so nothing may propagate onto it.
 
     Every enforcement path gates on `is_managed` separately. Without the gate
-    inside `_propagated_sources` the read surface would advertise a limit and a
+    in `constraint_sources` the read surface would advertise a limit and a
     self-add prohibition that nothing applies, and the two would disagree.
     """
     group = OktaGroupFactory.build()
@@ -281,6 +281,38 @@ async def test_nothing_propagates_onto_an_unmanaged_role(db: Db) -> None:
     await db.session.commit()
 
     loaded = await _load_role(db, role.id)
+    assert effective_constraint(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, loaded) is None
+    assert effective_constraint(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, loaded) is None
+    # Enforcement agrees, which is the point -- the two must not diverge.
+    assert effective_ended_at(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, loaded, None) is None
+
+
+async def test_an_unmanaged_group_reports_none_of_its_own_tags(db: Db) -> None:
+    """An unmanaged group enforces nothing, so its own tags are not in force.
+
+    Covers both ways a tag reaches a group directly: applied to it, and
+    inherited from its app. Tag rows survive a group being switched to
+    unmanaged, so without the gate the group page would list controls Access no
+    longer applies.
+    """
+    app = AppFactory.build()
+    app_group = AppGroupFactory.build(is_managed=False)
+    app_group.app_id = app.id
+    direct = TagFactory.build(constraints={Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True})
+    inherited = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    db.session.add_all([app, app_group, direct, inherited])
+    await db.session.commit()
+    app_tag_map = AppTagMapFactory.build(app_id=app.id, tag_id=inherited.id)
+    db.session.add(app_tag_map)
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=app_group.id, tag_id=direct.id))
+    db.session.add(
+        OktaGroupTagMapFactory.build(group_id=app_group.id, tag_id=inherited.id, app_tag_map_id=app_tag_map.id)
+    )
+    await db.session.commit()
+
+    loaded = await _load_group_with_provenance(db, app_group.id)
+    assert effective_constraints(loaded) == []
     assert effective_constraint(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, loaded) is None
     assert effective_constraint(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, loaded) is None
     # Enforcement agrees, which is the point -- the two must not diverge.

@@ -140,13 +140,6 @@ def _propagated_sources(constraint_key: str, group: OktaGroup) -> list[Constrain
     """
     if type(group) is not RoleGroup:
         return []
-    # An unmanaged role enforces nothing, so nothing should propagate onto it.
-    # Gating here rather than at each caller keeps display and enforcement
-    # agreeing: every enforcement path already checks `is_managed` separately,
-    # and without this the read surface would advertise constraints that
-    # nothing applies.
-    if not group.is_managed:
-        return []
     # Owner-side keys never propagate onto a role.
     if constraint_key not in OWNER_SIDE_COUNTERPART:
         return []
@@ -213,9 +206,10 @@ def constraint_sources(
     """Collect every tag contributing a value for `constraint_key` to `group`.
 
     Covers tags on the group itself and, when `group` is a role, tags reaching
-    it from the groups it is associated with. Only enabled tags contribute, and
-    a propagated tag contributes only if it has `propagate_to_roles` set, its
-    source group is managed, and the role itself is managed.
+    it from the groups it is associated with. An unmanaged group has no sources
+    at all. Otherwise only enabled tags contribute, and a propagated tag
+    contributes only if it has `propagate_to_roles` set and its source group is
+    managed.
 
     Args:
         constraint_key: A key from `Tag.CONSTRAINTS`.
@@ -235,6 +229,13 @@ def constraint_sources(
             All of them are `lazy="raise_on_sql"`; see
             `api/routers/_eager.py`.
     """
+    # An unmanaged group enforces nothing, so nothing is in force on it -- not
+    # its own tags, not its app's, and nothing propagated to it. Gating here
+    # rather than at each caller keeps display and enforcement agreeing: every
+    # enforcement path already checks `is_managed` separately, and without this
+    # the read surface would advertise constraints that nothing applies.
+    if not group.is_managed:
+        return []
     return _own_tag_sources(constraint_key, group, include_provenance) + _propagated_sources(constraint_key, group)
 
 
