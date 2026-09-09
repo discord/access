@@ -406,6 +406,33 @@ access init <YOUR_OKTA_USER_EMAIL>
 
 Visit [http://localhost:3000/](http://localhost:3000/) to view your running version of Access!
 
+### Maintenance commands
+
+Access prefers role-based access: a role attached to a group grants that group's access to every
+member of the role. A direct grant covering access a role already provides is redundant; it
+obscures why a user has access, and it survives the user leaving the role, so role membership stops
+being a reliable lever.
+
+`prune-redundant-direct-access` finds those direct grants and removes them:
+
+```
+access prune-redundant-direct-access [--target members|owners|both] [--apply]
+    [--allow-shortening] [--group NAME] [--user EMAIL] [--app NAME]
+```
+
+The command reports without changing anything unless `--apply` is passed. By default it only
+removes a direct grant that ends no later than the role-based access covering it, so a user never
+loses access sooner than they otherwise would; `--allow-shortening` lifts that restriction. Under
+`--allow-shortening`, an indefinite direct grant can become access that silently ends when the
+role coverage expires: the expiring-access notification queries in `api/syncer.py` filter out
+role-derived rows, so a role-derived expiration is never notified to the user or the group owner,
+unlike the default path. `--group`, `--user`, and `--app` are repeatable and narrow the sweep.
+
+Removals are recorded as ordinary `GROUP_MODIFY_USER` audit events. Because the role-based grant
+survives, the user's Okta group membership is untouched. A write failure for one group is logged
+and that group's grants are left in place; the sweep continues with the remaining groups, and the
+command still exits non-zero so a run wired into a periodic job shows up as failed.
+
 ### Kubernetes Deployment and CronJobs
 
 As Access is a web application packaged with Docker, it can easily be deployed to a Kubernetes cluster. We've included example Kubernetes yaml objects you can use to deploy Access in the [examples/kubernetes](https://github.com/discord/access/tree/main/examples/kubernetes) directory.
