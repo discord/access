@@ -241,7 +241,10 @@ async def resolve_group_ids(group_filters: Sequence[str], app_filters: Sequence[
     """Resolve group and app filters to the set of group ids they name.
 
     Group filters match a group id or exact name. App filters match an app id or
-    exact name and expand to that app's active app groups. The two kinds union.
+    exact name and expand to that app's active app groups. The two kinds union. A
+    filter value that matches more than one active record resolves to an
+    arbitrary single one of them, since the lookup has no `ORDER BY` and
+    `db.session.scalar()` returns whichever matching row comes back first.
 
     Args:
         group_filters: Group ids or exact names.
@@ -292,7 +295,9 @@ async def resolve_user_ids(user_filters: Sequence[str]) -> set[str] | None:
     Matches a user id or email; email comparison is case-insensitive, matching
     how the `init-builtin-apps` command resolves its admin. Email filters are
     matched via ILIKE, so `_` and `%` in the filter value act as SQL LIKE
-    wildcards.
+    wildcards. A filter value that matches more than one active user resolves to
+    an arbitrary single one of them, since the lookup has no `ORDER BY` and
+    `db.session.scalar()` returns whichever matching row comes back first.
 
     Args:
         user_filters: User ids or emails.

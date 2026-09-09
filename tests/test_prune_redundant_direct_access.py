@@ -3,13 +3,21 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import click
 import pytest
+from click.testing import CliRunner
 from pytest_mock import MockerFixture
 from sqlalchemy import select
 
+from api.cli import cli, prune_redundant_direct_access_command
 from api.extensions import Db
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
 from api.operations import ModifyGroupUsers
+from api.plugins.app_group_lifecycle import (
+    AppGroupLifecyclePluginMetadata,
+    AppGroupLifecyclePluginSpec,
+    hookimpl,
+)
 from api.redundant_access import (
     AccessTarget,
     FilterResolutionError,
@@ -410,6 +418,31 @@ class TestFindRedundantGrants:
         assert by_user[user_b.id].group_id == group_b.id
         assert by_user[user_b.id].latest_role_ended_at is None
 
+    async def test_role_group_direct_membership_never_surfaces_as_a_candidate(
+        self, db: Db, user: OktaUser, role_group: RoleGroup
+    ) -> None:
+        # A role group's own membership rows -- who holds the role -- are always
+        # direct (`role_group_map_id IS NULL`). `role_group_map_id` is only set on a
+        # member row of a *different* group that a role maps into, and a role group
+        # can never be that target: `ModifyRoleGroups.execute()` filters role-typed
+        # groups out of the candidates it accepts as `groups_to_add`
+        # (api/operations/modify_role_groups.py), and `ModifyGroupType` ends every
+        # role-derived row before a group converts to a role group
+        # (api/operations/modify_group_type.py). So a role group can never hold both
+        # a direct row and a role-derived row for the same (user, group, is_owner)
+        # triple -- what `find_redundant_grants` itself requires to call something a
+        # candidate; this query applies no group-type filter of its own. That
+        # matters because if a role group ever did surface here, pruning it would
+        # cascade: `ModifyGroupUsers` removes a role group's member from every group
+        # that role grants (api/operations/modify_group_users.py, the
+        # role-associated-group handling), not just from the role group itself.
+        db.session.add_all([user, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=role_group)
+        await db.session.commit()
+
+        assert await find_redundant_grants(target=AccessTarget.BOTH) == []
+
 
 class TestResolveGroupIds:
     async def test_no_filters_means_no_narrowing(self, db: Db) -> None:
@@ -511,16 +544,15 @@ class TestResolveUserIds:
         # wildcard. This matches the id-or-email resolution idiom used across
         # the codebase in ~10 call sites. A caller wanting exact matching would
         # need `func.lower(...) == func.lower(...)` instead.
-        user_no_underscore = OktaUserFactory.build(email="janexdoe@example.com")
-        db.session.add(user_no_underscore)
+        user_with_x_in_email = OktaUserFactory.build(email="janexdoe@example.com")
+        db.session.add(user_with_x_in_email)
         await db.session.commit()
 
-        # Querying with `jane_doe` (with underscore) matches `janexdoe` (with x)
-        # via ILIKE because `_` is a wildcard matching any single character.
+        # Querying with `jane_doe` (underscore) matches `janexdoe` (x) via ILIKE.
         # This test fails if someone changes to exact matching.
         result_ids = await resolve_user_ids(("jane_doe@example.com",))
 
-        assert result_ids == {user_no_underscore.id}
+        assert result_ids == {user_with_x_in_email.id}
 
 
 async def _active_direct_count(db: Db, *, user: OktaUser, group: OktaGroup, is_owner: bool = False) -> int:
@@ -544,6 +576,80 @@ async def _active_role_derived_count(db: Db, *, user: OktaUser, group: OktaGroup
         .where(OktaUserGroupMember.role_group_map_id.isnot(None))
         .where(OktaUserGroupMember.ended_at.is_(None)),
     )
+
+
+class _RecordingLifecyclePlugin:
+    """A minimal app-group-lifecycle plugin that records `group_members_removed`
+    calls, registered the way `tests/test_app_group_lifecycle_plugin.py`'s
+    `test_plugin` fixture registers its own `DummyPlugin`."""
+
+    ID = "prune_test_lifecycle_plugin"
+
+    def __init__(self) -> None:
+        self.members_removed_calls: list[tuple[str, list[str]]] = []
+
+    @hookimpl
+    def get_plugin_metadata(self) -> AppGroupLifecyclePluginMetadata | None:
+        return AppGroupLifecyclePluginMetadata(
+            id=self.ID, display_name="Prune Test Plugin", description="Records member-removal hook calls."
+        )
+
+    @hookimpl
+    async def group_members_removed(self, ctx: Any, group: Any, members: list[OktaUser], plugin_id: str | None) -> None:
+        if plugin_id is not None and plugin_id != self.ID:
+            return
+        self.members_removed_calls.append((group.id, [m.id for m in members]))
+
+
+@pytest.fixture
+def lifecycle_plugin(db: Db, mocker: MockerFixture) -> Any:
+    """Register `_RecordingLifecyclePlugin` as the app group lifecycle plugin hook
+    relay, mirroring the registration in `tests/test_app_group_lifecycle_plugin.py`.
+    """
+    import pluggy
+
+    import api.plugins.app_group_lifecycle as plugin_module
+
+    plugin_instance = _RecordingLifecyclePlugin()
+    pm = pluggy.PluginManager(plugin_module.app_group_lifecycle_plugin_name)
+    pm.add_hookspecs(AppGroupLifecyclePluginSpec)
+    pm.register(plugin_module)
+    pm.register(plugin_instance, name=_RecordingLifecyclePlugin.ID)
+
+    mocker.patch.object(plugin_module, "_cached_app_group_lifecycle_hook", pm.hook)
+    mocker.patch.object(plugin_module, "_cached_plugin_registry", None)
+
+    yield plugin_instance
+
+    plugin_module._cached_app_group_lifecycle_hook = None
+    plugin_module._cached_plugin_registry = None
+
+
+class TestPruneDriverAppGroupLifecycle:
+    async def test_no_lifecycle_hook_fires_when_role_derived_access_survives(
+        self, db: Db, user: OktaUser, role_group: RoleGroup, lifecycle_plugin: Any
+    ) -> None:
+        # Every other driver test uses `OktaGroupFactory`; an `AppGroup` is where
+        # `ModifyGroupUsers` does its extra `joinedload(AppGroup.app)` /
+        # `selectin_polymorphic` work and where the lifecycle-hook branch lives. The
+        # hook must not fire: the role-derived row survives the prune, so the user
+        # never loses all access to the group.
+        test_app = AppFactory.build(name="PruneLifecycleApp", app_group_lifecycle_plugin=lifecycle_plugin.ID)
+        db.session.add_all([user, role_group, test_app])
+        await db.session.commit()
+        app_group = AppGroupFactory.build(app_id=test_app.id, name=f"App-{test_app.name}-Admins")
+        db.session.add(app_group)
+        await db.session.commit()
+        await _direct_grant(user=user, group=app_group)
+        await _role_grant(user=user, group=app_group, role_group=role_group)
+        await db.session.commit()
+
+        summary = await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+
+        assert summary.removed == 1
+        assert await _active_direct_count(db, user=user, group=app_group) == 0
+        assert await _active_role_derived_count(db, user=user, group=app_group) == 1
+        assert lifecycle_plugin.members_removed_calls == []
 
 
 class TestPruneDriver:
@@ -744,3 +850,189 @@ class TestPruneDriver:
             await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False, group_filters=("Nope",))
 
         assert await _active_direct_count(db, user=user, group=okta_group) == 1
+
+    async def test_app_filter_narrows_the_sweep(self, db: Db, user: OktaUser, role_group: RoleGroup) -> None:
+        # `resolve_group_ids` is covered in isolation by `TestResolveGroupIds`; this
+        # exercises `--app` through the driver end to end, the way
+        # `test_filters_narrow_the_sweep` above does for `--group`.
+        wanted_app = AppFactory.build(name="PruneWantedApp")
+        other_app = AppFactory.build(name="PruneOtherApp")
+        db.session.add_all([user, role_group, wanted_app, other_app])
+        await db.session.commit()
+        wanted_group = AppGroupFactory.build(app_id=wanted_app.id, name=f"App-{wanted_app.name}-Admins")
+        other_group = AppGroupFactory.build(app_id=other_app.id, name=f"App-{other_app.name}-Admins")
+        db.session.add_all([wanted_group, other_group])
+        await db.session.commit()
+        for group in (wanted_group, other_group):
+            await _direct_grant(user=user, group=group)
+            await _role_grant(user=user, group=group, role_group=role_group)
+        await db.session.commit()
+
+        summary = await prune_redundant_direct_access(
+            target=AccessTarget.BOTH, dry_run=False, app_filters=(wanted_app.name,)
+        )
+
+        assert summary.candidates == 1
+        assert await _active_direct_count(db, user=user, group=wanted_group) == 0
+        assert await _active_direct_count(db, user=user, group=other_group) == 1
+
+    async def test_audit_event_emitted_for_each_pruned_group(
+        self,
+        db: Db,
+        caplog: pytest.LogCaptureFixture,
+        user: OktaUser,
+        okta_group: OktaGroup,
+        role_group: RoleGroup,
+    ) -> None:
+        # The actor is NULL by design and a removal carries no reason field, so this
+        # audit event is the only trace a prune run leaves behind.
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        with caplog.at_level("INFO", logger="access.audit"):
+            await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+
+        audit_messages = [r.getMessage() for r in caplog.records if r.name == "access.audit"]
+        assert any("GROUP_MODIFY_USER" in m for m in audit_messages), audit_messages
+        assert any(okta_group.id in m for m in audit_messages), audit_messages
+
+    async def test_surviving_role_derived_row_is_left_untouched(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        # `_active_role_derived_count` above only pins that the row is still active;
+        # this pins that the row itself was never written to.
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        role_row = await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+        ended_at_before = role_row.ended_at
+        created_reason_before = role_row.created_reason
+
+        await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+
+        await db.session.refresh(role_row)
+        assert role_row.ended_at == ended_at_before
+        assert role_row.created_reason == created_reason_before
+
+
+class TestCliOptions:
+    # These assert on the command's declared parameters and its --help output.
+    # Click's help option is eager and exits before the callback, so no event
+    # loop or database is involved.
+    def test_command_is_registered(self) -> None:
+        assert "prune-redundant-direct-access" in cli.commands
+
+    def test_help_lists_every_option(self) -> None:
+        result = CliRunner().invoke(cli, ["prune-redundant-direct-access", "--help"])
+
+        assert result.exit_code == 0
+        for flag in ("--target", "--apply", "--allow-shortening", "--group", "--user", "--app"):
+            assert flag in result.output
+
+    def test_defaults_are_dry_run_both_dimensions_and_guarded(self) -> None:
+        params = {p.name: p for p in prune_redundant_direct_access_command.params}
+
+        assert params["target"].default == "both"
+        assert set(params["target"].type.choices) == {"members", "owners", "both"}
+        assert params["apply_changes"].default is False
+        assert params["allow_shortening"].default is False
+
+    def test_filters_are_repeatable(self) -> None:
+        params = {p.name: p for p in prune_redundant_direct_access_command.params}
+
+        assert params["groups"].multiple is True
+        assert params["users"].multiple is True
+        assert params["apps"].multiple is True
+
+
+class TestCliCallback:
+    # The command body is invoked as `.callback.__wrapped__()`, which peels off
+    # `_with_app_context`. CliRunner cannot drive it: CliRunner is synchronous
+    # and `_with_app_context` calls asyncio.run(), which would use the test's
+    # loop-bound aiosqlite engine from a different loop.
+    async def test_dry_run_is_the_default_and_writes_nothing(
+        self, db: Db, capsys: pytest.CaptureFixture[str], user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        await prune_redundant_direct_access_command.callback.__wrapped__(
+            target="both", apply_changes=False, allow_shortening=False, groups=(), users=(), apps=()
+        )
+
+        output = capsys.readouterr().out
+        assert "dry run" in output
+        assert user.email in output
+        assert okta_group.name in output
+        assert await _active_direct_count(db, user=user, group=okta_group) == 1
+
+    async def test_apply_removes_and_reports(
+        self, db: Db, capsys: pytest.CaptureFixture[str], user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        await prune_redundant_direct_access_command.callback.__wrapped__(
+            target="both", apply_changes=True, allow_shortening=False, groups=(), users=(), apps=()
+        )
+
+        output = capsys.readouterr().out
+        assert "dry run" not in output
+        assert "1 removed" in output
+        assert await _active_direct_count(db, user=user, group=okta_group) == 0
+
+    async def test_nothing_to_do_reports_cleanly(self, db: Db, capsys: pytest.CaptureFixture[str]) -> None:
+        await prune_redundant_direct_access_command.callback.__wrapped__(
+            target="both", apply_changes=False, allow_shortening=False, groups=(), users=(), apps=()
+        )
+
+        assert "No redundant direct access found" in capsys.readouterr().out
+
+    async def test_unresolvable_filter_raises_a_click_exception(self, db: Db) -> None:
+        with pytest.raises(click.ClickException, match="No active group matches 'Nope'"):
+            await prune_redundant_direct_access_command.callback.__wrapped__(
+                target="both", apply_changes=False, allow_shortening=False, groups=("Nope",), users=(), apps=()
+            )
+
+    async def test_a_failed_group_exits_non_zero(
+        self, db: Db, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        # A periodic run that left grants unpruned has to be visible as a failed
+        # run, not only as stderr output.
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+        mocker.patch.object(ModifyGroupUsers, "execute", side_effect=RuntimeError("boom"))
+
+        with pytest.raises(SystemExit) as exc_info:
+            await prune_redundant_direct_access_command.callback.__wrapped__(
+                target="both", apply_changes=True, allow_shortening=False, groups=(), users=(), apps=()
+            )
+
+        assert exc_info.value.code == 1
+
+    async def test_a_clean_run_does_not_exit_non_zero(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        # Must not raise SystemExit: a clean run leaves the exit status at 0.
+        await prune_redundant_direct_access_command.callback.__wrapped__(
+            target="both", apply_changes=True, allow_shortening=False, groups=(), users=(), apps=()
+        )
