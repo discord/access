@@ -426,8 +426,10 @@ class ModifyRoleGroups:
                 role_ownerships_added[owner_group.id] = ownership_to_add
                 db.session.add(ownership_to_add)
 
-            # Commit changes so far so we can reference the ids of the new role group maps in the OktaUserGroupMembers
-            await db.session.commit()
+            # Flush, not commit: the new role group maps need ids for the
+            # OktaUserGroupMembers below, and staying in this transaction is
+            # what lets the cap at the end of this block be atomic with them.
+            await db.session.flush()
 
             # Group members of a role should be added as members to all newly added groups
             # and owner groups associated with that role
@@ -557,7 +559,35 @@ class ModifyRoleGroups:
                     role_associated_ownership_added[member.user_id] = ownership_to_add
                     db.session.add(ownership_to_add)
 
-            # Commit changes so far, so we can reference OktaUserGroupMember in approved AccessRequests
+            # A group's time limits govern the members of any role associated
+            # with it. Capping the association alone is not enough: membership
+            # of the role would stay unbounded, and renewing the role's access
+            # would rebuild each derived grant from a membership nobody
+            # re-examined.
+            if self.role.is_managed:
+                # A role that is a MEMBER of a group is governed by that
+                # group's member limit and one that OWNS it by the owner
+                # limit, but both land on the role's own member side, so the
+                # tighter governs. Both lists hold managed, non-deleted groups
+                # -- the precondition `propagating_seconds_limit` states.
+                propagated_limits = [
+                    await propagating_seconds_limit(
+                        [g.id for g in groups_to_add], Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY
+                    ),
+                    await propagating_seconds_limit(
+                        [g.id for g in owner_groups_to_add], Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY
+                    ),
+                ]
+                seconds_limit = min((limit for limit in propagated_limits if limit is not None), default=None)
+                if seconds_limit is not None:
+                    await limit_access_conferred_by_roles(
+                        [self.role.id], end_at=datetime.now(UTC) + timedelta(seconds=seconds_limit)
+                    )
+
+            # The associations, the access they confer and the cap on the
+            # role's members commit together: a cap that cannot be applied must
+            # not leave the associations that require it durable. The committed
+            # OktaUserGroupMember ids are referenced below.
             await db.session.commit()
 
             # Now that the additions are durable, tell the lifecycle plugin about them.
@@ -649,38 +679,6 @@ class ModifyRoleGroups:
 
         # Commit all changes
         await db.session.commit()
-
-        # Attaching a role to a group is one of the two moments its members
-        # start being governed by that group's time limits; the other is a
-        # time-limited tag landing on a group the role is already associated
-        # with. Both reach membership of the role and everything that
-        # membership confers.
-        #
-        # The role's own access is bounded either way -- the `RoleGroupMap` is
-        # capped at creation and derived rows take the minimum -- but without
-        # this, membership of the role is never forced through review, so
-        # renewing the role's access rebuilds each derived grant from a
-        # membership nobody re-examined.
-        if self.role.is_managed:
-            # A role that is a MEMBER of a group is governed by that group's
-            # member limit and one that OWNS it by the owner limit, but both
-            # land on the role's own member side, so the tighter governs.
-            #
-            # Both lists are filtered to managed, non-deleted groups where they
-            # are loaded at the top of this method, which is the precondition
-            # `propagating_seconds_limit` states -- it does not re-derive it.
-            propagated_limits = [
-                await propagating_seconds_limit([g.id for g in groups_to_add], Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY),
-                await propagating_seconds_limit(
-                    [g.id for g in owner_groups_to_add], Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY
-                ),
-            ]
-            seconds_limit = min((limit for limit in propagated_limits if limit is not None), default=None)
-            if seconds_limit is not None:
-                await limit_access_conferred_by_roles(
-                    [self.role.id], end_at=datetime.now(UTC) + timedelta(seconds=seconds_limit)
-                )
-                await db.session.commit()
 
         # Resolve everything the notification hooks need on the main coroutine
         # before spawning tasks: spawned tasks must only perform network I/O,

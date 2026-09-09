@@ -417,6 +417,53 @@ async def test_attaching_a_role_caps_its_existing_members(db: Db, mocker: Mocker
     assert abs((membership.ended_at.replace(tzinfo=UTC) - expected).total_seconds()) < 60
 
 
+async def test_a_failed_cap_leaves_no_association_behind(db: Db, mocker: MockerFixture, user: OktaUser) -> None:
+    """The association and the cap it makes necessary commit together.
+
+    The cap is only correct alongside the association that imposes it, so if
+    it cannot be applied the association must not survive either -- otherwise
+    the role is attached to a time-limited group while its members keep the
+    indefinite membership the association was supposed to bound.
+    """
+    mocker.patch.object(okta, "add_user_to_group")
+    group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: ONE_DAY})
+    db.session.add_all([group, role, tag, user])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    db.session.add(OktaUserGroupMember(group_id=role.id, user_id=user.id, is_owner=False))
+    await db.session.commit()
+    role_id, group_id, user_id = role.id, group.id, user.id
+
+    mocker.patch(
+        "api.operations.modify_role_groups.limit_access_conferred_by_roles",
+        side_effect=RuntimeError("cap failed"),
+    )
+
+    with pytest.raises(RuntimeError):
+        await ModifyRoleGroups(role_group=role_id, groups_to_add=[group_id], sync_to_okta=False).execute()
+
+    await db.session.rollback()
+    db.session.expire_all()
+
+    association = (
+        await db.session.scalars(
+            select(RoleGroupMap).where(RoleGroupMap.role_group_id == role_id).where(RoleGroupMap.group_id == group_id)
+        )
+    ).all()
+    assert association == []
+
+    membership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == role_id)
+            .where(OktaUserGroupMember.user_id == user_id)
+        )
+    ).one()
+    assert membership.ended_at is None
+
+
 async def test_attaching_a_role_as_owner_caps_its_existing_members(
     db: Db, mocker: MockerFixture, user: OktaUser
 ) -> None:

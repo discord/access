@@ -181,11 +181,17 @@ async def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
 
 
 async def cap_role_memberships(dry_run: bool = False) -> int:
-    """Cap existing role memberships against propagated time limits.
+    """Cap role memberships that outlast the limit their role's associations impose.
 
-    The enforcement path (grant time) is complete on its own; this is the
-    one-off sweep over grants that predate the feature. Delta-based, so it is
-    safe to re-run: a membership already at or under its limit is skipped.
+    A repair sweep. The grant-time path bounds membership as access is granted,
+    so this covers memberships that path never saw. Delta-based and safe to
+    re-run: a membership already at or under its limit is skipped.
+
+    Args:
+        dry_run: Report what would be capped without writing.
+
+    Returns:
+        The number of memberships found at or over their limit.
     """
     roles = (
         await db.session.scalars(
