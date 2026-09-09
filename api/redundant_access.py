@@ -18,7 +18,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Sequence
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import aliased
 
 from api.extensions import db
@@ -136,7 +136,7 @@ async def find_redundant_grants(
         Membership rows sort before ownership rows within a group and user.
     """
     derived = aliased(OktaUserGroupMember)
-    direct_stmt = (
+    stmt = (
         select(
             OktaUserGroupMember.user_id,
             OktaUser.email,
@@ -144,77 +144,61 @@ async def find_redundant_grants(
             OktaGroup.name,
             OktaUserGroupMember.is_owner,
             OktaUserGroupMember.ended_at,
+            derived.ended_at,
         )
         .join(OktaUser, OktaUser.id == OktaUserGroupMember.user_id)
         .join(OktaGroup, OktaGroup.id == OktaUserGroupMember.group_id)
+        # Pairing a direct grant with its role-derived coverage in the join means
+        # the database returns only genuine candidates, and returns both end
+        # dates together. Matching the two sides in Python instead would mean
+        # binding one parameter per candidate user and group, which asyncpg
+        # refuses above 32767 of them -- a whole-database sweep would fail
+        # outright rather than run slowly.
+        .join(
+            derived,
+            and_(
+                derived.user_id == OktaUserGroupMember.user_id,
+                derived.group_id == OktaUserGroupMember.group_id,
+                derived.is_owner == OktaUserGroupMember.is_owner,
+                derived.role_group_map_id.isnot(None),
+                _active(derived),
+            ),
+        )
         .where(OktaUser.deleted_at.is_(None))
         .where(OktaGroup.deleted_at.is_(None))
         .where(_active(OktaUserGroupMember))
         .where(OktaUserGroupMember.role_group_map_id.is_(None))
         .where(OktaUserGroupMember.is_owner.in_(target.is_owner_values()))
-        # Pair each direct grant with role-derived coverage in the database, so
-        # only genuine candidates cross the wire rather than every active
-        # membership in the system.
-        .where(
-            select(1)
-            .where(derived.user_id == OktaUserGroupMember.user_id)
-            .where(derived.group_id == OktaUserGroupMember.group_id)
-            .where(derived.is_owner == OktaUserGroupMember.is_owner)
-            .where(derived.role_group_map_id.isnot(None))
-            .where(_active(derived))
-            .exists()
-        )
     )
+    # These two lists are bounded by what the operator typed on the command
+    # line, so they raise none of the parameter-count concern above.
     if group_ids is not None:
-        direct_stmt = direct_stmt.where(OktaUserGroupMember.group_id.in_(group_ids))
+        stmt = stmt.where(OktaUserGroupMember.group_id.in_(group_ids))
     if user_ids is not None:
-        direct_stmt = direct_stmt.where(OktaUserGroupMember.user_id.in_(user_ids))
+        stmt = stmt.where(OktaUserGroupMember.user_id.in_(user_ids))
 
     # Aggregation happens here rather than in SQL: `bool_or` is Postgres-only
     # and the suite also runs on SQLite, where `max()` over a DateTime column
-    # loses the type and hands back a string.
+    # loses the type and hands back a string. The join yields one row per
+    # (direct row, role-derived row) pair, so a triple with several rows on
+    # either side repeats across rows; taking the later value each time is
+    # idempotent, so the repetition costs nothing.
     direct_latest: dict[tuple[str, str, bool], datetime | None] = {}
+    role_latest: dict[tuple[str, str, bool], datetime | None] = {}
     identities: dict[tuple[str, str, bool], tuple[str, str]] = {}
-    for user_id, user_email, group_id, group_name, is_owner, ended_at in (await db.session.execute(direct_stmt)).all():
+    for row in (await db.session.execute(stmt)).all():
+        user_id, user_email, group_id, group_name, is_owner, direct_ended_at, role_ended_at = row
         key = (user_id, group_id, is_owner)
         identities[key] = (user_email, group_name)
         # Keyed on presence, not truthiness: a stored None means indefinite and
         # must not read as "nothing recorded yet".
-        direct_latest[key] = _later(direct_latest[key], ended_at) if key in direct_latest else ended_at
-
-    if len(direct_latest) == 0:
-        return []
-
-    role_stmt = (
-        select(
-            OktaUserGroupMember.user_id,
-            OktaUserGroupMember.group_id,
-            OktaUserGroupMember.is_owner,
-            OktaUserGroupMember.ended_at,
-        )
-        .where(_active(OktaUserGroupMember))
-        .where(OktaUserGroupMember.role_group_map_id.isnot(None))
-        .where(OktaUserGroupMember.user_id.in_({key[0] for key in direct_latest}))
-        .where(OktaUserGroupMember.group_id.in_({key[1] for key in direct_latest}))
-    )
-    role_latest: dict[tuple[str, str, bool], datetime | None] = {}
-    for user_id, group_id, is_owner, ended_at in (await db.session.execute(role_stmt)).all():
-        key = (user_id, group_id, is_owner)
-        # The user/group pairs are filtered as a cross product, so this query can
-        # return triples that were never candidates. Keeping them out holds
-        # `role_latest` to the candidate set; the loop below reads it only at
-        # keys drawn from `direct_latest`, so a non-candidate entry would be
-        # ignored rather than wrong.
-        if key not in direct_latest:
-            continue
-        role_latest[key] = _later(role_latest[key], ended_at) if key in role_latest else ended_at
+        direct_latest[key] = _later(direct_latest[key], direct_ended_at) if key in direct_latest else direct_ended_at
+        role_latest[key] = _later(role_latest[key], role_ended_at) if key in role_latest else role_ended_at
 
     grants = []
     for key, latest_direct in direct_latest.items():
         user_id, group_id, is_owner = key
         user_email, group_name = identities[key]
-        # The EXISTS clause above guarantees coverage for every candidate.
-        assert key in role_latest
         grants.append(
             RedundantGrant(
                 user_id=user_id,
