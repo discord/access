@@ -21,6 +21,7 @@ import Typography from '@mui/material/Typography';
 
 import {FormContainer, AutocompleteElement, SelectElement, TextFieldElement} from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
+import {useFormContext, useWatch} from 'react-hook-form';
 
 import {
   useGroupRequestsCreate,
@@ -36,11 +37,14 @@ import {
   AppDetail,
   AppGroupDetail,
   AppSummary,
+  AppTagMapDetail,
   OktaUserDetail,
   GroupDetail,
   GroupRequestDetail,
   TagDetail,
+  TagSummary,
 } from '../../api/apiSchemas';
+import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 
@@ -53,6 +57,53 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
 } as const;
 
 const GROUP_TYPE_OPTIONS = Object.entries(GROUP_TYPE_ID_TO_LABELS).map(([id, label]) => ({id, label}));
+
+// Offers only the durations the tags in force allow, and moves the field off
+// one they do not. A request the constraints forbid is not refused on submit --
+// `ApproveGroupRequest` shortens it on approval instead -- so a duration left
+// on offer here is one the requester is told they asked for and does not get.
+function OwnershipLengthField({
+  timeLimit,
+  blocked,
+  onChange,
+}: {
+  timeLimit: number | null;
+  blocked: boolean;
+  onChange: (value: string) => void;
+}) {
+  const {control, setValue} = useFormContext();
+  const selected = useWatch({control, name: 'ownershipUntil'});
+
+  const [options, defaultId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
+    // While the answer is unknown the limit reads as null. Holding the narrower
+    // list rather than re-offering the full one keeps a duration the tags forbid
+    // from being briefly clickable.
+    if (timeLimit == null) {
+      return blocked ? [[], accessConfig.DEFAULT_ACCESS_TIME] : [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
+    }
+    const [lastId, filtered] = filterUntilLabels(timeLimit);
+    return [filtered, lastId];
+  }, [timeLimit, blocked]);
+
+  React.useEffect(() => {
+    if (timeLimit == null) return;
+    if (!options.some((option) => option.id === selected)) {
+      setValue('ownershipUntil', defaultId);
+      onChange(defaultId);
+    }
+  }, [timeLimit, options, defaultId, selected, setValue, onChange]);
+
+  return (
+    <SelectElement
+      fullWidth
+      label="Requested ownership length"
+      name="ownershipUntil"
+      options={options}
+      onChange={(value) => onChange(value)}
+      required
+    />
+  );
+}
 
 const APP_GROUP_PREFIX = 'App-';
 const APP_NAME_APP_GROUP_SEPARATOR = '-';
@@ -69,6 +120,19 @@ const UNTIL_ID_TO_LABELS: Record<string, string> = {
 } as const;
 
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id, label}));
+
+const UNTIL_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
+);
+
+// The durations still on offer under `timeLimit`, and the longest of them.
+// Indefinite is not among them, and neither is any duration over the limit;
+// Custom stays, since its own picker is bounded separately.
+function filterUntilLabels(timeLimit: number): [string, Array<{id: string; label: string}>] {
+  const withinLimit = Object.entries(UNTIL_NUMERIC_ID_TO_LABELS).filter(([key]) => Number(key) <= timeLimit);
+  const labels = [...withinLimit, ['custom', 'Custom']].map(([id, label]) => ({id, label}));
+  return [withinLimit.at(-1)?.[0] ?? 'custom', labels];
+}
 
 interface CreateGroupRequestForm {
   type: 'okta_group' | 'app_group' | 'role_group';
@@ -161,6 +225,27 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     {enabled: effectiveAppId != null},
   );
   const requestPluginId = pluginIdForApp(effectiveAppDetail);
+
+  // The tags `CreateGroup` will copy from the app onto the group, on top of the
+  // ones chosen here. `effectiveAppId` already covers both ways a request lands
+  // under an app, so a name typed with an "App-...-" prefix inherits them too.
+  // Tags chosen directly are left out: the Tags field is showing them, and the
+  // constraint reader deduplicates.
+  const inheritedAppTags = React.useMemo<TagSummary[]>(() => {
+    const chosen = new Set(selectedTags.map((tag) => tag.id));
+    const appTagMaps: AppTagMapDetail[] = effectiveAppDetail?.active_app_tags ?? [];
+    return appTagMaps
+      .map((mapping) => mapping.active_tag)
+      .filter((tag): tag is TagSummary => tag != null && !chosen.has(tag.id));
+  }, [effectiveAppDetail, selectedTags]);
+
+  // The group does not exist yet, so its constraints come from the tags it
+  // would be created with rather than from an id.
+  const constraints = useConstraintsForTags([
+    ...selectedTags.map((tag) => tag.id),
+    ...inheritedAppTags.map((tag) => tag.id),
+  ]);
+  const ownershipTimeLimit = constraints.timeLimit(true);
 
   const {data: tagSearchData} = useTags({
     queryParams: {page: 1, size: 10, q: tagSearchInput},
@@ -344,17 +429,33 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
             }
             renderInput={(params) => <TextField {...params} label="Tags" placeholder="Tags" />}
           />
+          {/* Shown outside the Tags field because these are not the requester's
+              to choose or remove: the group picks them up from its app. */}
+          {inheritedAppTags.length > 0 && (
+            <Box sx={{marginTop: '8px'}}>
+              <Typography variant="caption" color="text.secondary">
+                Also inherited from {effectiveAppDetail?.name}:
+              </Typography>
+              <Box sx={{display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px'}}>
+                {inheritedAppTags.map((tag) => (
+                  <Chip key={tag.id} size="small" variant="outlined" label={tag.name} />
+                ))}
+              </Box>
+            </Box>
+          )}
         </FormControl>
         <FormControl margin="normal" fullWidth>
-          <Grid container alignItems="center" spacing={2}>
+          {ownershipTimeLimit != null && (
+            <Typography variant="subtitle2" color="text.accent" sx={{marginBottom: '12px'}}>
+              {'Ownership is limited to ' + timeLimitLabel(ownershipTimeLimit) + ' by a tag constraint.'}
+            </Typography>
+          )}
+          <Grid container alignItems="flex-start" spacing={2}>
             <Grid item xs={6}>
-              <SelectElement
-                fullWidth
-                label="Requested ownership length"
-                name="ownershipUntil"
-                options={UNTIL_OPTIONS}
-                onChange={(value) => setOwnershipUntil(value)}
-                required
+              <OwnershipLengthField
+                timeLimit={ownershipTimeLimit}
+                blocked={constraints.blocked}
+                onChange={setOwnershipUntil}
               />
             </Grid>
             <Grid item xs={6}>
