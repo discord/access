@@ -209,7 +209,7 @@ describe('tags an app group inherits from its app', () => {
   it('shows them as belonging to the app rather than as a choice', async () => {
     renderPage();
 
-    expect(await screen.findByText(`Also inherited from ${APP.name}`)).toBeInTheDocument();
+    expect(await screen.findByText(`Also inherited from ${APP.name}:`)).toBeInTheDocument();
     expect(screen.getByText(APP_TAG.name)).toBeInTheDocument();
   });
 
@@ -241,6 +241,6 @@ describe('tags an app group inherits from its app', () => {
     await userEvent.click(await screen.findByRole('option', {name: 'Group'}));
 
     await waitFor(() => expect(lastConstraintQuery()).not.toContain(APP_TAG.id));
-    expect(screen.queryByText(`Also inherited from ${APP.name}`)).not.toBeInTheDocument();
+    expect(screen.queryByText(`Also inherited from ${APP.name}:`)).not.toBeInTheDocument();
   });
 });
