@@ -39,10 +39,6 @@ class CheckForReason:
             await db.session.scalars(
                 select(OktaGroup)
                 .options(
-                    # The subtype loader stays here rather than in the helper: it is
-                    # what makes the `RoleGroup` paths resolvable on a polymorphic
-                    # `OktaGroup` query, and a query selecting `RoleGroup` directly
-                    # needs no such pairing.
                     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
                     *effective_constraint_options(),
                 )
@@ -70,10 +66,6 @@ class CheckForReason:
             await db.session.scalars(
                 select(OktaGroup)
                 .options(
-                    # The subtype loader stays here rather than in the helper: it is
-                    # what makes the `RoleGroup` paths resolvable on a polymorphic
-                    # `OktaGroup` query, and a query selecting `RoleGroup` directly
-                    # needs no such pairing.
                     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
                     *effective_constraint_options(),
                 )

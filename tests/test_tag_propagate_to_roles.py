@@ -59,9 +59,9 @@ async def test_post_tag_round_trips_explicit_propagate_to_roles(
     app: FastAPI, client: AsyncClient, db: Db, url_for: Any, propagate: bool
 ) -> None:
     """`post_tag` translates the optional body field with a ternary (absent
-    means the `True` default). Covering only the omitted case would leave the
-    gate that decides whether a tag's constraints reach roles at all untested
-    on the create path -- PUT is covered, POST was not."""
+    means the `True` default), so the create path needs coverage of its own:
+    the gate deciding whether a tag's constraints reach roles is set here as
+    well as on update."""
     response = await client.post(
         url_for("tags_create"),
         json={

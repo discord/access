@@ -660,7 +660,7 @@ async def test_attaching_a_role_also_caps_access_it_already_grants(
 ) -> None:
     """The attach path has to reach as far as the tag-landing path. Capping the
     role's memberships alone would leave the access those memberships already
-    confer elsewhere on its old end date."""
+    confer elsewhere on its existing end date."""
     mocker.patch.object(okta, "add_user_to_group")
     tagged_group = OktaGroupFactory.build()
     other_group = OktaGroupFactory.build()

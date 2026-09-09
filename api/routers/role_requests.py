@@ -178,12 +178,6 @@ async def list_role_requests(
                                 ),
                                 joinedload(RoleRequest.requested_group).options(
                                     selectinload(OktaGroup.active_user_ownerships),
-                                    # `requested_group` can be a RoleGroup (e.g.
-                                    # `ModifyGroupType` converted a group that already
-                                    # had a pending role request), so the constraint
-                                    # lookup below may consult propagation. The
-                                    # polymorphic loader is what lets the RoleGroup
-                                    # paths in `effective_constraint_options` resolve.
                                     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
                                     *effective_constraint_options(),
                                 ),
@@ -205,12 +199,6 @@ async def list_role_requests(
                                 ),
                                 joinedload(RoleRequest.requested_group).options(
                                     selectinload(OktaGroup.active_user_ownerships),
-                                    # `requested_group` can be a RoleGroup (e.g.
-                                    # `ModifyGroupType` converted a group that already
-                                    # had a pending role request), so the constraint
-                                    # lookup below may consult propagation. The
-                                    # polymorphic loader is what lets the RoleGroup
-                                    # paths in `effective_constraint_options` resolve.
                                     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
                                     *effective_constraint_options(),
                                 ),
@@ -247,10 +235,6 @@ async def list_role_requests(
                     (
                         await db.scalars(
                             select(OktaGroup)
-                            # `owned_groups` has no type filter, so `g` can be a
-                            # RoleGroup here (a role owner's own role); the
-                            # polymorphic loader is what lets the RoleGroup paths
-                            # in `effective_constraint_options` resolve.
                             .options(
                                 selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
                                 *effective_constraint_options(),
