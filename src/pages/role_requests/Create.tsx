@@ -254,10 +254,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const timeLimit = constraints.timeLimit(owner);
 
   React.useEffect(() => {
-    // Only widen once the answer is known. While a refetch is in flight the
-    // limit reads as null, and re-offering durations the group forbids makes
-    // them briefly clickable -- the narrowing that follows then overwrites the
-    // choice without saying so.
+    // Never widen on an untrustworthy answer; see `blocked` in constraints.ts.
     if (constraints.blocked) {
       return;
     }

@@ -142,10 +142,10 @@ describe('useConstraintsForGroups', () => {
 
 describe('splitting a selection larger than the endpoint cap', () => {
   it('asks in batches of 200 and answers as though it had asked once', async () => {
-    // A role can be associated with more groups than one request may name. The
-    // endpoint rejects over 200 ids with a 400, which before this landed as
-    // "no constraints" — every gate silently open on exactly the largest
-    // roles.
+    // A role can be associated with more groups than one request may name, and
+    // the endpoint rejects over 200 ids with a 400. Splitting keeps the largest
+    // selections answerable; an unsplit one fails, and a failed answer opens
+    // every gate that reads it.
     server.respond = async (ids) => ({
       // Both batches report both keys, with the second carrying the shorter
       // limit and the only restriction. Every entry therefore has to be

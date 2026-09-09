@@ -114,9 +114,8 @@ export async function apiFetch<
 // `list[str]` query parameter. The `URLSearchParams` record constructor cannot
 // do this: it stringifies each value, so an array arrives as a single
 // comma-joined one and the server sees one id named "a,b,c" rather than three.
-// A one-element array survives that intact, which is exactly why it is worth
-// spelling out here — the endpoints that pass one id would look healthy while
-// every multi-id caller silently got an empty answer.
+// A one-element array survives that intact, so an endpoint passing one id looks
+// healthy either way; only multi-id callers see the empty answer it produces.
 const resolveUrl = (
   url: string,
   queryParams: Record<string, string | string[]> = {},

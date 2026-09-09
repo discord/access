@@ -150,7 +150,14 @@ export interface EffectiveConstraintsReader {
   pending: boolean;
   /** Non-null if any request failed. The answer is then unknown, not empty. */
   error: Error | null;
-  /** `pending || error != null` — the answer is not yet trustworthy. */
+  /**
+   * `pending || error != null` — the answer is not yet trustworthy.
+   *
+   * A dialog offering a duration must not widen its options while this holds:
+   * the limit reads as null, and briefly re-offering durations the answer
+   * forbids makes them clickable, after which the narrowing that follows
+   * overwrites the user's choice without saying so.
+   */
   blocked: boolean;
   /** Seconds, or null when no limit applies or the answer is unknown. */
   timeLimit(isOwner: boolean): number | null;

@@ -248,10 +248,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   // Bound the duration control to whatever limit is in force, and pull the
   // user's selection down if it now exceeds it.
   React.useEffect(() => {
-    // Only widen once the answer is known. While a refetch is in flight the
-    // limit reads as null, and re-offering durations the selection forbids
-    // makes them briefly clickable -- the narrowing that follows then
-    // overwrites the choice without saying so.
+    // Never widen on an untrustworthy answer; see `blocked` in constraints.ts.
     if (constraintsBlocked) {
       return;
     }

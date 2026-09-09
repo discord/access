@@ -259,21 +259,17 @@ export default function ReadRoleRequest() {
   }
 
   // Owned here rather than by `FormContainer` so the effect below can move the
-  // `until` field as the request and its constraints arrive. React Hook Form
-  // snapshots `defaultValues` on the mounting render, which here is the render
-  // where both queries are still in flight -- so the snapshot is seeded from
-  // an empty request, and every real value has to be written by the effect.
+  // `until` field once the request and its constraints arrive: React Hook Form
+  // snapshots `defaultValues` on the mounting render, where both queries are
+  // still in flight.
   const resolveForm = useForm<ResolveRequestForm>({
     defaultValues: {until: requestedUntil, customUntil: (requestEndingAt as unknown as string) ?? ''},
   });
 
   React.useEffect(() => {
-    // Both the requested duration and the limit land after the mounting
-    // render, so this owns the field's starting value rather than only
-    // adjusting one. On that first render the request is `{}`, which reads as
-    // "indefinite" -- left in place it would default an approval on any group
-    // without a time limit to indefinite access, and on a group with one to a
-    // duration the narrowed option list no longer offers.
+    // The field's starting value, not just an adjustment to it -- both inputs
+    // land after the mounting render. `approvalUntilDefault` carries the
+    // reasoning and what each branch protects against.
     const until = approvalUntilDefault({
       requestedUntil,
       requestedUntilAdjusted,
