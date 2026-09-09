@@ -1,12 +1,16 @@
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Any, NamedTuple, Optional
+from typing import Any, NamedTuple, Optional, TypedDict
 
 from api.exceptions import InvalidRequestError
 from api.models.core_models import OktaGroup, RoleGroup, RoleGroupMap, Tag, TagConstraint
 
+#: What a constraint resolves to: a seconds count for the two time limits, a
+#: flag for the other four. `Tag.CONSTRAINTS` carries the full set.
+ConstraintValue = int | bool
 
-def coalesce_constraints(constraint_key: str, tags: list[Tag]) -> Any:
+
+def coalesce_constraints(constraint_key: str, tags: list[Tag]) -> Optional[ConstraintValue]:
     coalesced_constraint_value = None
     constraint = Tag.CONSTRAINTS[constraint_key]
     for tag in tags:
@@ -91,13 +95,39 @@ class ConstraintSource(NamedTuple):
     """One tag contributing a value for a constraint, and where it came from."""
 
     tag: Tag
-    value: Any
+    value: ConstraintValue
     origin: ConstraintOrigin
     #: The App for an `APP` origin, the source group for an association origin,
     #: and None for a `DIRECT` one. Named without "group" because it is not
     #: always a group.
     source_id: Optional[str]
     source_name: Optional[str]
+
+
+class ConstraintSourceEntry(TypedDict):
+    """One source of a constraint, as the API serializes it.
+
+    Mirrored by `EffectiveConstraintSourceDetail` in
+    `api/schemas/core_schemas.py`, which is what validates it on the way out.
+    """
+
+    tag_id: str
+    tag_name: str
+    origin: ConstraintOrigin
+    source_id: Optional[str]
+    source_name: Optional[str]
+
+
+class EffectiveConstraintEntry(TypedDict):
+    """One constraint in force, as the API serializes it.
+
+    Mirrored by `EffectiveConstraintDetail` in `api/schemas/core_schemas.py`.
+    """
+
+    constraint: str
+    name: str
+    value: ConstraintValue
+    sources: list[ConstraintSourceEntry]
 
 
 def _own_tag_sources(constraint_key: str, group: OktaGroup, include_provenance: bool) -> list[ConstraintSource]:
@@ -187,16 +217,21 @@ def _propagated_sources(constraint_key: str, group: OktaGroup) -> list[Constrain
     return sources
 
 
-def _fold(constraint: TagConstraint, sources: list[ConstraintSource]) -> Any:
+def _fold(constraint: TagConstraint, sources: list[ConstraintSource]) -> ConstraintValue:
     """Coalesce `sources`' values pairwise under `constraint.coalesce`.
 
-    Seeded on `is None`, not on truthiness: a first source contributing a falsy
-    value (`False`, or a `0`-second time limit) is a real contribution and must
-    seed the fold rather than be skipped.
+    Seeded from the first source rather than from a sentinel, so a falsy
+    contribution (`False`, or a `0`-second time limit) seeds the fold like any
+    other instead of being mistaken for "nothing yet".
+
+    Args:
+        constraint: The constraint being folded, which carries the rule.
+        sources: Must not be empty; a constraint with no sources is not in
+            force, which is a distinction its caller makes.
     """
-    value = None
-    for source in sources:
-        value = source.value if value is None else constraint.coalesce(value, source.value)
+    value = sources[0].value
+    for source in sources[1:]:
+        value = constraint.coalesce(value, source.value)
     return value
 
 
@@ -239,7 +274,7 @@ def constraint_sources(
     return _own_tag_sources(constraint_key, group, include_provenance) + _propagated_sources(constraint_key, group)
 
 
-def effective_constraint(constraint_key: str, group: OktaGroup) -> Any:
+def effective_constraint(constraint_key: str, group: OktaGroup) -> Optional[ConstraintValue]:
     """Resolve the value of `constraint_key` actually in force on `group`.
 
     Coalesces every contributing tag under that constraint's own rule -- the
@@ -256,7 +291,8 @@ def effective_constraint(constraint_key: str, group: OktaGroup) -> Any:
     Raises:
         InvalidRequestError: If a relationship this reads was not eager-loaded.
     """
-    return _fold(Tag.CONSTRAINTS[constraint_key], constraint_sources(constraint_key, group))
+    sources = constraint_sources(constraint_key, group)
+    return _fold(Tag.CONSTRAINTS[constraint_key], sources) if sources else None
 
 
 def effective_ended_at(
@@ -391,7 +427,7 @@ def constraint_source_clause(constraint_key: str, group: OktaGroup) -> str:
 
 def _constraint_entry(
     constraint_key: str, constraint: TagConstraint, sources: list[ConstraintSource]
-) -> Optional[dict[str, Any]]:
+) -> Optional[EffectiveConstraintEntry]:
     """One constraint's coalesced value and the sources that produced it.
 
     A source setting a flag to `False` imposes nothing -- the tag form writes
@@ -440,7 +476,7 @@ def _constraint_entry(
     }
 
 
-def effective_constraints(group: OktaGroup) -> list[dict[str, Any]]:
+def effective_constraints(group: OktaGroup) -> list[EffectiveConstraintEntry]:
     """Every constraint in force on `group`, with its coalesced value and sources.
 
     Backs the API response the UI reads, so display and enforcement answer from
