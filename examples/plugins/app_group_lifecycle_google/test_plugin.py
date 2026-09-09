@@ -39,11 +39,12 @@ sys.modules["googleapiclient.http"] = mock_googleapiclient_http
 
 
 class _FakeHttpError(Exception):
-    """Stand-in for googleapiclient.errors.HttpError carrying an HTTP status."""
+    """Stand-in for googleapiclient.errors.HttpError carrying an HTTP status and reason."""
 
-    def __init__(self, status: int) -> None:
+    def __init__(self, status: int, reason: str = "") -> None:
         super().__init__(f"HTTP {status}")
         self.resp = Mock(status=status)
+        self.reason = reason
 
 
 _errors_module = MagicMock()
@@ -58,7 +59,11 @@ from plugin import (  # noqa: E402
     CONFIG_DISPLAY_NAME,
     CONFIG_EMAIL,
     CONFIG_ENABLED,
+    CONFIG_REQUIRE_SECURITY_GROUPS,
+    CONFIG_SECURITY_GROUP,
     GOOGLE_API_NUM_RETRIES,
+    GOOGLE_GROUP_LABEL_DISCUSSION_FORUM,
+    GOOGLE_GROUP_LABEL_SECURITY,
     PLUGIN_ID,
     STATUS_GOOGLE_GROUP_ID,
     STATUS_PUSH_MAPPING_ID,
@@ -69,6 +74,7 @@ from plugin import (  # noqa: E402
     SYNC_SKIPPED,
     SYNC_SYNCED,
     GoogleGroupManagerPlugin,
+    GoogleGroupSyncError,
     _RetryingHttpRequest,
 )
 
@@ -110,16 +116,22 @@ def test_metadata(plugin_instance: GoogleGroupManagerPlugin) -> None:
 def test_app_config_properties_shape(plugin_instance: GoogleGroupManagerPlugin) -> None:
     props = plugin_instance.get_plugin_app_config_properties(PLUGIN_ID)
     assert props is not None
-    assert set(props) == {"enabled", "email_pattern"}
+    assert set(props) == {"enabled", "email_pattern", "require_security_groups"}
     assert props["enabled"].required is True
+    assert props["require_security_groups"].required is False
+    assert props["require_security_groups"].type == "boolean"
+    assert props["require_security_groups"].default_value is False
 
 
 def test_group_config_properties_shape(plugin_instance: GoogleGroupManagerPlugin) -> None:
     props = plugin_instance.get_plugin_group_config_properties(PLUGIN_ID, {})
     assert props is not None
-    assert set(props) == {"email", "display_name"}
+    assert set(props) == {"email", "display_name", "security_group"}
     assert props["email"].required is True
     assert props["display_name"].required is True
+    assert props["security_group"].required is False
+    assert props["security_group"].type == "boolean"
+    assert props["security_group"].default_value is False
 
 
 def test_group_config_email_property_carries_domain_suffix(plugin_instance: GoogleGroupManagerPlugin) -> None:
@@ -194,6 +206,16 @@ def test_validate_app_config_requires_enabled(plugin_instance: GoogleGroupManage
     assert "enabled" in errors
 
 
+@pytest.mark.parametrize("value,ok", [(True, True), (False, True), ("yes", False), (1, False)])
+def test_validate_app_config_require_security_groups_must_be_boolean(
+    plugin_instance: GoogleGroupManagerPlugin, value: Any, ok: bool
+) -> None:
+    errors = plugin_instance.validate_plugin_app_config(
+        {CONFIG_ENABLED: True, CONFIG_REQUIRE_SECURITY_GROUPS: value}, PLUGIN_ID
+    )
+    assert (errors == {}) is ok
+
+
 def test_validate_group_config_valid(plugin_instance: GoogleGroupManagerPlugin) -> None:
     errors = plugin_instance.validate_plugin_group_config(
         {"email": "platform-security", "display_name": "Platform Security"}, {}, PLUGIN_ID
@@ -215,6 +237,58 @@ def test_validate_group_config_errors(
 ) -> None:
     errors = plugin_instance.validate_plugin_group_config(config, {}, PLUGIN_ID)
     assert bad_key in errors
+
+
+@pytest.mark.parametrize("value,ok", [(True, True), (False, True), ("yes", False), (1, False)])
+def test_validate_group_config_security_group_must_be_boolean(
+    plugin_instance: GoogleGroupManagerPlugin, value: Any, ok: bool
+) -> None:
+    errors = plugin_instance.validate_plugin_group_config(
+        {"email": "sec", "display_name": "Sec", CONFIG_SECURITY_GROUP: value}, {}, PLUGIN_ID
+    )
+    assert (errors == {}) is ok
+
+
+def test_validate_group_config_rejects_opting_out_of_an_app_mandate(
+    plugin_instance: GoogleGroupManagerPlugin,
+) -> None:
+    app_config = {CONFIG_ENABLED: True, CONFIG_REQUIRE_SECURITY_GROUPS: True}
+    base = {CONFIG_EMAIL: "sec", CONFIG_DISPLAY_NAME: "Sec"}
+
+    # Turning it off against the app's mandate is rejected here rather than silently overridden
+    # by reconcile.
+    errors = plugin_instance.validate_plugin_group_config({**base, CONFIG_SECURITY_GROUP: False}, app_config, PLUGIN_ID)
+    assert CONFIG_SECURITY_GROUP in errors
+
+    assert (
+        plugin_instance.validate_plugin_group_config({**base, CONFIG_SECURITY_GROUP: True}, app_config, PLUGIN_ID) == {}
+    )
+    # An absent value is left alone: a group predating the mandate stays editable, and the mandate
+    # covers it anyway.
+    assert plugin_instance.validate_plugin_group_config(base, app_config, PLUGIN_ID) == {}
+    # Without the mandate, opting out is the group's call.
+    assert (
+        plugin_instance.validate_plugin_group_config(
+            {**base, CONFIG_SECURITY_GROUP: False}, {CONFIG_ENABLED: True}, PLUGIN_ID
+        )
+        == {}
+    )
+
+
+def test_group_config_security_group_property_reflects_an_app_mandate(
+    plugin_instance: GoogleGroupManagerPlugin,
+) -> None:
+    props = plugin_instance.get_plugin_group_config_properties(PLUGIN_ID, {})
+    assert props is not None
+    assert props[CONFIG_SECURITY_GROUP].default_value is False
+    assert "requires every one" not in (props[CONFIG_SECURITY_GROUP].help_text or "")
+
+    # Under a mandate the box is pre-checked, so the form submits what the app already enforces
+    # instead of an unchecked value the backend then rejects.
+    props = plugin_instance.get_plugin_group_config_properties(PLUGIN_ID, {CONFIG_REQUIRE_SECURITY_GROUPS: True})
+    assert props is not None
+    assert props[CONFIG_SECURITY_GROUP].default_value is True
+    assert "requires every one" in (props[CONFIG_SECURITY_GROUP].help_text or "")
 
 
 def test_validate_group_config_ignores_other_plugin(plugin_instance: GoogleGroupManagerPlugin) -> None:
@@ -362,6 +436,39 @@ def test_configured_accessors_read_group_config(
     assert plugin_instance._get_configured_display_name(ctx_mock, group) is None
 
 
+@pytest.mark.parametrize(
+    "app_requires,group_opted_in,expected",
+    [
+        (False, None, False),
+        (False, False, False),
+        (False, True, True),
+        (True, None, True),
+        # The mandate covers a group whose stored configuration predates it, so an app can be
+        # tightened without rewriting every group's config.
+        (True, False, True),
+        (True, True, True),
+    ],
+)
+def test_security_group_accessor_ors_the_app_mandate_with_the_group_setting(
+    plugin_instance: GoogleGroupManagerPlugin,
+    mocker: MockerFixture,
+    ctx_mock: MagicMock,
+    app_requires: bool,
+    group_opted_in: bool | None,
+    expected: bool,
+) -> None:
+    group_config: dict[str, Any] = {}
+    if group_opted_in is not None:
+        group_config[CONFIG_SECURITY_GROUP] = group_opted_in
+    group = _group(
+        mocker,
+        app_config={CONFIG_ENABLED: True, CONFIG_REQUIRE_SECURITY_GROUPS: app_requires},
+        group_config=group_config,
+    )
+
+    assert plugin_instance._get_configured_security_group(ctx_mock, group) is expected
+
+
 async def test_get_google_group_calls_get_by_resource_name(
     plugin_instance: GoogleGroupManagerPlugin, mock_groups_api: MagicMock
 ) -> None:
@@ -398,6 +505,18 @@ async def test_patch_google_group_sets_update_mask(
     assert kwargs["name"] == "groups/ggid-1"
     assert kwargs["body"] == {"displayName": "New", "description": "d"}
     assert kwargs["updateMask"] == "description,displayName"
+
+
+async def test_patch_google_group_sets_labels_update_mask(
+    plugin_instance: GoogleGroupManagerPlugin, mock_groups_api: MagicMock
+) -> None:
+    labels = {GOOGLE_GROUP_LABEL_DISCUSSION_FORUM: "", GOOGLE_GROUP_LABEL_SECURITY: ""}
+
+    await plugin_instance._patch_google_group("ggid-1", labels=labels)
+
+    kwargs = mock_groups_api.patch.call_args.kwargs
+    assert kwargs["body"] == {"labels": labels}
+    assert kwargs["updateMask"] == "labels"
 
 
 async def test_patch_google_group_noop_when_no_fields(
@@ -504,6 +623,9 @@ def test_email_config_property_is_immutable(plugin_instance: GoogleGroupManagerP
     assert props is not None
     assert props["email"].immutable is True
     assert props["display_name"].immutable is False
+    # Google supports promoting an existing group to a security group, so this stays editable; the
+    # one-way half is handled by restoring the value, not by blocking the edit.
+    assert props["security_group"].immutable is False
 
 
 @pytest.fixture
@@ -667,6 +789,192 @@ async def test_reconcile_clears_description_on_existing_group(
     assert patch.call_args.kwargs["description"] == ""
     assert group.description == ""
     ctx_mock.set_group_description.assert_not_awaited()
+
+
+# ---- Security label ----
+#
+# A Workspace security group is an ordinary Google Group carrying an extra label, and Google will
+# not take that label back off. These cover both directions of that asymmetry: Access raises the
+# label, and where Google is already ahead, Access adopts rather than attempting a downgrade.
+
+
+def _security_group_fixtures(
+    mocker: MockerFixture,
+    *,
+    configured: bool | None,
+    labels: dict[str, str] | None,
+    app_requires: bool = False,
+):
+    """A linked, already-converged group plus the live Google group it is linked to.
+
+    Args:
+        mocker: The pytest-mock fixture.
+        configured: The group's ``security_group`` configuration, or None to leave it unset.
+        labels: The live Google group's label map, or None for a group with no labels field.
+        app_requires: Whether the owning app mandates security groups.
+
+    Returns:
+        The Access group and the Groups API payload for its Google group. Display name and
+        description already match, so the only patch a reconcile has any reason to make is the
+        label one.
+    """
+    group_config: dict[str, Any] = {CONFIG_EMAIL: "sec", CONFIG_DISPLAY_NAME: "Sec"}
+    if configured is not None:
+        group_config[CONFIG_SECURITY_GROUP] = configured
+    group = _group(
+        mocker,
+        app_config={CONFIG_ENABLED: True, CONFIG_REQUIRE_SECURITY_GROUPS: app_requires},
+        group_config=group_config,
+        status={STATUS_GOOGLE_GROUP_ID: "ggid-1", STATUS_PUSH_MAPPING_ID: "map-1"},
+        description="Sec",
+    )
+    live: dict[str, Any] = {
+        "name": "groups/ggid-1",
+        "groupKey": {"id": "sec@test-company.com"},
+        "displayName": "Sec",
+        "description": "Sec",
+    }
+    if labels is not None:
+        live["labels"] = labels
+    return group, live
+
+
+def _label_patches(patch: MagicMock) -> list[dict[str, str]]:
+    """The label maps a reconcile actually sent, ignoring its metadata patch."""
+    return [c.kwargs["labels"] for c in patch.call_args_list if c.kwargs.get("labels") is not None]
+
+
+async def test_reconcile_labels_a_configured_group_as_a_security_group(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    # The patch replaces the label map rather than merging into it, so an unrelated label the group
+    # already carries has to survive the write.
+    group, live = _security_group_fixtures(
+        mocker, configured=True, labels={GOOGLE_GROUP_LABEL_DISCUSSION_FORUM: "", "example.com/team": "platform"}
+    )
+    mocker.patch.object(plugin_instance, "_get_google_group", return_value=live)
+    patch = mocker.patch.object(plugin_instance, "_patch_google_group")
+
+    await plugin_instance._reconcile(ctx_mock, group)
+
+    assert _label_patches(patch) == [
+        {
+            GOOGLE_GROUP_LABEL_DISCUSSION_FORUM: "",
+            "example.com/team": "platform",
+            GOOGLE_GROUP_LABEL_SECURITY: "",
+        }
+    ]
+    assert group.plugin_data[PLUGIN_ID]["status"][STATUS_SYNC_STATUS] == SYNC_SYNCED
+
+
+async def test_reconcile_sends_the_discussion_forum_label_on_a_group_reporting_none(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    # Dropping discussion_forum from the map is how a Google Group stops being one, so it is named
+    # explicitly rather than relied on to be present in what the API returned.
+    group, live = _security_group_fixtures(mocker, configured=True, labels=None)
+    mocker.patch.object(plugin_instance, "_get_google_group", return_value=live)
+    patch = mocker.patch.object(plugin_instance, "_patch_google_group")
+
+    await plugin_instance._reconcile(ctx_mock, group)
+
+    assert _label_patches(patch) == [{GOOGLE_GROUP_LABEL_DISCUSSION_FORUM: "", GOOGLE_GROUP_LABEL_SECURITY: ""}]
+
+
+async def test_reconcile_leaves_an_already_labeled_group_alone(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    group, live = _security_group_fixtures(
+        mocker,
+        configured=True,
+        labels={GOOGLE_GROUP_LABEL_DISCUSSION_FORUM: "", GOOGLE_GROUP_LABEL_SECURITY: ""},
+    )
+    mocker.patch.object(plugin_instance, "_get_google_group", return_value=live)
+    patch = mocker.patch.object(plugin_instance, "_patch_google_group")
+
+    await plugin_instance._reconcile(ctx_mock, group)
+
+    assert _label_patches(patch) == []
+
+
+async def test_reconcile_does_not_label_a_group_that_did_not_ask_for_it(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    # Absent configuration means an ordinary Google Group, not "whatever Google has": labelling one
+    # by default would be irreversible.
+    group, live = _security_group_fixtures(mocker, configured=None, labels={GOOGLE_GROUP_LABEL_DISCUSSION_FORUM: ""})
+    mocker.patch.object(plugin_instance, "_get_google_group", return_value=live)
+    patch = mocker.patch.object(plugin_instance, "_patch_google_group")
+
+    await plugin_instance._reconcile(ctx_mock, group)
+
+    assert _label_patches(patch) == []
+    assert CONFIG_SECURITY_GROUP not in group.plugin_data[PLUGIN_ID]["configuration"]
+
+
+@pytest.mark.parametrize("stored", [None, False, True])
+async def test_reconcile_labels_every_group_of_an_app_that_mandates_security_groups(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock, stored: bool | None
+) -> None:
+    # The mandate is a floor, so it reaches groups that predate it -- including one whose stored
+    # configuration still says False, which is what a group carries after the app is tightened.
+    group, live = _security_group_fixtures(
+        mocker, configured=stored, labels={GOOGLE_GROUP_LABEL_DISCUSSION_FORUM: ""}, app_requires=True
+    )
+    mocker.patch.object(plugin_instance, "_get_google_group", return_value=live)
+    patch = mocker.patch.object(plugin_instance, "_patch_google_group")
+
+    await plugin_instance._reconcile(ctx_mock, group)
+
+    assert _label_patches(patch) == [{GOOGLE_GROUP_LABEL_DISCUSSION_FORUM: "", GOOGLE_GROUP_LABEL_SECURITY: ""}]
+    assert group.plugin_data[PLUGIN_ID]["status"][STATUS_SYNC_STATUS] == SYNC_SYNCED
+
+
+async def test_reconcile_restores_the_configuration_of_a_group_google_already_labeled(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    # Google never converts a security group back, so an unchecked box next to a group that is one
+    # anyway is a lie. Access adopts Google's answer instead of trying (and failing) to downgrade.
+    group, live = _security_group_fixtures(
+        mocker,
+        configured=False,
+        labels={GOOGLE_GROUP_LABEL_DISCUSSION_FORUM: "", GOOGLE_GROUP_LABEL_SECURITY: ""},
+    )
+    mocker.patch.object(plugin_instance, "_get_google_group", return_value=live)
+    patch = mocker.patch.object(plugin_instance, "_patch_google_group")
+
+    await plugin_instance._reconcile(ctx_mock, group)
+
+    assert _label_patches(patch) == []
+    assert group.plugin_data[PLUGIN_ID]["configuration"][CONFIG_SECURITY_GROUP] is True
+    # Adopting reality is not a failure: the group is exactly what Access now says it is.
+    assert group.plugin_data[PLUGIN_ID]["status"][STATUS_SYNC_STATUS] == SYNC_SYNCED
+
+
+async def test_reconcile_errors_when_google_refuses_the_security_label(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    # Google rejects the label while the group holds members it does not allow, and will keep
+    # rejecting it. Access is advertising a security group it has not got, so the batch sync fails
+    # rather than reporting the group as synced.
+    group, live = _security_group_fixtures(mocker, configured=True, labels={GOOGLE_GROUP_LABEL_DISCUSSION_FORUM: ""})
+    mocker.patch.object(plugin_instance, "_get_google_group", return_value=live)
+
+    async def refuse_labels(_google_group_id: str, **kwargs: Any) -> None:
+        # Keyed on the argument rather than on call order, so it refuses the label write and only
+        # the label write however the metadata patch around it changes.
+        if kwargs.get("labels") is not None:
+            raise _FakeHttpError(400, "Group contains members that are not allowed")
+
+    mocker.patch.object(plugin_instance, "_patch_google_group", side_effect=refuse_labels)
+
+    with pytest.raises(GoogleGroupSyncError):
+        await plugin_instance.sync_group(ctx_mock, group, PLUGIN_ID)
+
+    status = group.plugin_data[PLUGIN_ID]["status"]
+    assert status[STATUS_SYNC_STATUS] == SYNC_ERROR
+    assert "Group contains members that are not allowed" in status[STATUS_SYNC_ERROR]
+    assert CONFIG_SECURITY_GROUP in status[STATUS_SYNC_ERROR]  # names the configuration to clear
 
 
 async def test_reconcile_adopts_missing_config_from_live_group(
