@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from api.extensions import Db
-from api.models import AppTagMap, OktaGroup, OktaGroupTagMap, RoleGroup, RoleGroupMap, Tag
+from api.models import AppTagMap, OktaGroup, OktaGroupTagMap, RoleGroup, Tag
 from api.routers._eager import effective_constraint_options
 from api.models.tag import (
     ConstraintOrigin,
@@ -23,6 +23,7 @@ from tests.factories import (
     OktaGroupFactory,
     OktaGroupTagMapFactory,
     RoleGroupFactory,
+    RoleGroupMapFactory,
     TagFactory,
 )
 
@@ -74,7 +75,7 @@ async def _setup(db: Db, *, constraints: dict, is_owner: bool, propagate: bool =
     db.session.add_all([group, role, tag])
     await db.session.commit()
     db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
-    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=is_owner))
+    db.session.add(RoleGroupMapFactory.build(group_id=group.id, role_group_id=role.id, is_owner=is_owner))
     await db.session.commit()
     return await _load_role(db, role.id)
 
@@ -118,7 +119,7 @@ async def test_disabled_tag_contributes_nothing(db: Db) -> None:
     db.session.add_all([group, role, tag])
     await db.session.commit()
     db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
-    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    db.session.add(RoleGroupMapFactory.build(group_id=group.id, role_group_id=role.id, is_owner=False))
     await db.session.commit()
     loaded = await _load_role(db, role.id)
     assert effective_constraint(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, loaded) is None
@@ -131,7 +132,7 @@ async def test_unmanaged_source_group_contributes_nothing(db: Db) -> None:
     db.session.add_all([group, role, tag])
     await db.session.commit()
     db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
-    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    db.session.add(RoleGroupMapFactory.build(group_id=group.id, role_group_id=role.id, is_owner=False))
     await db.session.commit()
     loaded = await _load_role(db, role.id)
     assert effective_constraint(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, loaded) is None
@@ -156,7 +157,7 @@ async def test_per_tag_not_global(db: Db) -> None:
     await db.session.commit()
     db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=propagating.id))
     db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=blocked.id))
-    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    db.session.add(RoleGroupMapFactory.build(group_id=group.id, role_group_id=role.id, is_owner=False))
     await db.session.commit()
     loaded = await _load_role(db, role.id)
     # 60 would win a `min` coalesce -- it must not be considered at all.
@@ -206,8 +207,8 @@ async def test_constraint_source_clause_names_every_blocking_source(db: Db) -> N
         [
             OktaGroupTagMapFactory.build(group_id=group_a.id, tag_id=tag.id),
             OktaGroupTagMapFactory.build(group_id=group_b.id, tag_id=tag.id),
-            RoleGroupMap(group_id=group_a.id, role_group_id=role.id, is_owner=False),
-            RoleGroupMap(group_id=group_b.id, role_group_id=role.id, is_owner=False),
+            RoleGroupMapFactory.build(group_id=group_a.id, role_group_id=role.id, is_owner=False),
+            RoleGroupMapFactory.build(group_id=group_b.id, role_group_id=role.id, is_owner=False),
         ]
     )
     await db.session.commit()
@@ -244,7 +245,7 @@ async def test_soft_deleted_source_group_contributes_nothing(db: Db) -> None:
     db.session.add_all([group, role, tag])
     await db.session.commit()
     db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
-    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    db.session.add(RoleGroupMapFactory.build(group_id=group.id, role_group_id=role.id, is_owner=False))
     await db.session.commit()
 
     group.deleted_at = datetime.now(UTC) - timedelta(days=1)
@@ -277,7 +278,7 @@ async def test_nothing_propagates_onto_an_unmanaged_role(db: Db) -> None:
     db.session.add_all([group, role, tag])
     await db.session.commit()
     db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
-    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    db.session.add(RoleGroupMapFactory.build(group_id=group.id, role_group_id=role.id, is_owner=False))
     await db.session.commit()
 
     loaded = await _load_role(db, role.id)
@@ -438,7 +439,7 @@ async def test_effective_constraints_orders_one_tag_reaching_from_two_groups(db:
     await db.session.commit()
     for group in (lenient_group, strict_group):
         db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
-        db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+        db.session.add(RoleGroupMapFactory.build(group_id=group.id, role_group_id=role.id, is_owner=False))
     await db.session.commit()
 
     loaded = await _load_role(db, role.id)
