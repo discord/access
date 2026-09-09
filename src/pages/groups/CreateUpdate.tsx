@@ -262,6 +262,13 @@ function GroupDialog(props: GroupDialogProps) {
                 name="app"
                 options={appSearchOptions}
                 required
+                // Show the app the form actually holds. Left to itself, rhf-mui displays
+                // whichever entry of `options` matches the form value, and `options` here is
+                // the result of a search this field's own input drives: an app past the first
+                // page of results matches nothing and the field renders blank, and a search in
+                // flight has no options at all, so the value reads as empty, the input resets,
+                // and the reset starts another search -- a loop that outran the backend.
+                transform={{input: (app) => app ?? null}}
                 autocompleteProps={{
                   // `readOnly`, not `disabled`: react-hook-form clears a disabled field's value, and
                   // rhf-mui forwards `autocompleteProps.disabled` into `useController`, so disabling
