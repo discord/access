@@ -14,10 +14,32 @@
 export const OWNER_SELF_ADD_LABEL = 'Disallow owners adding selves as owners';
 export const MEMBER_SELF_ADD_LABEL = 'Disallow owners adding selves as members';
 
+// The short pointer shown on a self-add control whose restriction is
+// unavailable, where naming the whole rule would crowd the toggle. The
+// propagation control carries the full explanation.
+export const SELF_ADD_NEEDS_PROPAGATION = 'Requires propagation to roles.';
+
+// The form types its toggles as free strings, so these are read as such and
+// compared rather than narrowed.
+/**
+ * Whether the self-add controls may offer their restriction.
+ *
+ * The other half of the same rule `propagationConflictMessage` states: with
+ * propagation off the restriction cannot be switched on, and with a
+ * restriction on propagation cannot be switched off. Blocking the move on
+ * whichever control is being changed is what keeps the pair unreachable.
+ *
+ * An unset value reads as available: propagation defaults to on, so nothing is
+ * blocked until the control actually holds "no".
+ */
+export function selfAddRestrictionAvailable(propagateToRoles: string | undefined): boolean {
+  return propagateToRoles !== 'no';
+}
+
 export interface PropagationConflictInput {
-  propagateToRoles: 'yes' | 'no';
-  ownerAdd: 'yes' | 'no';
-  memberAdd: 'yes' | 'no';
+  propagateToRoles: string;
+  ownerAdd: string | undefined;
+  memberAdd: string | undefined;
 }
 
 // Returns the message to show under the propagation control, or null when the
