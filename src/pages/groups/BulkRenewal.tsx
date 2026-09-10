@@ -278,10 +278,13 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
         label: label,
       })),
     );
-    // `until` is read but deliberately not a dependency: this reacts to the
-    // limit changing, not to the user picking a duration.
+    // `constraintsBlocked` is a dependency, not just a guard: a selection that
+    // moves from constrained rows to unconstrained ones leaves `timeLimit` null
+    // throughout, so the unblocking is the only signal that the narrowed list
+    // may be widened again. `until` is deliberately absent -- this reacts to
+    // the limit changing, not to the user picking a duration.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeLimit]);
+  }, [timeLimit, constraintsBlocked]);
 
   const complete = (
     completedUsersChange: GroupMembersSummary | undefined,
