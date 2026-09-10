@@ -4,18 +4,26 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from api.extensions import Db
-from api.models import AppTagMap, OktaGroup, OktaGroupTagMap, RoleGroup, RoleGroupMap, Tag
+from api.models import AppTagMap, OktaGroup, OktaGroupTagMap, RoleGroup, Tag
 from api.routers._eager import effective_constraint_options
 from api.models.tag import (
+    ConstraintOrigin,
+    ConstraintSource,
+    _constraint_entry,
     constraint_source_clause,
     constraint_sources,
     effective_constraint,
+    effective_constraints,
     effective_ended_at,
 )
 from tests.factories import (
+    AppFactory,
+    AppGroupFactory,
+    AppTagMapFactory,
     OktaGroupFactory,
     OktaGroupTagMapFactory,
     RoleGroupFactory,
+    RoleGroupMapFactory,
     TagFactory,
 )
 
@@ -67,7 +75,7 @@ async def _setup(db: Db, *, constraints: dict, is_owner: bool, propagate: bool =
     db.session.add_all([group, role, tag])
     await db.session.commit()
     db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
-    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=is_owner))
+    db.session.add(RoleGroupMapFactory.build(group_id=group.id, role_group_id=role.id, is_owner=is_owner))
     await db.session.commit()
     return await _load_role(db, role.id)
 
@@ -111,7 +119,7 @@ async def test_disabled_tag_contributes_nothing(db: Db) -> None:
     db.session.add_all([group, role, tag])
     await db.session.commit()
     db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
-    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    db.session.add(RoleGroupMapFactory.build(group_id=group.id, role_group_id=role.id, is_owner=False))
     await db.session.commit()
     loaded = await _load_role(db, role.id)
     assert effective_constraint(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, loaded) is None
@@ -124,7 +132,7 @@ async def test_unmanaged_source_group_contributes_nothing(db: Db) -> None:
     db.session.add_all([group, role, tag])
     await db.session.commit()
     db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
-    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    db.session.add(RoleGroupMapFactory.build(group_id=group.id, role_group_id=role.id, is_owner=False))
     await db.session.commit()
     loaded = await _load_role(db, role.id)
     assert effective_constraint(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, loaded) is None
@@ -149,7 +157,7 @@ async def test_per_tag_not_global(db: Db) -> None:
     await db.session.commit()
     db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=propagating.id))
     db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=blocked.id))
-    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    db.session.add(RoleGroupMapFactory.build(group_id=group.id, role_group_id=role.id, is_owner=False))
     await db.session.commit()
     loaded = await _load_role(db, role.id)
     # 60 would win a `min` coalesce -- it must not be considered at all.
@@ -199,8 +207,8 @@ async def test_constraint_source_clause_names_every_blocking_source(db: Db) -> N
         [
             OktaGroupTagMapFactory.build(group_id=group_a.id, tag_id=tag.id),
             OktaGroupTagMapFactory.build(group_id=group_b.id, tag_id=tag.id),
-            RoleGroupMap(group_id=group_a.id, role_group_id=role.id, is_owner=False),
-            RoleGroupMap(group_id=group_b.id, role_group_id=role.id, is_owner=False),
+            RoleGroupMapFactory.build(group_id=group_a.id, role_group_id=role.id, is_owner=False),
+            RoleGroupMapFactory.build(group_id=group_b.id, role_group_id=role.id, is_owner=False),
         ]
     )
     await db.session.commit()
@@ -237,7 +245,7 @@ async def test_soft_deleted_source_group_contributes_nothing(db: Db) -> None:
     db.session.add_all([group, role, tag])
     await db.session.commit()
     db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
-    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    db.session.add(RoleGroupMapFactory.build(group_id=group.id, role_group_id=role.id, is_owner=False))
     await db.session.commit()
 
     group.deleted_at = datetime.now(UTC) - timedelta(days=1)
@@ -256,7 +264,7 @@ async def test_nothing_propagates_onto_an_unmanaged_role(db: Db) -> None:
     """An unmanaged role enforces nothing, so nothing may propagate onto it.
 
     Every enforcement path gates on `is_managed` separately. Without the gate
-    inside `_propagated_sources` the read surface would advertise a limit and a
+    in `constraint_sources` the read surface would advertise a limit and a
     self-add prohibition that nothing applies, and the two would disagree.
     """
     group = OktaGroupFactory.build()
@@ -270,7 +278,7 @@ async def test_nothing_propagates_onto_an_unmanaged_role(db: Db) -> None:
     db.session.add_all([group, role, tag])
     await db.session.commit()
     db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
-    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    db.session.add(RoleGroupMapFactory.build(group_id=group.id, role_group_id=role.id, is_owner=False))
     await db.session.commit()
 
     loaded = await _load_role(db, role.id)
@@ -278,3 +286,274 @@ async def test_nothing_propagates_onto_an_unmanaged_role(db: Db) -> None:
     assert effective_constraint(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, loaded) is None
     # Enforcement agrees, which is the point -- the two must not diverge.
     assert effective_ended_at(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, loaded, None) is None
+
+
+async def test_an_unmanaged_group_reports_none_of_its_own_tags(db: Db) -> None:
+    """An unmanaged group enforces nothing, so its own tags are not in force.
+
+    Covers both ways a tag reaches a group directly: applied to it, and
+    inherited from its app. Tag rows survive a group being switched to
+    unmanaged, so without the gate the group page would list controls Access no
+    longer applies.
+    """
+    app = AppFactory.build()
+    app_group = AppGroupFactory.build(is_managed=False)
+    app_group.app_id = app.id
+    direct = TagFactory.build(constraints={Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True})
+    inherited = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    db.session.add_all([app, app_group, direct, inherited])
+    await db.session.commit()
+    app_tag_map = AppTagMapFactory.build(app_id=app.id, tag_id=inherited.id)
+    db.session.add(app_tag_map)
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=app_group.id, tag_id=direct.id))
+    db.session.add(
+        OktaGroupTagMapFactory.build(group_id=app_group.id, tag_id=inherited.id, app_tag_map_id=app_tag_map.id)
+    )
+    await db.session.commit()
+
+    loaded = await _load_group_with_provenance(db, app_group.id)
+    assert effective_constraints(loaded) == []
+    assert effective_constraint(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, loaded) is None
+    assert effective_constraint(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, loaded) is None
+    # Enforcement agrees, which is the point -- the two must not diverge.
+    assert effective_ended_at(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, loaded, None) is None
+
+
+async def test_effective_constraints_omits_unset_constraints(db: Db) -> None:
+    role = await _setup(db, constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400}, is_owner=False)
+    result = effective_constraints(role)
+    assert [entry["constraint"] for entry in result] == [Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY]
+    assert result[0]["value"] == 86400
+    assert result[0]["name"] == Tag.CONSTRAINTS[Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY].name
+
+
+async def test_effective_constraints_omits_a_flag_every_tag_turns_off(db: Db) -> None:
+    """The tag form writes all four boolean keys on every save, so a tag whose
+    only real setting is a time limit still carries four `False` flags. Those
+    set nothing, and reporting them would tell a reader that a
+    separation-of-duties control is in force when it is switched off."""
+    group = OktaGroupFactory.build()
+    tag = TagFactory.build(
+        constraints={
+            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400,
+            Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: False,
+            Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY: False,
+            Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: False,
+            Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY: False,
+        }
+    )
+    db.session.add_all([group, tag])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    await db.session.commit()
+
+    loaded = await _load_group_with_provenance(db, group.id)
+    assert [entry["constraint"] for entry in effective_constraints(loaded)] == [Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY]
+
+
+async def test_effective_constraints_omits_a_tag_that_declines_the_flag(db: Db) -> None:
+    """One tag turning a flag on and another turning it off leaves it in force,
+    but only the first is the reason. Naming the second would send a reader to
+    edit a tag that already says `False`."""
+    group = OktaGroupFactory.build()
+    strict = TagFactory.build(name="Strict", constraints={Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True})
+    lax = TagFactory.build(name="Lax", constraints={Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: False})
+    db.session.add_all([group, strict, lax])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=strict.id))
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=lax.id))
+    await db.session.commit()
+
+    loaded = await _load_group_with_provenance(db, group.id)
+    (entry,) = effective_constraints(loaded)
+    assert entry["value"] is True
+    assert [source["tag_name"] for source in entry["sources"]] == ["Strict"]
+
+
+async def test_effective_constraints_keeps_a_falsy_numeric_limit(db: Db) -> None:
+    """The `False` filter is discriminated on the boolean, not on truthiness: a
+    zero-second limit is the tightest possible constraint, not the absence of
+    one. The API validator rejects it, so this guards the helper directly."""
+    constraint = Tag.CONSTRAINTS[Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY]
+    source = ConstraintSource(
+        tag=TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 0}),
+        value=0,
+        origin=ConstraintOrigin.DIRECT,
+        source_id=None,
+        source_name=None,
+    )
+    entry = _constraint_entry(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, constraint, [source])
+    assert entry is not None
+    assert entry["value"] == 0
+
+
+async def test_effective_constraints_lists_the_binding_tag_first(db: Db) -> None:
+    """For a `min` constraint the shortest limit is the one actually binding,
+    so it leads. The reader's question is which tag is stopping them, not which
+    happened to be traversed first."""
+    group = OktaGroupFactory.build()
+    # Named so alphabetical order is the opposite of value order, which is what
+    # makes this test about the value key rather than the name key.
+    lenient = TagFactory.build(name="Aardvark", constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 999_999})
+    strict = TagFactory.build(name="Zebra", constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 3600})
+    db.session.add_all([group, lenient, strict])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=lenient.id))
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=strict.id))
+    await db.session.commit()
+
+    loaded = await _load_group_with_provenance(db, group.id)
+    (entry,) = effective_constraints(loaded)
+    assert entry["value"] == 3600
+    assert [source["tag_name"] for source in entry["sources"]] == ["Zebra", "Aardvark"]
+
+
+async def test_effective_constraints_breaks_value_ties_alphabetically(db: Db) -> None:
+    """Flags all coalesce to True, so nothing distinguishes them by value. The
+    name keys make the order deterministic rather than dependent on traversal."""
+    group = OktaGroupFactory.build()
+    later = TagFactory.build(name="Yak", constraints={Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True})
+    earlier = TagFactory.build(name="Badger", constraints={Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True})
+    db.session.add_all([group, later, earlier])
+    await db.session.commit()
+    # Added in the order that would put "Yak" first without the name key.
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=later.id))
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=earlier.id))
+    await db.session.commit()
+
+    loaded = await _load_group_with_provenance(db, group.id)
+    (entry,) = effective_constraints(loaded)
+    assert entry["value"] is True
+    assert [source["tag_name"] for source in entry["sources"]] == ["Badger", "Yak"]
+
+
+async def test_effective_constraints_orders_one_tag_reaching_from_two_groups(db: Db) -> None:
+    """One tag can reach a role from two associated groups, tying on value and
+    tag name. The source name is the tiebreak that keeps the order stable."""
+    strict_group = OktaGroupFactory.build(name="Aardvark-Group")
+    lenient_group = OktaGroupFactory.build(name="Zebra-Group")
+    role = RoleGroupFactory.build()
+    tag = TagFactory.build(name="SOX", constraints={Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True})
+    db.session.add_all([strict_group, lenient_group, role, tag])
+    await db.session.commit()
+    for group in (lenient_group, strict_group):
+        db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+        db.session.add(RoleGroupMapFactory.build(group_id=group.id, role_group_id=role.id, is_owner=False))
+    await db.session.commit()
+
+    loaded = await _load_role(db, role.id)
+    (entry,) = effective_constraints(loaded)
+    assert [source["source_name"] for source in entry["sources"]] == ["Aardvark-Group", "Zebra-Group"]
+
+
+async def test_effective_constraints_reports_association_source(db: Db) -> None:
+    role = await _setup(db, constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400}, is_owner=False)
+    (entry,) = effective_constraints(role)
+    (source,) = entry["sources"]
+    assert source["origin"] == "member_association"
+    assert source["source_name"] is not None
+
+
+async def test_effective_constraints_is_empty_when_nothing_applies(db: Db) -> None:
+    role = RoleGroupFactory.build()
+    db.session.add(role)
+    await db.session.commit()
+    loaded = await _load_role(db, role.id)
+    assert effective_constraints(loaded) == []
+
+
+async def test_effective_constraints_direct_tag_has_direct_origin(db: Db) -> None:
+    """A tag applied straight to a group (no `AppTagMap` linkage) is reported
+    with `origin == "direct"` -- the `_own_tag_sources` branch where
+    `tag_map.active_app_tag_mapping is None`."""
+    group = OktaGroupFactory.build()
+    tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    db.session.add_all([group, tag])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    await db.session.commit()
+    loaded = await _load_group_with_provenance(db, group.id)
+    (entry,) = effective_constraints(loaded)
+    (source,) = entry["sources"]
+    assert source["origin"] == "direct"
+
+
+async def test_effective_constraints_app_tag_has_app_origin(db: Db) -> None:
+    """A tag applied to an `App` and inherited by one of its `AppGroup`s is
+    reported with `origin == "app"` -- the `_own_tag_sources` branch where
+    `tag_map.active_app_tag_mapping is not None`. The inherited group-tag row
+    (`OktaGroupTagMap`) points at the `AppTagMap` row via `app_tag_map_id`;
+    that linkage is what makes `active_app_tag_mapping` non-null.
+
+    The source also carries the app's name in `source_name` -- for an
+    "app" origin the "source" is the App itself, not a group -- hence the
+    origin-agnostic field names -- so `source_id` stays `None` while
+    the name is still meaningful to show in the UI."""
+    app = AppFactory.build()
+    app_group = AppGroupFactory.build()
+    app_group.app_id = app.id
+    tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    db.session.add_all([app, app_group, tag])
+    await db.session.commit()
+    app_tag_map = AppTagMapFactory.build(app_id=app.id, tag_id=tag.id)
+    db.session.add(app_tag_map)
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id))
+    await db.session.commit()
+    loaded = await _load_group_with_provenance(db, app_group.id)
+    (entry,) = effective_constraints(loaded)
+    (source,) = entry["sources"]
+    assert source["origin"] == "app"
+    assert source["source_name"] == app.name
+    assert source["source_id"] == app.id
+
+
+async def test_effective_constraints_tolerates_a_soft_deleted_app(db: Db) -> None:
+    """`AppTagMap.active_app` filters `App.deleted_at`, so it resolves to
+    `None` once the app is soft-deleted while an inherited `OktaGroupTagMap`
+    row survives. Reading `.name` off it unguarded raises `AttributeError`
+    (a 500); the source must instead report the "app" origin with no name.
+
+    Loaded with `selectinload` deliberately. `group_tag_map_options()` uses
+    `joinedload`, and `active_app` is `innerjoin=True`, so there the deleted
+    app collapses the whole `active_app_tag_mapping` chain to `None` and the
+    source degrades to "direct" instead -- which is why the unguarded read is
+    not reachable through the production loader today. `selectinload` issues a
+    separate SELECT per relationship, so `active_app_tag_mapping` survives
+    while `active_app` comes back `None`: exactly the shape the guard exists
+    for, and the shape any future switch to `selectinload` would produce."""
+    app = AppFactory.build()
+    app_group = AppGroupFactory.build()
+    app_group.app_id = app.id
+    tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    db.session.add_all([app, app_group, tag])
+    await db.session.commit()
+    app_tag_map = AppTagMapFactory.build(app_id=app.id, tag_id=tag.id)
+    db.session.add(app_tag_map)
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id))
+    await db.session.commit()
+
+    app.deleted_at = datetime.now(UTC) - timedelta(days=1)
+    db.session.add(app)
+    await db.session.commit()
+    app_group_id = app_group.id
+
+    db.session.expire_all()
+    loaded = (
+        await db.session.scalars(
+            select(OktaGroup)
+            .options(
+                selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
+                selectinload(OktaGroup.active_group_tags)
+                .selectinload(OktaGroupTagMap.active_app_tag_mapping)
+                .selectinload(AppTagMap.active_app),
+            )
+            .where(OktaGroup.id == app_group_id)
+        )
+    ).one()
+    (entry,) = effective_constraints(loaded)
+    (source,) = entry["sources"]
+    assert source["origin"] == "app"
+    assert source["source_name"] is None

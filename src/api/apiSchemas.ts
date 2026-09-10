@@ -135,6 +135,7 @@ export type AppGroupDetail = {
   updated_at: string | null;
   deleted_at?: string | null;
   active_group_tags?: OktaGroupTagMapDetail[];
+  effective_constraints?: EffectiveConstraintDetail[] | null;
   /**
    * @default app_group
    */
@@ -357,6 +358,16 @@ export type AuditUserGroupRow = {
   ended_actor?: UserSummaryForAudit | null;
 };
 
+/**
+ * How a tag reaches the group a constraint is being evaluated for.
+ *
+ * A `StrEnum` so it serializes as the bare string it always was: the JSON
+ * contract is unchanged, but the OpenAPI schema now carries the value set,
+ * and the generated TypeScript client gets a literal union instead of
+ * `string`.
+ */
+export type ConstraintOrigin = 'direct' | 'app' | 'member_association' | 'owner_association';
+
 export type CreateAccessRequestBody = {
   group_id: string;
   /**
@@ -426,6 +437,21 @@ export type CreateTagBody = {
 
 export type DeleteMessage = {
   deleted: boolean;
+};
+
+export type EffectiveConstraintDetail = {
+  constraint: string;
+  name: string;
+  value: number | boolean;
+  sources?: EffectiveConstraintSourceDetail[];
+};
+
+export type EffectiveConstraintSourceDetail = {
+  tag_id: string;
+  tag_name: string;
+  origin: ConstraintOrigin;
+  source_id?: string | null;
+  source_name?: string | null;
 };
 
 export type GroupDetail =
@@ -559,6 +585,7 @@ export type OktaGroupDetail = {
   updated_at: string | null;
   deleted_at?: string | null;
   active_group_tags?: OktaGroupTagMapDetail[];
+  effective_constraints?: EffectiveConstraintDetail[] | null;
   /**
    * @default okta_group
    */
@@ -1057,6 +1084,7 @@ export type RoleGroupDetail = {
   updated_at: string | null;
   deleted_at?: string | null;
   active_group_tags?: OktaGroupTagMapDetail[];
+  effective_constraints?: EffectiveConstraintDetail[] | null;
   /**
    * @default role_group
    */
