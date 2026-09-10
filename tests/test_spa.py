@@ -21,8 +21,10 @@ from typing import AsyncIterator
 import httpx
 import pytest
 from fastapi import FastAPI
+from starlette.requests import Request
 
 from api import app as app_module
+from api import exception_handlers
 from api.app import _inject_csp_nonce, create_app
 from api.config import settings
 from api.extensions import Db
@@ -35,6 +37,7 @@ def stub_build_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     (build_dir / "index.html").write_text("<html><body>shell</body></html>")
     (build_dir / "assets" / "index-existing.js").write_text('console.log("hi");')
     monkeypatch.setattr(app_module, "BUILD_DIR", build_dir)
+    monkeypatch.setattr(exception_handlers, "INDEX_HTML", build_dir / "index.html")
     return build_dir
 
 
@@ -59,6 +62,30 @@ async def test_missing_asset_returns_404_not_the_spa_shell(spa_client: httpx.Asy
     assert resp.status_code == 404
     assert resp.headers["cache-control"] == "no-store"
     assert "shell" not in resp.text
+
+
+async def test_unhandled_asset_error_is_not_replaced_with_the_spa_shell(
+    stub_build_dir: Path,
+) -> None:
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/assets/index-broken.js",
+            "raw_path": b"/assets/index-broken.js",
+            "query_string": b"",
+            "headers": [],
+            "client": ("127.0.0.1", 1234),
+            "server": ("testserver", 80),
+        }
+    )
+
+    response = await exception_handlers.unhandled_exception_handler(request, RuntimeError("broken asset"))
+
+    assert response.status_code == 500
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["content-type"] == "application/problem+json"
 
 
 async def test_unknown_route_falls_back_to_spa_shell_without_caching(spa_client: httpx.AsyncClient) -> None:

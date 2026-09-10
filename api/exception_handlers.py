@@ -44,6 +44,10 @@ def _is_api(request: Request) -> bool:
     return request.url.path.startswith("/api/") or request.url.path == "/api"
 
 
+def _is_spa_asset(request: Request) -> bool:
+    return request.url.path.startswith("/assets/") or request.url.path == "/assets"
+
+
 def _problem(
     *,
     status_code: int,
@@ -111,6 +115,12 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     detail = exc.detail
     # Cloudflare and other 404s for non-/api/ paths should serve the SPA.
     if exc.status_code == 404 and not _is_api(request):
+        # The SPA route deliberately raises a non-cacheable 404 for missing
+        # content-hashed assets. Do not turn it back into a cacheable HTML 200.
+        if _is_spa_asset(request):
+            headers = dict(exc.headers or {})
+            headers.setdefault("Cache-Control", "no-store")
+            return _problem(status_code=404, detail="Not Found", headers=headers)
         if INDEX_HTML.exists():
             return HTMLResponse(INDEX_HTML.read_text(), status_code=200)
         return _problem(status_code=404, detail="Not Found", headers=exc.headers or None)
@@ -191,11 +201,12 @@ async def okta_transient_error_handler(request: Request, exc: OktaTransientError
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse | HTMLResponse:
     logger.exception("Unhandled exception", exc_info=exc)
-    if _is_api(request):
+    if _is_api(request) or _is_spa_asset(request):
         # Return a static body — `str(exc)` for SQLAlchemy errors leaks the
         # full SQL statement, table/column names, and bound parameters.
         # Diagnostics already go to the log pipeline via logger.exception.
-        return _problem(status_code=500, detail="Internal Server Error")
+        headers = {"Cache-Control": "no-store"} if _is_spa_asset(request) else None
+        return _problem(status_code=500, detail="Internal Server Error", headers=headers)
     if INDEX_HTML.exists():
         return HTMLResponse(INDEX_HTML.read_text(), status_code=200)
     return _problem(status_code=500, detail="Internal Server Error")
