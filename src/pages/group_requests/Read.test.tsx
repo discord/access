@@ -56,22 +56,23 @@ vi.mock('react-router-dom', async () => {
 vi.mock('../../authentication', () => ({useCurrentUser: () => APP_OWNER}));
 
 // The page asks the constraints endpoint what the selected tags impose, which
-// needs a QueryClient this render does not provide. These tests assert group
-// name resolution, the locked Type select, and tag resolution, none of which
-// reads a constraint, so stand in a resolved reader that restricts nothing.
+// needs a QueryClient this render does not provide. Stand in a resolved reader,
+// restricting nothing unless a test sets an owner-side limit.
+let ownerTimeLimit: number | null = null;
 vi.mock('../../constraints', () => {
-  const unrestricted = {
-    timeLimit: () => null,
+  const reader = () => ({
+    timeLimit: (isOwner: boolean) => (isOwner ? ownerTimeLimit : null),
     isReasonRequired: () => false,
     isSelfAddDisallowed: () => false,
-  };
+  });
   return {
+    timeLimitLabel: (seconds: number) => `${seconds / 86400} days`,
     useConstraintsForTags: () => ({
       pending: false,
       error: null,
       blocked: false,
-      ...unrestricted,
-      forGroup: () => unrestricted,
+      ...reader(),
+      forGroup: reader,
     }),
   };
 });
@@ -100,7 +101,10 @@ const renderPage = () =>
     </QueryClientProvider>,
   );
 
-beforeEach(() => resolveMutate.mockClear());
+beforeEach(() => {
+  resolveMutate.mockClear();
+  ownerTimeLimit = null;
+});
 
 describe('an app owner approving an app group request', () => {
   // The Type select is locked for a non-admin approver. `submit` derives the resolved
@@ -148,5 +152,22 @@ describe('a requested tag the tag list does not return', () => {
 
     await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
     expect(resolveMutate.mock.calls[0][0].body.resolved_group_tags).toEqual([REQUESTED_TAG_ID]);
+  });
+});
+
+// A request that asked for no ownership end date defaults the field to
+// Indefinite, which a limit removes from the list along with every duration
+// over it. Left there the Select has no matching option, renders blank, and
+// still submits indefinite for the backend to shorten -- so the approver never
+// sees the duration they are actually granting.
+describe('an ownership duration the tag forbids', () => {
+  it('moves the field to the longest duration still offered', async () => {
+    ownerTimeLimit = 7776000;
+    renderPage();
+
+    await screen.findByRole('button', {name: /Approve/});
+    const select = screen.getByRole('combobox', {name: /Ownership Ending At/});
+    await waitFor(() => expect(select).toHaveTextContent('90 Days'));
+    expect(select).not.toHaveTextContent('Indefinite');
   });
 });

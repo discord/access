@@ -33,7 +33,7 @@ import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 import InputLabel from '@mui/material/InputLabel';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
-import {Controller} from 'react-hook-form';
+import {Controller, useWatch} from 'react-hook-form';
 import {useQueries} from '@tanstack/react-query';
 
 import dayjs, {Dayjs} from 'dayjs';
@@ -97,16 +97,10 @@ const ROLE_GROUP_PREFIX = 'Role-';
 interface OwnershipEndingFieldProps {
   ownershipTimeLimit: number | null;
   constraintsBlocked: boolean;
-  ownershipUntil: string | null;
   setOwnershipUntil: (v: string | null) => void;
 }
 
-function OwnershipEndingField({
-  ownershipTimeLimit,
-  constraintsBlocked,
-  ownershipUntil,
-  setOwnershipUntil,
-}: OwnershipEndingFieldProps) {
+function OwnershipEndingField({ownershipTimeLimit, constraintsBlocked, setOwnershipUntil}: OwnershipEndingFieldProps) {
   const {control, setValue} = useFormContext();
 
   const [availableUntilOptions, defaultUntilId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
@@ -122,14 +116,20 @@ function OwnershipEndingField({
     return [filtered, lastId];
   }, [ownershipTimeLimit, constraintsBlocked]);
 
+  const selectedUntil = useWatch({control, name: 'resolved_ownership_ending_at'});
+
   React.useEffect(() => {
-    if (ownershipUntil == null || ownershipUntil === 'indefinite' || ownershipUntil === 'custom') return;
-    const seconds = parseInt(ownershipUntil, 10);
-    if (!isNaN(seconds) && ownershipTimeLimit != null && seconds > ownershipTimeLimit) {
+    if (ownershipTimeLimit == null) return;
+    // A limit drops Indefinite and every duration over it from the list. The
+    // field is seeded from the request, so it can be holding one of them: a
+    // Select whose value has no option renders blank, and submits as it stands
+    // for `ApproveGroupRequest` to shorten. Move it to the longest duration
+    // still offered instead.
+    if (!availableUntilOptions.some((option) => option.id === selectedUntil)) {
       setOwnershipUntil(defaultUntilId ?? null);
       setValue('resolved_ownership_ending_at', defaultUntilId ?? '');
     }
-  }, [ownershipTimeLimit, ownershipUntil, defaultUntilId, setValue, setOwnershipUntil]);
+  }, [ownershipTimeLimit, selectedUntil, availableUntilOptions, defaultUntilId, setValue, setOwnershipUntil]);
 
   return (
     <FormControl margin="normal" fullWidth>
@@ -929,7 +929,6 @@ export default function ReadGroupRequest() {
                                     <OwnershipEndingField
                                       ownershipTimeLimit={ownershipTimeLimit}
                                       constraintsBlocked={tagConstraints.blocked}
-                                      ownershipUntil={ownershipUntil}
                                       setOwnershipUntil={setOwnershipUntil}
                                     />
                                   </Grid>
