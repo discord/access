@@ -293,7 +293,8 @@ class GoogleGroupManagerPlugin:
             "Label the linked Google group as a Workspace security group so it can grant access to "
             "sensitive data. Google does not convert a security group back to an ordinary group, so "
             "clearing this later has no effect and it is restored on the next sync. A security group "
-            "may contain only users, service accounts, and other security groups in this domain."
+            "may contain users and service accounts with Google accounts from any domain, plus other "
+            "security groups from this one."
         )
         if app_requires_security_groups:
             security_group_help = (
@@ -1025,10 +1026,10 @@ class GoogleGroupManagerPlugin:
 
         Google Workspace treats the label as one-way: a security group cannot be converted back to
         an ordinary Google Group. So the configuration is a floor, not a two-way switch -- Access
-        raises the label and never tries to lower it. A group Google already reports as a security
-        group has its Access-side configuration corrected to match, so the checkbox keeps telling
-        the truth about what Google will enforce, rather than sitting unchecked next to a group
-        that is a security group regardless.
+        raises the label and never tries to lower it. Once the group carries the label, this group's
+        own setting is written to match, so the checkbox keeps telling the truth about what Google
+        will enforce rather than sitting unchecked next to a group that is a security group
+        regardless.
 
         Args:
             ctx: The plugin capability context.
@@ -1041,10 +1042,15 @@ class GoogleGroupManagerPlugin:
         """
         labels = google_group.get("labels") or {}
         already_labeled = GOOGLE_GROUP_LABEL_SECURITY in labels
-        configured = self._get_configured_security_group(ctx, group)
+        # The group's own setting, read separately from the effective value below: whether to label
+        # is the OR of group and app, but the value that has to stay converged with Google is this
+        # one. Keying the writes on the effective value would leave a mandated group's stored False
+        # untouched forever, and the config form submits that stale False straight back into the
+        # validation error for opting out of the mandate.
+        opted_in_by_group = bool(ctx.get_config(group, CONFIG_SECURITY_GROUP, False))
 
         if already_labeled:
-            if not configured:
+            if not opted_in_by_group:
                 logger.info(
                     f"The Google group for {group.name} is already a security group, which Google cannot "
                     f"undo; restoring its '{CONFIG_SECURITY_GROUP}' configuration to match."
@@ -1052,7 +1058,7 @@ class GoogleGroupManagerPlugin:
                 ctx.set_config(group, CONFIG_SECURITY_GROUP, True)
             return None
 
-        if not configured:
+        if not self._get_configured_security_group(ctx, group):
             return None
 
         logger.info(f"Labeling the Google group for {group.name} as a Workspace security group...")
@@ -1074,11 +1080,18 @@ class GoogleGroupManagerPlugin:
             reason = (e.reason or "").strip() or str(e)
             return (
                 f"Google refused to label the linked Google group as a security group: {reason}. A security "
-                "group may contain only users, service accounts, and other security groups in "
-                f"{self._domain}, and only a Workspace Super Admin or Groups Admin may apply the label. "
-                f"Remove any other members from the group, or clear its '{CONFIG_SECURITY_GROUP}' "
-                "configuration to stop trying."
+                "group may contain users and service accounts with Google accounts, in any domain, plus "
+                f"other security groups in {self._domain}, and only a Workspace Super Admin or Groups Admin "
+                "may apply the label. Correct the group's membership, or turn off whichever of this group's "
+                f"'{CONFIG_SECURITY_GROUP}' or its app's '{CONFIG_REQUIRE_SECURITY_GROUPS}' configuration is "
+                "asking for the label."
             )
+
+        # The group is a security group as of this patch, so record that on the group itself even
+        # when it was the app mandate that asked for it: same convergence as the restore above, at
+        # the moment it is established rather than a reconcile later.
+        if not opted_in_by_group:
+            ctx.set_config(group, CONFIG_SECURITY_GROUP, True)
         return None
 
     # ---- Lifecycle hooks ----

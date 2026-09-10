@@ -76,9 +76,10 @@ operation.
 
 **Google enforces [membership
 requirements](https://docs.cloud.google.com/identity/docs/how-to/update-group-to-security-group).** A
-security group may contain only users, service accounts, and other security groups in your own
-domain, and only a Workspace Super Admin or Groups Admin may apply the label (the **Group
-Administrator** role under [Calling the Google API](#calling-the-google-api) covers the latter). The
+security group may contain users and service accounts with Google accounts from any domain, plus
+other security groups from your own, and only a Workspace Super Admin or Groups Admin may apply the
+label (the **Group Administrator** role under [Calling the Google API](#calling-the-google-api)
+covers the latter). The
 plugin pre-checks none of that: Google rejects the label outright when it does not hold, and the
 plugin records the rejection as a sync error naming the requirement. That error is deliberately loud
 (it fails the `sync-app-groups` run) because Access is otherwise showing a security group it does

@@ -928,6 +928,30 @@ async def test_reconcile_labels_every_group_of_an_app_that_mandates_security_gro
 
     assert _label_patches(patch) == [{GOOGLE_GROUP_LABEL_DISCUSSION_FORUM: "", GOOGLE_GROUP_LABEL_SECURITY: ""}]
     assert group.plugin_data[PLUGIN_ID]["status"][STATUS_SYNC_STATUS] == SYNC_SYNCED
+    # The group's own setting is converged too, not just the effective one. Leaving a stale False
+    # there would have the config form submit it straight back into the opt-out validation error.
+    assert group.plugin_data[PLUGIN_ID]["configuration"][CONFIG_SECURITY_GROUP] is True
+
+
+@pytest.mark.parametrize("stored", [None, False])
+async def test_reconcile_converges_a_mandated_group_that_google_already_labeled(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock, stored: bool | None
+) -> None:
+    # The restore keys on the group's own setting, not the effective one: under a mandate the
+    # effective value is already True, so keying on it would leave the stale stored value forever.
+    group, live = _security_group_fixtures(
+        mocker,
+        configured=stored,
+        labels={GOOGLE_GROUP_LABEL_DISCUSSION_FORUM: "", GOOGLE_GROUP_LABEL_SECURITY: ""},
+        app_requires=True,
+    )
+    mocker.patch.object(plugin_instance, "_get_google_group", return_value=live)
+    patch = mocker.patch.object(plugin_instance, "_patch_google_group")
+
+    await plugin_instance._reconcile(ctx_mock, group)
+
+    assert _label_patches(patch) == []  # nothing to do in Google
+    assert group.plugin_data[PLUGIN_ID]["configuration"][CONFIG_SECURITY_GROUP] is True
 
 
 async def test_reconcile_restores_the_configuration_of_a_group_google_already_labeled(
@@ -974,7 +998,10 @@ async def test_reconcile_errors_when_google_refuses_the_security_label(
     status = group.plugin_data[PLUGIN_ID]["status"]
     assert status[STATUS_SYNC_STATUS] == SYNC_ERROR
     assert "Group contains members that are not allowed" in status[STATUS_SYNC_ERROR]
-    assert CONFIG_SECURITY_GROUP in status[STATUS_SYNC_ERROR]  # names the configuration to clear
+    # Names both settings that can be asking for the label: clearing only the group's does nothing
+    # while the app mandates it, so remediation advice naming just that one would be wrong.
+    assert CONFIG_SECURITY_GROUP in status[STATUS_SYNC_ERROR]
+    assert CONFIG_REQUIRE_SECURITY_GROUPS in status[STATUS_SYNC_ERROR]
 
 
 async def test_reconcile_adopts_missing_config_from_live_group(
