@@ -34,6 +34,7 @@ import InputLabel from '@mui/material/InputLabel';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
 import {Controller} from 'react-hook-form';
+import {useQueries} from '@tanstack/react-query';
 
 import dayjs, {Dayjs} from 'dayjs';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
@@ -43,6 +44,7 @@ import {
   GroupRequestByIdPutError,
   GroupRequestByIdPutVariables,
   useAppById,
+  tagByIdQuery,
   useApps,
   useGroupRequestById,
   useTags,
@@ -54,6 +56,7 @@ import {
   GroupRequestDetail,
   OktaUserGroupMemberDetail,
   ResolveGroupRequestBody,
+  TagDetail,
   TagListItem,
 } from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
@@ -152,6 +155,27 @@ function OwnershipEndingField({
         )}
       />
     </FormControl>
+  );
+}
+
+// Every tag named in `ids`, each fetched by its own id.
+//
+// Not by filtering a page of the tag list: a request can name a tag that no
+// single page of that list contains, and a partial match would drop it from
+// the approval -- and from the constraints answered for -- without saying so.
+function useTagsByIds(ids: string[]): {tags: TagListItem[]; settled: boolean} {
+  const results = useQueries({queries: ids.map((id) => tagByIdQuery({pathParams: {tagId: id}}))});
+  const signature = results.map((result) => `${result.status}:${result.dataUpdatedAt}`).join('|');
+  return React.useMemo(
+    () => ({
+      // A tag that no longer exists answers with an error rather than data. It
+      // cannot be applied either way, so it is left out of the list while
+      // still counting as settled.
+      tags: results.map((result) => result.data).filter((tag): tag is TagDetail => tag != null),
+      settled: results.every((result) => result.data !== undefined || result.error != null),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [signature],
   );
 }
 
@@ -292,36 +316,24 @@ export default function ReadGroupRequest() {
   });
   const tagSearchOptions = tagSearchData?.items ?? [];
 
-  const {data: allTagsForSeeding} = useTags(
-    {queryParams: {page: 1, size: 100, q: ''}},
-    {enabled: requestedTagNames.length > 0},
-  );
+  const requested = useTagsByIds(requestedTagNames);
+  const requestedTags = requested.tags;
   const [tagsSeeded, setTagsSeeded] = React.useState(false);
   React.useEffect(() => {
-    if (!tagsSeeded && requestedTagNames.length > 0 && allTagsForSeeding?.items) {
-      const matched = allTagsForSeeding.items.filter((t: TagListItem) => requestedTagNames.includes(t.id));
-      setSelectedTags(matched);
+    // Seeded only once every id has settled, so a request naming several tags
+    // cannot be seeded from the subset that happened to answer first.
+    if (!tagsSeeded && requestedTagNames.length > 0 && requested.settled) {
+      setSelectedTags(requestedTags);
       setTagsSeeded(true);
     }
-  }, [allTagsForSeeding, tagsSeeded, requestedTagNames.length]);
-
-  const requestedTags = React.useMemo<TagListItem[]>(() => {
-    if (!allTagsForSeeding?.items) return [];
-    return allTagsForSeeding.items.filter((t: TagListItem) => requestedTagNames.includes(t.id));
-  }, [allTagsForSeeding, requestedTagNames]);
+  }, [requested.settled, requestedTags, tagsSeeded, requestedTagNames.length]);
 
   const resolvedTagIds: string[] =
     Array.isArray(groupRequest.resolved_group_tags) && groupRequest.resolved_group_tags.length > 0
       ? groupRequest.resolved_group_tags
       : [];
-  const {data: allTagsForResolved} = useTags(
-    {queryParams: {page: 1, size: 100, q: ''}},
-    {enabled: groupRequest.status === 'APPROVED' && resolvedTagIds.length > 0},
-  );
-  const resolvedTags = React.useMemo<TagListItem[]>(() => {
-    if (!allTagsForResolved?.items) return [];
-    return allTagsForResolved.items.filter((t: TagListItem) => resolvedTagIds.includes(t.id));
-  }, [allTagsForResolved, resolvedTagIds]);
+  // Only an approved request has resolved tags to show.
+  const resolvedTags = useTagsByIds(groupRequest.status === 'APPROVED' ? resolvedTagIds : []).tags;
 
   const complete = (
     completedRequest: GroupRequestDetail | undefined,
