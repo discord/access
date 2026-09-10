@@ -816,6 +816,110 @@ async def test_app_owner_can_reject_request(
     assert group_request.resolver_user_id == app_owner.id
 
 
+async def _create_app_group_request_with_owner(
+    *, db: Db, requester: OktaUser, owner_ended_at: datetime
+) -> tuple[OktaUser, GroupRequest]:
+    app_owner = await OktaUserFactory.create_async()
+    app_obj = await AppFactory.create_async()
+    db.session.add(requester)
+    await db.session.commit()
+    owner_group = await AppGroupFactory.create_async(
+        name=f"App-{app_obj.name}-Owners",
+        app_id=app_obj.id,
+        is_owner=True,
+    )
+    await OktaUserGroupMemberFactory.create_async(
+        user_id=app_owner.id,
+        group_id=owner_group.id,
+        is_owner=True,
+        ended_at=owner_ended_at,
+    )
+    group_request = await CreateGroupRequest(
+        requester_user=requester,
+        requested_group_name=f"App-{app_obj.name}-NewGroup",
+        requested_group_description="New app group",
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        request_reason="Need app group",
+    ).execute()
+    assert group_request is not None
+    return app_owner, group_request
+
+
+async def test_time_limited_app_owner_can_approve_request_via_http(
+    client: AsyncClient,
+    db: Db,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+    mock_user: Any,
+    url_for: Any,
+) -> None:
+    mocker.patch.object(
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
+    )
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
+
+    app_owner, group_request = await _create_app_group_request_with_owner(
+        db=db,
+        requester=user,
+        owner_ended_at=datetime.now(timezone.utc) + timedelta(days=30),
+    )
+
+    mock_user(app_owner.id)
+    resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
+    response = await client.put(resolve_url, json=ResolveGroupRequestBodyFactory.json(approved=True))
+
+    assert response.status_code == 200
+    assert response.json()["status"] == AccessRequestStatus.APPROVED
+
+
+async def test_time_limited_app_owner_can_reject_request_via_http(
+    client: AsyncClient,
+    db: Db,
+    user: OktaUser,
+    mock_user: Any,
+    url_for: Any,
+) -> None:
+    app_owner, group_request = await _create_app_group_request_with_owner(
+        db=db,
+        requester=user,
+        owner_ended_at=datetime.now(timezone.utc) + timedelta(days=30),
+    )
+
+    mock_user(app_owner.id)
+    resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
+    response = await client.put(resolve_url, json=ResolveGroupRequestBodyFactory.json(approved=False))
+
+    assert response.status_code == 200
+    assert response.json()["status"] == AccessRequestStatus.REJECTED
+
+
+async def test_expired_app_owner_cannot_approve_request_via_http(
+    client: AsyncClient,
+    db: Db,
+    user: OktaUser,
+    mock_user: Any,
+    url_for: Any,
+) -> None:
+    app_owner, group_request = await _create_app_group_request_with_owner(
+        db=db,
+        requester=user,
+        owner_ended_at=datetime.now(timezone.utc) - timedelta(days=1),
+    )
+
+    mock_user(app_owner.id)
+    resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
+    response = await client.put(resolve_url, json=ResolveGroupRequestBodyFactory.json(approved=True))
+
+    assert response.status_code == 403
+    await db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.PENDING
+
+
 async def test_wrong_app_owner_cannot_approve_request(
     app: FastAPI,
     client: AsyncClient,

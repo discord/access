@@ -3,7 +3,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
 
 from api.context import get_request_context
@@ -186,7 +186,10 @@ class ApproveGroupRequest:
                             AppGroup.deleted_at.is_(None),
                             OktaUserGroupMember.user_id == approver_id,
                             OktaUserGroupMember.is_owner.is_(True),
-                            OktaUserGroupMember.ended_at.is_(None),
+                            or_(
+                                OktaUserGroupMember.ended_at.is_(None),
+                                OktaUserGroupMember.ended_at > func.now(),
+                            ),
                         )
                     )
                 ).first()
