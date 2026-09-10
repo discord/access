@@ -13,12 +13,33 @@ export type ErrorMessage = {
   title?: string;
   status?: number;
   detail?: string;
+  // Non-standard extension on 401s from an OIDC deployment: the endpoint that
+  // starts the login flow.
+  login_url?: string;
   errors?: Array<{
     type?: string;
     loc?: Array<string | number>;
     msg?: string;
     ctx?: Record<string, unknown>;
   }>;
+};
+
+const DEFAULT_LOGIN_PATH = '/oidc/login';
+
+/**
+ * Hand the whole window to the login endpoint, asking to be returned to the
+ * page the user is currently on.
+ *
+ * The backend answers an unauthenticated `/api/*` request with a 401 rather
+ * than the 307-to-the-IdP a document navigation gets, because `fetch` can't
+ * complete an interactive login: it would follow the redirect to the IdP's
+ * cross-origin HTML and fail CORS. So the session-expiry case has to be
+ * escalated to a real navigation here, otherwise the user is stuck looking at
+ * an error on a page they can't reload their way out of.
+ */
+export const redirectToLogin = (loginUrl: string = DEFAULT_LOGIN_PATH) => {
+  const {pathname, search, hash} = window.location;
+  window.location.assign(`${loginUrl}?next=${encodeURIComponent(`${pathname}${search}${hash}`)}`);
 };
 
 export type ApiFetcherOptions<TBody, THeaders, TQueryParams, TPathParams> = {
@@ -74,11 +95,19 @@ export async function apiFetch<
       // React client renders directly via `error.payload`. `detail` is the
       // human-readable summary; fall back to `title`.
       let payload: string;
+      let problem: ErrorMessage = {};
       try {
-        const problem = (await response.json()) as ErrorMessage;
+        problem = (await response.json()) as ErrorMessage;
         payload = problem.detail ?? problem.title ?? 'Unexpected error';
       } catch (e) {
         payload = e instanceof Error ? `Unexpected error (${e.message})` : 'Unexpected error';
+      }
+      if (response.status === 401) {
+        // The OIDC session expired or was never established. Log back in and
+        // come back to this page; the returned promise never settles because
+        // the navigation is already underway.
+        redirectToLogin(problem.login_url);
+        return await new Promise<TData>(() => {});
       }
       throw {status: 'unknown' as const, payload};
     }

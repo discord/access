@@ -67,13 +67,19 @@ _router = APIRouter(prefix="/oidc", tags=["oidc"])
 
 def _is_safe_next(next_url: Optional[str]) -> bool:
     # Reject absolute URLs and protocol-relative paths so `next` cannot bounce
-    # the post-auth redirect to a third-party host.
+    # the post-auth redirect to a third-party host. A query string and fragment
+    # are fine — the SPA keeps deep-link state (filters, search, pagination)
+    # there, so they have to survive the round trip.
     if not next_url or not next_url.startswith("/"):
         return False
     if next_url.startswith("//") or next_url.startswith("/\\"):
         return False
     parsed = urlparse(next_url)
-    return not parsed.scheme and not parsed.netloc
+    if parsed.scheme or parsed.netloc:
+        return False
+    # Landing back on an auth endpoint is never what the user meant: `/logout`
+    # would undo the login they just completed and `/login` would loop.
+    return not parsed.path.startswith(_router.prefix + "/")
 
 
 @_router.get("/login", name="oidc_login")
