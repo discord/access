@@ -15,8 +15,10 @@ import EditIcon from '@mui/icons-material/Edit';
 import FormControl from '@mui/material/FormControl';
 import Grid from '@mui/material/Grid';
 import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
 
 import {ToggleButtonGroupElement, FormContainer, TextFieldElement} from 'react-hook-form-mui';
+import {useWatch} from 'react-hook-form';
 
 import {
   useTagsCreate,
@@ -27,6 +29,13 @@ import {
   TagByIdPutVariables,
 } from '../../api/apiComponents';
 import NumberInput from '../../components/NumberInput';
+import {
+  MEMBER_SELF_ADD_LABEL,
+  OWNER_SELF_ADD_LABEL,
+  SELF_ADD_NEEDS_PROPAGATION,
+  propagationConflictMessage,
+  selfAddRestrictionAvailable,
+} from './propagationRules';
 import {OktaUserDetail, TagDetail} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
@@ -61,12 +70,75 @@ interface CreateTagForm {
   memberReason?: string;
   ownerAdd?: string;
   memberAdd?: string;
+  propagateToRoles: string;
 }
 
 interface TagDialogProps {
   currentUser: OktaUserDetail;
   setOpen(open: boolean): any;
   tag?: TagDetail;
+}
+
+// A self-add restriction and propagation are not independently configurable
+// (`propagationRules.ts` carries the reason), so each control disables the
+// option that would produce the forbidden pair. That makes the combination
+// unreachable rather than rejected after the fact, and each control explains
+// the restriction while it is in effect.
+//
+// Both read sibling fields, so both must render inside `FormContainer`.
+function SelfAddToggle(props: {name: 'ownerAdd' | 'memberAdd'; label: string}) {
+  const propagateToRoles = useWatch<CreateTagForm>({name: 'propagateToRoles'});
+  const withoutPropagation = !selfAddRestrictionAvailable(propagateToRoles);
+  return (
+    <FormControl fullWidth sx={{marginTop: '18px'}}>
+      <Box sx={{marginLeft: '3px'}}>{props.label}?:</Box>
+      <ToggleButtonGroupElement
+        name={props.name}
+        enforceAtLeastOneSelected
+        exclusive
+        required
+        helperText={withoutPropagation ? SELF_ADD_NEEDS_PROPAGATION : undefined}
+        options={[
+          {id: 'yes', label: 'Yes', disabled: withoutPropagation},
+          {id: 'no', label: 'No'},
+        ]}
+      />
+    </FormControl>
+  );
+}
+
+function PropagationToggle() {
+  const ownerAdd = useWatch<CreateTagForm>({name: 'ownerAdd'});
+  const memberAdd = useWatch<CreateTagForm>({name: 'memberAdd'});
+  // Asked of the value the control would take: the message names whichever
+  // restrictions are keeping "No" unavailable, or is null when none are.
+  const conflict = propagationConflictMessage({propagateToRoles: 'no', ownerAdd, memberAdd});
+  return (
+    <FormControl fullWidth sx={{marginTop: '18px'}}>
+      <Tooltip
+        title={
+          'When yes, these constraints also apply to any role that is a member or owner of a group ' +
+          "carrying this tag: The role's own members must satisfy the same time limits, reason " +
+          'requirements, and self-add restrictions. When no, the constraints apply only to the tagged ' +
+          'groups themselves. This is not the same as disabling the tag, which turns off its ' +
+          'enforcement everywhere.'
+        }
+        placement="top-start">
+        <Box sx={{marginLeft: '3px', width: 'fit-content'}}>Propagate these constraints to roles?</Box>
+      </Tooltip>
+      <ToggleButtonGroupElement
+        name="propagateToRoles"
+        enforceAtLeastOneSelected
+        exclusive
+        required
+        helperText={conflict ?? undefined}
+        options={[
+          {id: 'yes', label: 'Yes'},
+          {id: 'no', label: 'No', disabled: conflict !== null},
+        ]}
+      />
+    </FormControl>
+  );
 }
 
 function TagDialog(props: TagDialogProps) {
@@ -118,6 +190,7 @@ function TagDialog(props: TagDialogProps) {
       name: tagForm.name,
       description: tagForm.description,
       enabled: tagForm.enabled == 'enabled',
+      propagate_to_roles: tagForm.propagateToRoles == 'yes',
     } as TagDetail;
 
     const constraints: Record<string, number | boolean> = {};
@@ -185,6 +258,11 @@ function TagDialog(props: TagDialogProps) {
                 ? 'yes'
                 : 'no'
               : 'no',
+          // `?? true` rather than a bare truthiness check: the field is
+          // optional in the generated type and the server default is `true`,
+          // so an absent value must prefill "yes", not "no" -- otherwise
+          // opening and saving an older tag silently turns propagation off.
+          propagateToRoles: props.tag ? (props.tag.propagate_to_roles ?? true ? 'yes' : 'no') : 'yes',
         }}
         onSuccess={(formData) => submit(formData)}>
         <DialogTitle>{createOrUpdateText} Tag</DialogTitle>
@@ -334,46 +412,15 @@ function TagDialog(props: TagDialogProps) {
           </Grid>
           <Grid container spacing={1}>
             <Grid item xs={6}>
-              <FormControl fullWidth sx={{marginTop: '18px'}}>
-                <Box sx={{marginLeft: '3px'}}>Disallow owners adding selves as owners?:</Box>
-                <ToggleButtonGroupElement
-                  name="ownerAdd"
-                  enforceAtLeastOneSelected
-                  exclusive
-                  required
-                  options={[
-                    {
-                      id: 'yes',
-                      label: 'Yes',
-                    },
-                    {
-                      id: 'no',
-                      label: 'No',
-                    },
-                  ]}
-                />
-              </FormControl>
+              <SelfAddToggle name="ownerAdd" label={OWNER_SELF_ADD_LABEL} />
             </Grid>
             <Grid item xs={6}>
-              <FormControl fullWidth sx={{marginTop: '18px'}}>
-                <Box sx={{marginLeft: '3px'}}>Disallow owners adding selves as members?:</Box>
-                <ToggleButtonGroupElement
-                  name="memberAdd"
-                  enforceAtLeastOneSelected
-                  exclusive
-                  required
-                  options={[
-                    {
-                      id: 'yes',
-                      label: 'Yes',
-                    },
-                    {
-                      id: 'no',
-                      label: 'No',
-                    },
-                  ]}
-                />
-              </FormControl>
+              <SelfAddToggle name="memberAdd" label={MEMBER_SELF_ADD_LABEL} />
+            </Grid>
+          </Grid>
+          <Grid container spacing={1}>
+            <Grid item xs={12}>
+              <PropagationToggle />
             </Grid>
           </Grid>
         </DialogContent>
