@@ -99,6 +99,7 @@ async def post_tag(
         description=body.description if body.description is not None else "",
         constraints=body.constraints or {},
         enabled=body.enabled,
+        propagate_to_roles=True if body.propagate_to_roles is None else body.propagate_to_roles,
     )
     created = await CreateTag(tag=tag, current_user_id=current_user_id).execute()
     # Drop cached ORM state so the response reflects what the operation
@@ -136,6 +137,7 @@ async def put_tag(
         description=tag.description,
         constraints=tag.constraints,
         enabled=tag.enabled,
+        propagate_to_roles=tag.propagate_to_roles,
     )
 
     # Reject renames that collide with another existing tag (case-insensitive).
@@ -156,7 +158,7 @@ async def put_tag(
         payload["constraints"] = {}
     if "description" in payload and payload["description"] is None:
         payload["description"] = ""
-    for key in ("name", "description", "constraints", "enabled"):
+    for key in ("name", "description", "constraints", "enabled", "propagate_to_roles"):
         if key in payload:
             setattr(tag, key, payload[key])
     await db.commit()

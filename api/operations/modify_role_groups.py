@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Dict, Optional
 
 import logging
@@ -25,8 +25,9 @@ from api.models import (
     Tag,
 )
 from api.models.access_request import get_all_possible_request_approvers
-from api.models.tag import coalesce_ended_at
+from api.models.tag import effective_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
+from api.operations._time_limits import limit_access_conferred_by_roles, propagating_seconds_limit
 from api.plugins import NotificationHook
 from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.plugins.app_group_lifecycle import (
@@ -391,11 +392,8 @@ class ModifyRoleGroups:
             for group in groups_to_add:
                 # Handle group time limit constraints when roles are added to groups
                 # with tagged time limits as members
-                membership_ended_at = coalesce_ended_at(
-                    constraint_key=Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY,
-                    tags=[tag_map.active_tag for tag_map in group.active_group_tags],
-                    initial_ended_at=self.groups_added_ended_at,
-                    group_is_managed=group.is_managed,
+                membership_ended_at = effective_ended_at(
+                    Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, group, self.groups_added_ended_at
                 )
                 membership_to_add = RoleGroupMap(
                     group_id=group.id,
@@ -413,11 +411,8 @@ class ModifyRoleGroups:
             for owner_group in owner_groups_to_add:
                 # Handle group time limit constraints when roles are added to groups
                 # with tagged time limits as owners
-                ownership_ended_at = coalesce_ended_at(
-                    constraint_key=Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY,
-                    tags=[tag_map.active_tag for tag_map in owner_group.active_group_tags],
-                    initial_ended_at=self.groups_added_ended_at,
-                    group_is_managed=owner_group.is_managed,
+                ownership_ended_at = effective_ended_at(
+                    Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY, owner_group, self.groups_added_ended_at
                 )
                 ownership_to_add = RoleGroupMap(
                     group_id=owner_group.id,
@@ -431,8 +426,10 @@ class ModifyRoleGroups:
                 role_ownerships_added[owner_group.id] = ownership_to_add
                 db.session.add(ownership_to_add)
 
-            # Commit changes so far so we can reference the ids of the new role group maps in the OktaUserGroupMembers
-            await db.session.commit()
+            # Flush, not commit: the new role group maps need ids for the
+            # OktaUserGroupMembers below, and staying in this transaction is
+            # what lets the cap at the end of this block be atomic with them.
+            await db.session.flush()
 
             # Group members of a role should be added as members to all newly added groups
             # and owner groups associated with that role
@@ -562,7 +559,35 @@ class ModifyRoleGroups:
                     role_associated_ownership_added[member.user_id] = ownership_to_add
                     db.session.add(ownership_to_add)
 
-            # Commit changes so far, so we can reference OktaUserGroupMember in approved AccessRequests
+            # A group's time limits govern the members of any role associated
+            # with it. Capping the association alone is not enough: membership
+            # of the role would stay unbounded, and renewing the role's access
+            # would rebuild each derived grant from a membership nobody
+            # re-examined.
+            if self.role.is_managed:
+                # A role that is a MEMBER of a group is governed by that
+                # group's member limit and one that OWNS it by the owner
+                # limit, but both land on the role's own member side, so the
+                # tighter governs. Both lists hold managed, non-deleted groups
+                # -- the precondition `propagating_seconds_limit` states.
+                propagated_limits = [
+                    await propagating_seconds_limit(
+                        [g.id for g in groups_to_add], Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY
+                    ),
+                    await propagating_seconds_limit(
+                        [g.id for g in owner_groups_to_add], Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY
+                    ),
+                ]
+                seconds_limit = min((limit for limit in propagated_limits if limit is not None), default=None)
+                if seconds_limit is not None:
+                    await limit_access_conferred_by_roles(
+                        [self.role.id], end_at=datetime.now(UTC) + timedelta(seconds=seconds_limit)
+                    )
+
+            # The associations, the access they confer and the cap on the
+            # role's members commit together: a cap that cannot be applied must
+            # not leave the associations that require it durable. The committed
+            # OktaUserGroupMember ids are referenced below.
             await db.session.commit()
 
             # Now that the additions are durable, tell the lifecycle plugin about them.

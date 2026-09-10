@@ -36,6 +36,7 @@ class TagDetail(BaseModel):
     description: Optional[str] = None
     constraints: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
+    propagate_to_roles: bool = True
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
     deleted_at: Optional[FlexibleDatetime] = None
@@ -54,12 +55,13 @@ class TagSummary(BaseModel):
     name: str
     constraints: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
+    propagate_to_roles: bool = True
 
 
 class TagListItem(BaseModel):
     """Tag list-endpoint item. Slim field set (id, name, description,
-    enabled, constraints, created_at, updated_at) — does not hydrate
-    `active_group_tags`, which would be an N+1 across the page."""
+    enabled, propagate_to_roles, constraints, created_at, updated_at) — does
+    not hydrate `active_group_tags`, which would be an N+1 across the page."""
 
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -67,6 +69,7 @@ class TagListItem(BaseModel):
     description: Optional[str] = None
     constraints: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
+    propagate_to_roles: bool = True
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
 
