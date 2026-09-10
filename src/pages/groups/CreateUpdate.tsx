@@ -354,9 +354,6 @@ function GroupDialog(props: GroupDialogProps) {
               multiline
               rows={4}
               rules={{maxLength: 1024}}
-              // `disabled`, like the name above: immutable for an owner group, so it is left out
-              // of the partial update rather than submitted unchanged.
-              disabled={props.app_owner_group}
               parseError={(error) => {
                 if (error?.message != '') {
                   return error?.message ?? '';

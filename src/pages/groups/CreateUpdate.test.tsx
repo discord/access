@@ -8,6 +8,13 @@ const createMutate = vi.fn();
 const updateMutate = vi.fn();
 
 vi.mock('react-router-dom', () => ({useNavigate: () => vi.fn()}));
+// Pinned rather than inherited from a developer's .env: REQUIRE_DESCRIPTIONS drives whether
+// the Description field is `required`, and CI and a local checkout disagree about it. Only
+// that one export is overridden; the rest of the config is the real thing.
+vi.mock('../../config/accessConfig', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../config/accessConfig')>()),
+  requireDescriptions: true,
+}));
 vi.mock('../../api/apiComponents', () => ({
   useApps: () => ({data: {items: []}}),
   useTags: () => ({data: {items: []}}),
@@ -94,10 +101,10 @@ describe('creating an app group from an app page', () => {
 });
 
 describe('editing an app owner group', () => {
-  // Type, name and description are all locked for an owner group. Only `type` has to be
-  // submitted -- it discriminates the update body. Name and description are immutable,
-  // so they are left out of the partial update entirely.
-  it('submits the locked type and omits the immutable name and description', async () => {
+  // Type and name are structural for an owner group and stay locked; only `type` has to be
+  // submitted, since it discriminates the update body. The description is ordinary free
+  // text, seeded with a default at app creation and editable here like any other group's.
+  it('keeps the name locked while submitting the description', async () => {
     render(<CreateUpdateGroup currentUser={ACCESS_ADMIN} defaultGroupType="app_group" group={OWNER_APP_GROUP} />);
 
     await openDialog('edit');
@@ -105,20 +112,40 @@ describe('editing an app owner group', () => {
 
     expect(updateMutate).toHaveBeenCalledTimes(1);
     const body = updateMutate.mock.calls[0][0].body;
-    expect(body).toMatchObject({type: 'app_group'});
+    expect(body).toMatchObject({type: 'app_group', description: 'Owners of the sandbox'});
     expect(body.name).toBeUndefined();
-    expect(body.description).toBeUndefined();
   });
 
-  // An owner group whose description is empty must still be editable -- validating a
-  // `required` description the user cannot reach would leave the form with no way out.
-  it('submits when the immutable description is empty', async () => {
+  it('submits an edited description', async () => {
+    render(<CreateUpdateGroup currentUser={ACCESS_ADMIN} defaultGroupType="app_group" group={OWNER_APP_GROUP} />);
+
+    await openDialog('edit');
+    const field = screen.getByLabelText(/^Description/);
+    await userEvent.clear(field);
+    await userEvent.type(field, 'Owners of the sandbox; also approve its quarterly review.');
+    await submitDialog('Update');
+
+    expect(updateMutate).toHaveBeenCalledTimes(1);
+    expect(updateMutate.mock.calls[0][0].body).toMatchObject({
+      description: 'Owners of the sandbox; also approve its quarterly review.',
+    });
+  });
+
+  // With the field editable, REQUIRE_DESCRIPTIONS applies to an owner group exactly as it
+  // does to every other group: an empty description is blocked, and filling it in submits.
+  // There is no trap here, because the user can reach the field to fix it.
+  it('blocks an empty description when descriptions are required, and submits once filled', async () => {
     const emptyDescription = {...OWNER_APP_GROUP, description: ''} as GroupDetail;
     render(<CreateUpdateGroup currentUser={ACCESS_ADMIN} defaultGroupType="app_group" group={emptyDescription} />);
 
     await openDialog('edit');
     await submitDialog('Update');
+    expect(updateMutate).not.toHaveBeenCalled();
+
+    await userEvent.type(screen.getByLabelText(/^Description/), 'Owners of the sandbox');
+    await submitDialog('Update');
 
     expect(updateMutate).toHaveBeenCalledTimes(1);
+    expect(updateMutate.mock.calls[0][0].body).toMatchObject({description: 'Owners of the sandbox'});
   });
 });
