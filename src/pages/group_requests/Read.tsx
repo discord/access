@@ -33,7 +33,8 @@ import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 import InputLabel from '@mui/material/InputLabel';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
-import {Controller} from 'react-hook-form';
+import {Controller, useWatch} from 'react-hook-form';
+import {useQueries} from '@tanstack/react-query';
 
 import dayjs, {Dayjs} from 'dayjs';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
@@ -43,6 +44,7 @@ import {
   GroupRequestByIdPutError,
   GroupRequestByIdPutVariables,
   useAppById,
+  tagByIdQuery,
   useApps,
   useGroupRequestById,
   useTags,
@@ -54,11 +56,14 @@ import {
   GroupRequestDetail,
   OktaUserGroupMemberDetail,
   ResolveGroupRequestBody,
+  TagDetail,
   TagListItem,
 } from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
-import {displayUserName, minTagTime} from '../../helpers';
+import {displayUserName} from '../../helpers';
+import {useConstraintsForTags} from '../../constraints';
+import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import Loading from '../../components/Loading';
@@ -91,29 +96,40 @@ const ROLE_GROUP_PREFIX = 'Role-';
 
 interface OwnershipEndingFieldProps {
   ownershipTimeLimit: number | null;
-  ownershipUntil: string | null;
+  constraintsBlocked: boolean;
   setOwnershipUntil: (v: string | null) => void;
 }
 
-function OwnershipEndingField({ownershipTimeLimit, ownershipUntil, setOwnershipUntil}: OwnershipEndingFieldProps) {
+function OwnershipEndingField({ownershipTimeLimit, constraintsBlocked, setOwnershipUntil}: OwnershipEndingFieldProps) {
   const {control, setValue} = useFormContext();
 
   const [availableUntilOptions, defaultUntilId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
+    // While the tag-mode answer is in flight the limit reads as null. Holding
+    // the narrower list rather than re-offering the full one keeps a duration
+    // the chosen tags forbid from being briefly clickable.
     if (ownershipTimeLimit == null) {
-      return [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
+      return constraintsBlocked
+        ? [[], accessConfig.DEFAULT_ACCESS_TIME]
+        : [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
     }
     const [lastId, filtered] = filterUntilLabels(ownershipTimeLimit);
     return [filtered, lastId];
-  }, [ownershipTimeLimit]);
+  }, [ownershipTimeLimit, constraintsBlocked]);
+
+  const selectedUntil = useWatch({control, name: 'resolved_ownership_ending_at'});
 
   React.useEffect(() => {
-    if (ownershipUntil == null || ownershipUntil === 'indefinite' || ownershipUntil === 'custom') return;
-    const seconds = parseInt(ownershipUntil, 10);
-    if (!isNaN(seconds) && ownershipTimeLimit != null && seconds > ownershipTimeLimit) {
+    if (ownershipTimeLimit == null) return;
+    // A limit drops Indefinite and every duration over it from the list. The
+    // field is seeded from the request, so it can be holding one of them: a
+    // Select whose value has no option renders blank, and submits as it stands
+    // for `ApproveGroupRequest` to shorten. Move it to the longest duration
+    // still offered instead.
+    if (!availableUntilOptions.some((option) => option.id === selectedUntil)) {
       setOwnershipUntil(defaultUntilId ?? null);
       setValue('resolved_ownership_ending_at', defaultUntilId ?? '');
     }
-  }, [ownershipTimeLimit, ownershipUntil, defaultUntilId, setValue, setOwnershipUntil]);
+  }, [ownershipTimeLimit, selectedUntil, availableUntilOptions, defaultUntilId, setValue, setOwnershipUntil]);
 
   return (
     <FormControl margin="normal" fullWidth>
@@ -139,6 +155,27 @@ function OwnershipEndingField({ownershipTimeLimit, ownershipUntil, setOwnershipU
         )}
       />
     </FormControl>
+  );
+}
+
+// Every tag named in `ids`, each fetched by its own id.
+//
+// Not by filtering a page of the tag list: a request can name a tag that no
+// single page of that list contains, and a partial match would drop it from
+// the approval -- and from the constraints answered for -- without saying so.
+function useTagsByIds(ids: string[]): {tags: TagListItem[]; settled: boolean} {
+  const results = useQueries({queries: ids.map((id) => tagByIdQuery({pathParams: {tagId: id}}))});
+  const signature = results.map((result) => `${result.status}:${result.dataUpdatedAt}`).join('|');
+  return React.useMemo(
+    () => ({
+      // A tag that no longer exists answers with an error rather than data. It
+      // cannot be applied either way, so it is left out of the list while
+      // still counting as settled.
+      tags: results.map((result) => result.data).filter((tag): tag is TagDetail => tag != null),
+      settled: results.every((result) => result.data !== undefined || result.error != null),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [signature],
   );
 }
 
@@ -188,7 +225,12 @@ export default function ReadGroupRequest() {
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [ownershipUntil, setOwnershipUntil] = React.useState<string | null>(null);
 
-  const ownershipTimeLimit = React.useMemo<number | null>(() => minTagTime(selectedTags, true), [selectedTags]);
+  // The group being tagged does not exist yet, so there is no id to resolve
+  // constraints against — only the tags the approver has picked. That is what
+  // the endpoint's tag mode is for, and it keeps the coalescing on the server
+  // here too.
+  const tagConstraints = useConstraintsForTags(selectedTags.map((tag) => tag.id));
+  const ownershipTimeLimit = tagConstraints.timeLimit(true);
 
   const {data, isError, isLoading} = useGroupRequestById({
     pathParams: {groupRequestId: id ?? ''},
@@ -274,36 +316,24 @@ export default function ReadGroupRequest() {
   });
   const tagSearchOptions = tagSearchData?.items ?? [];
 
-  const {data: allTagsForSeeding} = useTags(
-    {queryParams: {page: 1, size: 100, q: ''}},
-    {enabled: requestedTagNames.length > 0},
-  );
+  const requested = useTagsByIds(requestedTagNames);
+  const requestedTags = requested.tags;
   const [tagsSeeded, setTagsSeeded] = React.useState(false);
   React.useEffect(() => {
-    if (!tagsSeeded && requestedTagNames.length > 0 && allTagsForSeeding?.items) {
-      const matched = allTagsForSeeding.items.filter((t: TagListItem) => requestedTagNames.includes(t.id));
-      setSelectedTags(matched);
+    // Seeded only once every id has settled, so a request naming several tags
+    // cannot be seeded from the subset that happened to answer first.
+    if (!tagsSeeded && requestedTagNames.length > 0 && requested.settled) {
+      setSelectedTags(requestedTags);
       setTagsSeeded(true);
     }
-  }, [allTagsForSeeding, tagsSeeded, requestedTagNames.length]);
-
-  const requestedTags = React.useMemo<TagListItem[]>(() => {
-    if (!allTagsForSeeding?.items) return [];
-    return allTagsForSeeding.items.filter((t: TagListItem) => requestedTagNames.includes(t.id));
-  }, [allTagsForSeeding, requestedTagNames]);
+  }, [requested.settled, requestedTags, tagsSeeded, requestedTagNames.length]);
 
   const resolvedTagIds: string[] =
     Array.isArray(groupRequest.resolved_group_tags) && groupRequest.resolved_group_tags.length > 0
       ? groupRequest.resolved_group_tags
       : [];
-  const {data: allTagsForResolved} = useTags(
-    {queryParams: {page: 1, size: 100, q: ''}},
-    {enabled: groupRequest.status === 'APPROVED' && resolvedTagIds.length > 0},
-  );
-  const resolvedTags = React.useMemo<TagListItem[]>(() => {
-    if (!allTagsForResolved?.items) return [];
-    return allTagsForResolved.items.filter((t: TagListItem) => resolvedTagIds.includes(t.id));
-  }, [allTagsForResolved, resolvedTagIds]);
+  // Only an approved request has resolved tags to show.
+  const resolvedTags = useTagsByIds(groupRequest.status === 'APPROVED' ? resolvedTagIds : []).tags;
 
   const complete = (
     completedRequest: GroupRequestDetail | undefined,
@@ -763,6 +793,7 @@ export default function ReadGroupRequest() {
                                 {requestError}
                               </Alert>
                             ) : null}
+                            <ConstraintsUnavailableAlert constraints={tagConstraints} action="approval" />
                             {canApprove && (
                               <>
                                 <Typography variant="h6" sx={{mb: 1}}>
@@ -897,7 +928,7 @@ export default function ReadGroupRequest() {
                                   <Grid item xs={6}>
                                     <OwnershipEndingField
                                       ownershipTimeLimit={ownershipTimeLimit}
-                                      ownershipUntil={ownershipUntil}
+                                      constraintsBlocked={tagConstraints.blocked}
                                       setOwnershipUntil={setOwnershipUntil}
                                     />
                                   </Grid>
@@ -979,7 +1010,7 @@ export default function ReadGroupRequest() {
                                   type="submit"
                                   startIcon={<ApprovedIcon />}
                                   sx={{mx: 2}}
-                                  disabled={submitting}
+                                  disabled={submitting || tagConstraints.blocked}
                                   onClick={() => setApproved(true)}>
                                   Approve
                                 </Button>
