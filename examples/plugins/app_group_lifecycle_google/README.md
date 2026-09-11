@@ -6,8 +6,8 @@ This plugin automatically creates, modifies, and deletes Google Groups correspon
 
 When an Access group is created or deleted or its plugin configuration is modified, the plugin:
 
-1. On create, creates an Okta group push mapping with a new target group named after the email prefix. Okta creates the downstream Google Group *and* links it in one step, so the plugin never has to wait for Okta to import a group created directly in Google (which requires a manual trigger). It then updates that Google Group's display name and description from Access.
-2. On modify, updates the corresponding Google Group's properties (display name, description) in the configured Google Workspace domain. The email is immutable.
+1. On create, creates an Okta group push mapping with a new target group named after the email prefix. Okta creates the downstream Google Group *and* links it in one step, so the plugin never has to wait for Okta to import a group created directly in Google (which requires a manual trigger). It then updates that Google Group's display name, description, and security label from Access.
+2. On modify, updates the corresponding Google Group's properties (display name, description, security label) in the configured Google Workspace domain. The email is immutable.
 3. On delete, removes the Okta group push mapping and the Google Group.
 
 Membership is kept in sync automatically by Okta group push. A Google Group linked out-of-band is adopted rather than recreated; if Okta hasn't yet pushed a newly-created group to Google, the group is marked pending and finalized on a later reconcile. Groups are also periodically reconciled to ensure eventual alignment to the source of truth in Access.
@@ -26,6 +26,7 @@ Membership is kept in sync automatically by Okta group push. A Google Group link
 |-----|------|----------|-------------|
 | `enabled` | boolean | yes | Enable or disable this plugin for the app. |
 | `email_pattern` | text | no | Optional regex applied to the group email prefix to validate it before creating the Google Group. |
+| `require_security_groups` | boolean | no | Label every one of this app's Google Groups as a [Workspace security group](https://knowledge.workspace.google.com/admin/groups/control-access-to-sensitive-data-with-security-groups), whatever the individual groups are set to. Defaults to off. |
 
 ### Group-Level Configuration
 
@@ -33,6 +34,7 @@ Membership is kept in sync automatically by Okta group push. A Google Group link
 |-----|------|----------|-------------|
 | `email` | text | yes | The local-part (prefix) of the Google Group email address. The full address is `{email}@{GOOGLE_WORKSPACE_DOMAIN}`. Immutable after the group is created (the Cloud Identity `groupKey` cannot be changed). |
 | `display_name` | text | yes | The display name for the Google Group. |
+| `security_group` | boolean | no | Label this Google Group as a [Google Workspace security group](https://knowledge.workspace.google.com/admin/groups/control-access-to-sensitive-data-with-security-groups) so it can grant access to sensitive data. Defaults to off, or to on when the app sets `require_security_groups`. |
 
 ### Group-Level Status
 
@@ -40,11 +42,52 @@ Membership is kept in sync automatically by Okta group push. A Google Group link
 |-----|-------------|
 | `push_mapping_id` | The Okta group push mapping ID linking the Okta group to the Google Group. |
 | `google_group_id` | The Google Group resource ID. |
-| `sync_status` | One of `synced`, `pending`, or `error`. |
+| `sync_status` | One of `synced`, `pending`, `skipped`, or `error`. |
 | `sync_error` | Error message if `sync_status` is `error`; otherwise empty. |
 | `last_synced_at` | Timestamp of the last successful sync. |
 
 There are no app-level status properties.
+
+## Security groups
+
+Setting a group's `security_group` configuration adds the
+[`cloudidentity.googleapis.com/groups.security` label](https://docs.cloud.google.com/identity/docs/groups#group_labels)
+to the linked Google Group, which is what makes it a [Workspace security
+group](https://knowledge.workspace.google.com/admin/groups/control-access-to-sensitive-data-with-security-groups):
+a group that may be named in policies granting access to sensitive data.
+
+An app whose groups all gate sensitive data can mandate it instead, with the app-level
+`require_security_groups`. The app setting and the group setting are OR'd rather than one
+overriding the other, so the app can only raise the requirement: a mandate covers the app's
+existing groups without their stored configuration having to be rewritten one by one, and it
+rejects a group trying to opt out. Because nothing in the plugin interface fires on an app
+configuration change, a newly-set mandate reaches already-created groups on their next reconcile:
+the periodic `sync-app-groups` run, or the group's next update.
+
+Two properties of the label shape how the plugin handles it:
+
+**It is one-way.** [Google does not convert a security group back to an ordinary
+group](https://docs.cloud.google.com/identity/docs/how-to/update-group-to-security-group), so the
+configuration is a floor rather than a switch. The plugin raises the label and never attempts a
+downgrade; clearing the setting on a group that is already labeled has no effect in Google, and the
+next reconcile restores the setting so the UI keeps agreeing with Google. The setting is still
+mutable, because promoting an existing group to a security group is a legitimate (and supported)
+operation.
+
+**Google enforces [membership
+requirements](https://docs.cloud.google.com/identity/docs/how-to/update-group-to-security-group).** A
+security group may contain users and service accounts with Google accounts from any domain, plus
+other security groups from your own, and only a Workspace Super Admin or Groups Admin may apply the
+label (the **Group Administrator** role under [Calling the Google API](#calling-the-google-api)
+covers the latter). The
+plugin pre-checks none of that: Google rejects the label outright when it does not hold, and the
+plugin records the rejection as a sync error naming the requirement. That error is deliberately loud
+(it fails the `sync-app-groups` run) because Access is otherwise showing a security group it does
+not actually have.
+
+Because a new group is created through Okta group push rather than the Groups API, the Google Group
+exists as an ordinary group for the moment between Okta creating it and the plugin's reconcile
+labeling it.
 
 ## Environment Variables
 
