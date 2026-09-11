@@ -60,21 +60,21 @@
     "@openapi-codegen/cli": "^3.1.0",
     "@openapi-codegen/typescript": "^11.1.0",
     "@sentry/vite-plugin": "^4.0.2",
-    "@testing-library/jest-dom": "^6.6.4",
-    "@testing-library/react": "^14.2.2",
-    "@testing-library/user-event": "^14.5.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
     "@types/node": "^24.2.0",
     "@types/react": "^18.2.74",
     "@types/react-dom": "^18.2.24",
     "@vitejs/plugin-react": "^6.1.0",
-    "@vitest/ui": "^4.1.8",
+    "@vitest/ui": "^5.0.0",
     "husky": "^8.0.3",
-    "jsdom": "^26.1.0",
+    "jsdom": "^30.0.1",
     "lint-staged": "^15.2.10",
     "prettier": "^3.2.5",
     "typescript": "^4.9.5",
     "vite": "^8.2.2",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   },
   "lint-staged": {
     "*.{js,ts,jsx,tsx}": "prettier --write"
