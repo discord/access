@@ -1,22 +1,26 @@
 """Click-based CLI for Access management commands.
 
 `app_context` bootstraps the database engine, plugins, and session scope that
-every command runs inside.
+every command (and the `shell` REPL) runs inside.
 
 Run via:
     access init <admin_email>
     access sync
     access notify
+    access shell
     python -m api.cli <command>
 """
 
 from __future__ import annotations
 
 import asyncio
+import ast
+import code
 import functools
+import types
 import uuid
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any, Callable, TypeVar, cast
 
 import click
@@ -524,6 +528,135 @@ async def sync_app_groups() -> None:
         # this runs as a periodic job, so a run that left groups unreconciled has to be
         # visible as a failed run rather than only as stderr output.
         raise SystemExit(1)
+
+
+def _shell_namespace() -> dict[str, Any]:
+    """Build the names an `access shell` session starts with: the session
+    facade, every ORM model and operation class, and the query and eager-load
+    helpers those need.
+
+    Returns:
+        A fresh namespace dict, used as the console's globals so that names
+        bound at the prompt persist across statements.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import and_, delete, update
+    from sqlalchemy.orm import selectinload, selectin_polymorphic, with_polymorphic
+
+    from api import models, operations
+    from api.config import settings
+    from api.extensions import db
+    from api.services import okta
+
+    namespace: dict[str, Any] = {
+        "asyncio": asyncio,
+        "db": db,
+        "settings": settings,
+        "okta": okta,
+        "models": models,
+        "operations": operations,
+        # Query building. The loader options are here rather than left to an
+        # import because `lazy="raise_on_sql"` makes reading an un-eager-loaded
+        # relationship raise, so a session spent exploring needs them at hand.
+        "select": select,
+        "update": update,
+        "delete": delete,
+        "func": func,
+        "or_": or_,
+        "and_": and_,
+        "joinedload": joinedload,
+        "selectinload": selectinload,
+        "selectin_polymorphic": selectin_polymorphic,
+        "with_polymorphic": with_polymorphic,
+        "UTC": UTC,
+        "datetime": datetime,
+        "timedelta": timedelta,
+    }
+    namespace.update({name: getattr(models, name) for name in models.__all__})
+    namespace.update({name: getattr(operations, name) for name in operations.__all__})
+    return namespace
+
+
+class _AsyncConsole(code.InteractiveConsole):
+    """An interactive console whose statements may use top-level `await`.
+
+    Statements compile with `PyCF_ALLOW_TOP_LEVEL_AWAIT` and any resulting
+    coroutine is driven by `runner`. Reusing one `asyncio.Runner` for the
+    console's whole life is what makes the session coherent: a Runner keeps a
+    single `contextvars.Context` across `run()` calls, so the session scope
+    bound during bootstrap is the one each statement sees, and every statement
+    shares the engine's event loop.
+    """
+
+    def __init__(self, namespace: dict[str, Any], runner: asyncio.Runner) -> None:
+        super().__init__(locals=namespace)
+        self.compile.compiler.flags |= ast.PyCF_ALLOW_TOP_LEVEL_AWAIT
+        self._runner = runner
+
+    def runcode(self, code: types.CodeType) -> None:
+        # Called rather than exec'd so a code object compiled with the
+        # top-level-await flag yields its coroutine instead of running to
+        # completion. The code object is module-level, so its name
+        # assignments still land in `self.locals` and persist across
+        # statements.
+        try:
+            result = types.FunctionType(code, self.locals)()
+            if asyncio.iscoroutine(result):
+                self._runner.run(result)
+        except SystemExit:
+            raise
+        except BaseException:
+            self.showtraceback()
+
+
+def _enable_readline(namespace: dict[str, Any]) -> None:
+    """Turn on history, line editing, and tab completion against `namespace`.
+
+    A no-op where `readline` is unavailable; the console still works without
+    it."""
+    try:
+        import readline
+        import rlcompleter
+    except ImportError:
+        return
+    readline.set_completer(rlcompleter.Completer(namespace).complete)
+    # macOS ships libedit under the readline name, which does not understand
+    # GNU readline's binding syntax.
+    if "libedit" in (readline.__doc__ or ""):
+        readline.parse_and_bind("bind ^I rl_complete")
+    else:
+        readline.parse_and_bind("tab: complete")
+
+
+@cli.command("shell")
+def shell() -> None:
+    """Start an interactive REPL with the app context bootstrapped.
+
+    Statements may use top-level `await`, which they need to: the session, the
+    operation classes, and the Okta service are all async. Work is committed
+    when the session ends.
+    """
+    from api.extensions import db
+
+    namespace = _shell_namespace()
+    _enable_readline(namespace)
+
+    with asyncio.Runner() as runner:
+        # `app_context` is entered and exited through an exit stack rather
+        # than `async with`, because the console that runs in between is
+        # synchronous and drives the loop one statement at a time.
+        stack = AsyncExitStack()
+        runner.run(stack.enter_async_context(app_context()))
+        try:
+            banner = (
+                f"Access shell — {db.engine.url.render_as_string(hide_password=True)}\n"
+                "Statements may use top-level `await`; writes commit on exit.\n"
+                "In scope: db, models, operations, select/func/joinedload, okta, settings."
+            )
+            _AsyncConsole(namespace, runner).interact(banner=banner, exitmsg="")
+        finally:
+            runner.run(stack.aclose())
 
 
 if __name__ == "__main__":
