@@ -473,35 +473,10 @@ except `prune-redundant-direct-access`, which reports by default and needs `--ap
 | `access fix-unmanaged-groups` | Re-apply unmanaged status to every group Access has marked unmanaged, which ends the memberships and role associations Access no longer owns and rejects the requests against them. |
 | `access fix-role-memberships` | Reconcile each role's memberships against the groups it grants, adding the group memberships a role implies and ending the ones it no longer does. |
 | `access cap-role-memberships` | Shorten role memberships that outlast the time limit their role's associated groups impose. The grant-time path bounds a membership as it is granted, so this covers the ones granted before a tag's limit applied. Safe to re-run; a membership already under its limit is skipped. |
-| `access prune-redundant-direct-access` | Remove direct grants that a role already covers. See below. |
+| `access prune-redundant-direct-access` | Remove a user's direct grant to a group when a role they hold already grants the same access; the duplicate obscures why they have access and outlives their role membership. By default only grants ending no later than the role coverage are removed, so nobody loses access sooner than they otherwise would; `--allow-shortening` lifts that. Okta group membership is untouched, since the role-based grant survives. |
 
 `access shell` is also available for one-off inspection and repairs that have no command of their
 own; see [Interactive shell](#interactive-shell) above.
-
-#### Pruning redundant direct access
-
-Access prefers role-based access: a role attached to a group grants that group's access to every
-member of the role. A direct grant covering access a role already provides is redundant; it
-obscures why a user has access, and it survives the user leaving the role, so role membership stops
-being a reliable lever.
-
-`prune-redundant-direct-access` finds those direct grants and removes them:
-
-```
-access prune-redundant-direct-access [--target members|owners|both] [--apply]
-    [--allow-shortening] [--group NAME] [--user EMAIL] [--app NAME]
-```
-
-The command reports without changing anything unless `--apply` is passed. By default it only
-removes a direct grant that ends no later than the role-based access covering it, so a user never
-loses access sooner than they otherwise would; `--allow-shortening` lifts that restriction, which
-can move a user's expiration earlier. `--group`, `--user`, and `--app` are repeatable and narrow
-the sweep.
-
-Removals are recorded as ordinary `GROUP_MODIFY_USER` audit events. Because the role-based grant
-survives, the user's Okta group membership is untouched. A write failure for one group is logged
-and that group's grants are left in place; the sweep continues with the remaining groups, and the
-command still exits non-zero so a run wired into a periodic job shows up as failed.
 
 ### Kubernetes Deployment and CronJobs
 
