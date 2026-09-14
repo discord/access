@@ -1,7 +1,7 @@
 """Click-based CLI for Access management commands.
 
-Each command runs inside a per-invocation database scope set up by
-`_with_app_context`.
+`app_context` bootstraps the database engine, plugins, and session scope that
+every command runs inside.
 
 Run via:
     access init <admin_email>
@@ -15,6 +15,8 @@ from __future__ import annotations
 import asyncio
 import functools
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any, Callable, TypeVar, cast
 
 import click
@@ -24,62 +26,80 @@ from sqlalchemy.orm import joinedload
 F = TypeVar("F", bound=Callable[..., Any])
 
 
+@asynccontextmanager
+async def app_context(*, scope: str | None = None) -> AsyncIterator[None]:
+    """Bootstrap the application context an out-of-request entrypoint needs.
+
+    Binds the SQLAlchemy async engine, mirrors `create_app()`'s logging /
+    Sentry / Okta configuration, and eagerly loads every plugin type, so that
+    `db.session`, the operation classes, and the plugin hooks all work the way
+    they do under the API server. On exit it commits the session, closes it,
+    and disposes the engine if it created one.
+
+    Must be entered from inside a running event loop: the async engine, and
+    the asyncpg/aiosqlite connections it opens, have to be created and
+    disposed on the loop that uses them.
+
+    Args:
+        scope: Session scope to bind for the duration, isolating this
+            entrypoint's `db.session` from any other. Omit to leave the
+            ambient scope in place, which for an ad-hoc caller is the
+            process-global default (see `_session_scope`).
+
+    Yields:
+        None. Callers reach the session through `api.extensions.db`.
+    """
+    from api.app import _configure_logging, _configure_okta, _configure_sentry
+    from api.database import build_async_engine
+    from api.extensions import _session_scope, db
+    from api.plugins import load_plugins
+
+    # Without _configure_okta() in particular, the module-level `okta`
+    # singleton is missing `okta_client` and anything that touches Okta
+    # raises AttributeError.
+    _configure_logging()
+    _configure_sentry()
+    _configure_okta()
+
+    created_engine = False
+    if db._engine is None:
+        db.init_app(engine=build_async_engine())
+        created_engine = True
+    # Every `get_*_hook()` is memoized, so this is cheap for the entrypoints
+    # (the `init` family) that never fire a hook.
+    load_plugins()
+    token = _session_scope.set(scope) if scope is not None else None
+    try:
+        yield
+    finally:
+        try:
+            await db.session.commit()
+        except Exception:
+            await db.session.rollback()
+        await db.remove()
+        if token is not None:
+            _session_scope.reset(token)
+        # Connections opened by the async drivers must be closed on the loop
+        # that created them. Only dispose an engine this context created — a
+        # borrowed one (tests) belongs to its owner.
+        if created_engine:
+            await db.engine.dispose()
+
+
 def _with_app_context(func: F) -> F:
-    """Establish a per-invocation app context for a Click command: bind the
-    SQLAlchemy engine, eagerly load every plugin type, and set up a
-    request-scoped session keyed to the CLI run. Mirrors the spirit of the
-    pre-migration `with app.app_context()` block.
+    """Run a Click command body inside its own `app_context`.
 
     This decorator is the sync/async boundary for the CLI: Click commands
     stay synchronous entry points, while the decorated command body is an
-    `async def` driven by a single `asyncio.run` per invocation."""
+    `async def` driven by a single `asyncio.run` per invocation. Each run
+    gets its own session scope so concurrent invocations never share a
+    session."""
 
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        from api.app import _configure_logging, _configure_okta, _configure_sentry
-        from api.database import build_async_engine
-        from api.extensions import _session_scope, db
-        from api.plugins import load_plugins
-
-        # Mirror create_app()'s bootstrap so CLI runs get the same
-        # token-redacting log filter, Sentry wiring, and OktaService
-        # initialization. Without _configure_okta() in particular, the
-        # module-level `okta` singleton is missing `okta_client` and any
-        # command that touches Okta (sync, notify) raises AttributeError.
-        _configure_logging()
-        _configure_sentry()
-        _configure_okta()
-
         async def _run() -> Any:
-            # The async engine (and any asyncpg/aiosqlite connections it
-            # creates) must be created and disposed on the event loop that
-            # uses it, so engine binding happens inside asyncio.run.
-            created_engine = False
-            if db._engine is None:
-                db.init_app(engine=build_async_engine())
-                created_engine = True
-            # Trigger plugin discovery once per CLI run. Notification,
-            # conditional access, and app-group-lifecycle hooks are all
-            # consumed by the `sync` / `notify` / `sync-app-groups`
-            # commands; the `init` family doesn't need them but the call is
-            # cheap (memoized).
-            load_plugins()
-            token = _session_scope.set(f"cli-{uuid.uuid4().hex}")
-            try:
+            async with app_context(scope=f"cli-{uuid.uuid4().hex}"):
                 return await func(*args, **kwargs)
-            finally:
-                try:
-                    await db.session.commit()
-                except Exception:
-                    await db.session.rollback()
-                await db.remove()
-                _session_scope.reset(token)
-                # Connections opened by the async drivers must be closed on
-                # the loop that created them. Only dispose when this
-                # invocation created the engine — if it was already bound
-                # (tests), the owner is responsible for disposal.
-                if created_engine:
-                    await db.engine.dispose()
 
         return asyncio.run(_run())
 
