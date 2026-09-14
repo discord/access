@@ -17,6 +17,7 @@ make dev          # uv sync — create .venv and install locked deps + the `acce
 make db-migrate   # apply migrations (alembic upgrade head) against the local sqlite DB
 make db-init email=<you@example.com>   # seed an initial admin
 make run-backend  # start the API
+make shell        # access shell — REPL with the app context bootstrapped
 ```
 
 To run a one-off command inside the environment, prefix it with `uv run` (e.g.

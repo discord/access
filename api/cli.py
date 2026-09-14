@@ -1,20 +1,26 @@
 """Click-based CLI for Access management commands.
 
-Each command runs inside a per-invocation database scope set up by
-`_with_app_context`.
+`app_context` bootstraps the database engine, plugins, and session scope that
+every command (and the `shell` REPL) runs inside.
 
 Run via:
     access init <admin_email>
     access sync
     access notify
+    access shell
     python -m api.cli <command>
 """
 
 from __future__ import annotations
 
 import asyncio
+import ast
+import code
 import functools
+import types
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any, Callable, TypeVar, cast
 
 import click
@@ -24,62 +30,80 @@ from sqlalchemy.orm import joinedload
 F = TypeVar("F", bound=Callable[..., Any])
 
 
+@asynccontextmanager
+async def app_context(*, scope: str | None = None) -> AsyncIterator[None]:
+    """Bootstrap the application context an out-of-request entrypoint needs.
+
+    Binds the SQLAlchemy async engine, mirrors `create_app()`'s logging /
+    Sentry / Okta configuration, and eagerly loads every plugin type, so that
+    `db.session`, the operation classes, and the plugin hooks all work the way
+    they do under the API server. On exit it commits the session, closes it,
+    and disposes the engine if it created one.
+
+    Must be entered from inside a running event loop: the async engine, and
+    the asyncpg/aiosqlite connections it opens, have to be created and
+    disposed on the loop that uses them.
+
+    Args:
+        scope: Session scope to bind for the duration, isolating this
+            entrypoint's `db.session` from any other. Omit to leave the
+            ambient scope in place, which for an ad-hoc caller is the
+            process-global default (see `_session_scope`).
+
+    Yields:
+        None. Callers reach the session through `api.extensions.db`.
+    """
+    from api.app import _configure_logging, _configure_okta, _configure_sentry
+    from api.database import build_async_engine
+    from api.extensions import _session_scope, db
+    from api.plugins import load_plugins
+
+    # Without _configure_okta() in particular, the module-level `okta`
+    # singleton is missing `okta_client` and anything that touches Okta
+    # raises AttributeError.
+    _configure_logging()
+    _configure_sentry()
+    _configure_okta()
+
+    created_engine = False
+    if db._engine is None:
+        db.init_app(engine=build_async_engine())
+        created_engine = True
+    # Every `get_*_hook()` is memoized, so this is cheap for the entrypoints
+    # (the `init` family) that never fire a hook.
+    load_plugins()
+    token = _session_scope.set(scope) if scope is not None else None
+    try:
+        yield
+    finally:
+        try:
+            await db.session.commit()
+        except Exception:
+            await db.session.rollback()
+        await db.remove()
+        if token is not None:
+            _session_scope.reset(token)
+        # Connections opened by the async drivers must be closed on the loop
+        # that created them. Only dispose an engine this context created — a
+        # borrowed one (tests) belongs to its owner.
+        if created_engine:
+            await db.engine.dispose()
+
+
 def _with_app_context(func: F) -> F:
-    """Establish a per-invocation app context for a Click command: bind the
-    SQLAlchemy engine, eagerly load every plugin type, and set up a
-    request-scoped session keyed to the CLI run. Mirrors the spirit of the
-    pre-migration `with app.app_context()` block.
+    """Run a Click command body inside its own `app_context`.
 
     This decorator is the sync/async boundary for the CLI: Click commands
     stay synchronous entry points, while the decorated command body is an
-    `async def` driven by a single `asyncio.run` per invocation."""
+    `async def` driven by a single `asyncio.run` per invocation. Each run
+    gets its own session scope so concurrent invocations never share a
+    session."""
 
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        from api.app import _configure_logging, _configure_okta, _configure_sentry
-        from api.database import build_async_engine
-        from api.extensions import _session_scope, db
-        from api.plugins import load_plugins
-
-        # Mirror create_app()'s bootstrap so CLI runs get the same
-        # token-redacting log filter, Sentry wiring, and OktaService
-        # initialization. Without _configure_okta() in particular, the
-        # module-level `okta` singleton is missing `okta_client` and any
-        # command that touches Okta (sync, notify) raises AttributeError.
-        _configure_logging()
-        _configure_sentry()
-        _configure_okta()
-
         async def _run() -> Any:
-            # The async engine (and any asyncpg/aiosqlite connections it
-            # creates) must be created and disposed on the event loop that
-            # uses it, so engine binding happens inside asyncio.run.
-            created_engine = False
-            if db._engine is None:
-                db.init_app(engine=build_async_engine())
-                created_engine = True
-            # Trigger plugin discovery once per CLI run. Notification,
-            # conditional access, and app-group-lifecycle hooks are all
-            # consumed by the `sync` / `notify` / `sync-app-groups`
-            # commands; the `init` family doesn't need them but the call is
-            # cheap (memoized).
-            load_plugins()
-            token = _session_scope.set(f"cli-{uuid.uuid4().hex}")
-            try:
+            async with app_context(scope=f"cli-{uuid.uuid4().hex}"):
                 return await func(*args, **kwargs)
-            finally:
-                try:
-                    await db.session.commit()
-                except Exception:
-                    await db.session.rollback()
-                await db.remove()
-                _session_scope.reset(token)
-                # Connections opened by the async drivers must be closed on
-                # the loop that created them. Only dispose when this
-                # invocation created the engine — if it was already bound
-                # (tests), the owner is responsible for disposal.
-                if created_engine:
-                    await db.engine.dispose()
 
         return asyncio.run(_run())
 
@@ -504,6 +528,135 @@ async def sync_app_groups() -> None:
         # this runs as a periodic job, so a run that left groups unreconciled has to be
         # visible as a failed run rather than only as stderr output.
         raise SystemExit(1)
+
+
+def _shell_namespace() -> dict[str, Any]:
+    """Build the names an `access shell` session starts with: the session
+    facade, every ORM model and operation class, and the query and eager-load
+    helpers those need.
+
+    Returns:
+        A fresh namespace dict, used as the console's globals so that names
+        bound at the prompt persist across statements.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import and_, delete, update
+    from sqlalchemy.orm import selectinload, selectin_polymorphic, with_polymorphic
+
+    from api import models, operations
+    from api.config import settings
+    from api.extensions import db
+    from api.services import okta
+
+    namespace: dict[str, Any] = {
+        "asyncio": asyncio,
+        "db": db,
+        "settings": settings,
+        "okta": okta,
+        "models": models,
+        "operations": operations,
+        # Query building. The loader options are here rather than left to an
+        # import because `lazy="raise_on_sql"` makes reading an un-eager-loaded
+        # relationship raise, so a session spent exploring needs them at hand.
+        "select": select,
+        "update": update,
+        "delete": delete,
+        "func": func,
+        "or_": or_,
+        "and_": and_,
+        "joinedload": joinedload,
+        "selectinload": selectinload,
+        "selectin_polymorphic": selectin_polymorphic,
+        "with_polymorphic": with_polymorphic,
+        "UTC": UTC,
+        "datetime": datetime,
+        "timedelta": timedelta,
+    }
+    namespace.update({name: getattr(models, name) for name in models.__all__})
+    namespace.update({name: getattr(operations, name) for name in operations.__all__})
+    return namespace
+
+
+class _AsyncConsole(code.InteractiveConsole):
+    """An interactive console whose statements may use top-level `await`.
+
+    Statements compile with `PyCF_ALLOW_TOP_LEVEL_AWAIT` and any resulting
+    coroutine is driven by `runner`. Reusing one `asyncio.Runner` for the
+    console's whole life is what makes the session coherent: a Runner keeps a
+    single `contextvars.Context` across `run()` calls, so the session scope
+    bound during bootstrap is the one each statement sees, and every statement
+    shares the engine's event loop.
+    """
+
+    def __init__(self, namespace: dict[str, Any], runner: asyncio.Runner) -> None:
+        super().__init__(locals=namespace)
+        self.compile.compiler.flags |= ast.PyCF_ALLOW_TOP_LEVEL_AWAIT
+        self._runner = runner
+
+    def runcode(self, code: types.CodeType) -> None:
+        # Called rather than exec'd so a code object compiled with the
+        # top-level-await flag yields its coroutine instead of running to
+        # completion. The code object is module-level, so its name
+        # assignments still land in `self.locals` and persist across
+        # statements.
+        try:
+            result = types.FunctionType(code, self.locals)()
+            if asyncio.iscoroutine(result):
+                self._runner.run(result)
+        except SystemExit:
+            raise
+        except BaseException:
+            self.showtraceback()
+
+
+def _enable_readline(namespace: dict[str, Any]) -> None:
+    """Turn on history, line editing, and tab completion against `namespace`.
+
+    A no-op where `readline` is unavailable; the console still works without
+    it."""
+    try:
+        import readline
+        import rlcompleter
+    except ImportError:
+        return
+    readline.set_completer(rlcompleter.Completer(namespace).complete)
+    # macOS ships libedit under the readline name, which does not understand
+    # GNU readline's binding syntax.
+    if "libedit" in (readline.__doc__ or ""):
+        readline.parse_and_bind("bind ^I rl_complete")
+    else:
+        readline.parse_and_bind("tab: complete")
+
+
+@cli.command("shell")
+def shell() -> None:
+    """Start an interactive REPL with the app context bootstrapped.
+
+    Statements may use top-level `await`, which they need to: the session, the
+    operation classes, and the Okta service are all async. Work is committed
+    when the session ends.
+    """
+    from api.extensions import db
+
+    namespace = _shell_namespace()
+    _enable_readline(namespace)
+
+    with asyncio.Runner() as runner:
+        # `app_context` is entered and exited through an exit stack rather
+        # than `async with`, because the console that runs in between is
+        # synchronous and drives the loop one statement at a time.
+        stack = AsyncExitStack()
+        runner.run(stack.enter_async_context(app_context()))
+        try:
+            banner = (
+                f"Access shell — {db.engine.url.render_as_string(hide_password=True)}\n"
+                "Statements may use top-level `await`; writes commit on exit.\n"
+                "In scope: db, models, operations, select/func/joinedload, okta, settings."
+            )
+            _AsyncConsole(namespace, runner).interact(banner=banner, exitmsg="")
+        finally:
+            runner.run(stack.aclose())
 
 
 if __name__ == "__main__":

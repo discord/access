@@ -36,6 +36,7 @@ help:
 	@echo "  make sync               access sync"
 	@echo "  make notify             access notify"
 	@echo "  make sync-app-groups    access sync-app-groups (loads .env)"
+	@echo "  make shell              access shell (REPL, loads .env)"
 	@echo ""
 	@echo "Docker:"
 	@echo "  make build              docker build"
@@ -160,6 +161,11 @@ sync: install-plugins
 .PHONY: notify
 notify: install-plugins
 	DATABASE_URI=$(LOCAL_DB_URI) uv run access notify
+
+.PHONY: shell
+shell: .env install-plugins
+	set -a && . ./.env && set +a && \
+	DATABASE_URI=$(LOCAL_DB_URI) uv run access shell
 
 # Unlike `sync`/`notify`, this loads the full .env so the app-group lifecycle
 # plugins get the credentials they need (e.g. Google/Okta). `access` has no
