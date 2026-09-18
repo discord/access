@@ -40,9 +40,11 @@ ENV_DOMAIN = "GOOGLE_WORKSPACE_DOMAIN"
 # App config keys
 CONFIG_ENABLED = "enabled"
 CONFIG_EMAIL_PATTERN = "email_pattern"
+CONFIG_REQUIRE_SECURITY_GROUPS = "require_security_groups"
 # Group config keys
 CONFIG_EMAIL = "email"
 CONFIG_DISPLAY_NAME = "display_name"
+CONFIG_SECURITY_GROUP = "security_group"
 # Group status keys
 STATUS_PUSH_MAPPING_ID = "push_mapping_id"
 STATUS_GOOGLE_GROUP_ID = "google_group_id"
@@ -67,6 +69,14 @@ SYNC_SKIPPED = "skipped"
 
 OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL = "googleGroupEmail"
 
+# Cloud Identity group labels: https://docs.cloud.google.com/identity/docs/groups#group_labels
+# Every Google Group carries the discussion-forum label. A Google Workspace security group
+# (https://knowledge.workspace.google.com/admin/groups/control-access-to-sensitive-data-with-security-groups)
+# is that same group with the security label added alongside it, so it can be named in policies
+# that grant access to sensitive data.
+GOOGLE_GROUP_LABEL_DISCUSSION_FORUM = "cloudidentity.googleapis.com/groups.discussion_forum"
+GOOGLE_GROUP_LABEL_SECURITY = "cloudidentity.googleapis.com/groups.security"
+
 # Conservative subset of Google group local-part rules: lowercase alphanumerics
 # plus . _ - internally; must start and end alphanumeric.
 GOOGLE_LOCAL_PART_RE = re.compile(r"^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$")
@@ -90,6 +100,19 @@ class _RetryingHttpRequest(HttpRequest):
 
     def execute(self, http: Any = None, num_retries: int = GOOGLE_API_NUM_RETRIES) -> Any:
         return super().execute(http=http, num_retries=num_retries)
+
+
+def _app_requires_security_groups(app_config: dict[str, Any]) -> bool:
+    """Whether an app's configuration mandates security groups for all of its groups.
+
+    Args:
+        app_config: The app-level configuration for this plugin, as handed to the group config
+            schema and validation hooks. A non-dict reads as no mandate.
+
+    Returns:
+        True when every one of the app's Google groups is to carry the security label.
+    """
+    return bool(app_config.get(CONFIG_REQUIRE_SECURITY_GROUPS)) if isinstance(app_config, dict) else False
 
 
 def _is_group_absent_error(error: HttpError) -> bool:
@@ -169,6 +192,25 @@ class GoogleGroupManagerPlugin:
     def _get_configured_display_name(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> str | None:
         return ctx.get_config(group, CONFIG_DISPLAY_NAME)
 
+    def _get_configured_security_group(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> bool:
+        """Whether this group's Google group is to carry the Workspace security label.
+
+        The app-level mandate and the group's own setting are OR'd rather than one overriding the
+        other, matching what the label itself allows: an app can only raise the requirement, and
+        raising it covers the groups that predate the mandate without their stored configuration
+        having to be rewritten one by one.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The group being reconciled.
+
+        Returns:
+            True when either the app mandates security groups or this group opted in.
+        """
+        if bool(ctx.get_config(group.app, CONFIG_REQUIRE_SECURITY_GROUPS, False)):
+            return True
+        return bool(ctx.get_config(group, CONFIG_SECURITY_GROUP, False))
+
     # ---- Metadata ----
 
     @hookimpl
@@ -204,6 +246,21 @@ class GoogleGroupManagerPlugin:
                 type="text",
                 required=False,
             ),
+            # Not immutable, and turning it back off is not an undo: it stops the plugin labeling
+            # anything further, while every group already labeled stays a security group, because
+            # Google does not convert one back. See _reconcile_security_label.
+            CONFIG_REQUIRE_SECURITY_GROUPS: AppGroupLifecyclePluginConfigProperty(
+                display_name="Require Security Groups?",
+                help_text=(
+                    "Label every one of this app's Google groups as a Workspace security group, "
+                    "including the ones that already exist. Individual groups can opt in on their "
+                    "own without this. Google does not convert a security group back to an "
+                    "ordinary group, so this cannot be undone for the groups it labels."
+                ),
+                type="boolean",
+                default_value=False,
+                required=False,
+            ),
         }
 
     @hookimpl
@@ -229,6 +286,22 @@ class GoogleGroupManagerPlugin:
                 {"regex": app_email_pattern, "message": f"Must match this app's email pattern: {app_email_pattern}"}
             )
 
+        # Under an app mandate the group-level setting is no longer the group's to make, so say so
+        # before the general explanation rather than leaving the owner to discover it on submit.
+        app_requires_security_groups = _app_requires_security_groups(app_config)
+        security_group_help = (
+            "Label the linked Google group as a Workspace security group so it can grant access to "
+            "sensitive data. Google does not convert a security group back to an ordinary group, so "
+            "clearing this later has no effect and it is restored on the next sync. A security group "
+            "may contain users and service accounts with Google accounts from any domain, plus other "
+            "security groups from this one."
+        )
+        if app_requires_security_groups:
+            security_group_help = (
+                "This app requires every one of its Google groups to be a Workspace security group, "
+                f"so this cannot be turned off here. {security_group_help}"
+            )
+
         return {
             CONFIG_EMAIL: AppGroupLifecyclePluginConfigProperty(
                 display_name="Google Group Email Prefix",
@@ -248,6 +321,21 @@ class GoogleGroupManagerPlugin:
                 help_text="The display name of the linked Google group",
                 type="text",
                 required=True,
+            ),
+            # Deliberately NOT immutable, unlike the email: Google supports promoting an existing
+            # Google Group to a security group, so an app group that turns out to gate sensitive
+            # data can be relabeled in place. The one-way half of that -- Google never converts a
+            # security group back -- is enforced in _reconcile_security_label, which restores this
+            # value rather than attempting a downgrade, because `immutable` would also block the
+            # legitimate promotion.
+            CONFIG_SECURITY_GROUP: AppGroupLifecyclePluginConfigProperty(
+                display_name="Google Workspace Security Group",
+                help_text=security_group_help,
+                type="boolean",
+                # Pre-checked under an app mandate, so the form submits what the app already
+                # enforces rather than an unchecked box the backend then rejects.
+                default_value=app_requires_security_groups,
+                required=False,
             ),
         }
 
@@ -307,6 +395,11 @@ class GoogleGroupManagerPlugin:
                     re.compile(pattern)
                 except re.error as e:
                     errors[CONFIG_EMAIL_PATTERN] = f"Invalid regex: {e}"
+
+        # Optional, and absent means no mandate; only a present non-boolean is an error.
+        require_security_groups = config.get(CONFIG_REQUIRE_SECURITY_GROUPS)
+        if require_security_groups is not None and not isinstance(require_security_groups, bool):
+            errors[CONFIG_REQUIRE_SECURITY_GROUPS] = f"The '{CONFIG_REQUIRE_SECURITY_GROUPS}' field must be a boolean"
         return errors
 
     @hookimpl
@@ -344,6 +437,19 @@ class GoogleGroupManagerPlugin:
             if pattern_error:
                 errors[CONFIG_EMAIL] = pattern_error
 
+        # Optional, and absent means "whatever the app says"; only a present non-boolean is an error.
+        security_group = config.get(CONFIG_SECURITY_GROUP)
+        if security_group is not None and not isinstance(security_group, bool):
+            errors[CONFIG_SECURITY_GROUP] = f"The '{CONFIG_SECURITY_GROUP}' field must be a boolean"
+        elif security_group is False and _app_requires_security_groups(app_config):
+            # Reported synchronously here, the way an email_pattern violation is, rather than left
+            # for reconcile to override silently. An *absent* value is left alone: a group predating
+            # the mandate must stay editable, and the mandate covers it regardless.
+            errors[CONFIG_SECURITY_GROUP] = (
+                "This app requires every one of its Google groups to be a Workspace security group, "
+                f"so '{CONFIG_SECURITY_GROUP}' cannot be turned off for this group."
+            )
+
         return errors
 
     # ---- Google API wrappers (Cloud Identity Groups API) ----
@@ -362,7 +468,12 @@ class GoogleGroupManagerPlugin:
         return await self._execute_request(self._groups_api.get(name=self._resource_name(google_group_id)))
 
     async def _patch_google_group(
-        self, google_group_id: str, *, display_name: str | None = None, description: str | None = None
+        self,
+        google_group_id: str,
+        *,
+        display_name: str | None = None,
+        description: str | None = None,
+        labels: dict[str, str] | None = None,
     ) -> None:
         """Patch a Google group's mutable properties.
 
@@ -370,15 +481,20 @@ class GoogleGroupManagerPlugin:
             google_group_id: The Cloud Identity group to patch.
             display_name: The display name to set, or None to leave it alone.
             description: The description to set, or None to leave it alone.
+            labels: The complete label map to set, or None to leave it alone. The API replaces the
+                map wholesale rather than merging into it, so a caller adding one label has to
+                re-send the labels the group already carries.
 
         groupKey (the email) is immutable in the Cloud Identity API, so it is not patchable here.
-        A call with neither field is a no-op.
+        A call with no fields is a no-op.
         """
         body: dict[str, Any] = {}
         if display_name is not None:
             body["displayName"] = display_name
         if description is not None:
             body["description"] = description
+        if labels is not None:
+            body["labels"] = labels
         if not body:
             return
         update_mask = ",".join(sorted(body))
@@ -804,8 +920,8 @@ class GoogleGroupManagerPlugin:
 
             # We hold a live Google group (cached, adopted, or freshly created) -> enforce Access's
             # properties onto it (or backfill from it during adoption). A group Okta just created is
-            # named after the email prefix and has no description, so this is what applies the real
-            # display name and description.
+            # named after the email prefix, has no description, and is an ordinary Google Group, so
+            # this is what applies the real display name, description, and security label.
             logger.debug(f"Reconciling group properties for {group.name}...")
             google_group = await self._get_google_group(claimed_google_group_id)
             reconcile_error = await self._adopt_or_enforce(ctx, group, claimed_google_group_id, google_group)
@@ -859,7 +975,9 @@ class GoogleGroupManagerPlugin:
         present values onto it.
 
         The email (groupKey) is immutable in the Cloud Identity API and host-blocked from changing,
-        so it is never patched here.
+        so it is never patched here. The security label is neither adopted nor enforced on the
+        adopt/enforce split -- it is one-way in Google, so it reconciles on its own terms; see
+        _reconcile_security_label, which runs after this method's metadata patch either way.
 
         Args:
             ctx: The plugin capability context.
@@ -898,6 +1016,82 @@ class GoogleGroupManagerPlugin:
             await self._patch_google_group(
                 google_group_id, display_name=patch_display_name, description=patch_description
             )
+
+        return await self._reconcile_security_label(ctx, group, google_group_id, google_group)
+
+    async def _reconcile_security_label(
+        self, ctx: AppGroupLifecycleContext, group: AppGroup, google_group_id: str, google_group: dict[str, Any]
+    ) -> str | None:
+        """Bring the Google group's security label in line with this group's configuration.
+
+        Google Workspace treats the label as one-way: a security group cannot be converted back to
+        an ordinary Google Group. So the configuration is a floor, not a two-way switch -- Access
+        raises the label and never tries to lower it. Once the group carries the label, this group's
+        own setting is written to match, so the checkbox keeps telling the truth about what Google
+        will enforce rather than sitting unchecked next to a group that is a security group
+        regardless.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The Access group being reconciled.
+            google_group_id: The Cloud Identity group backing it.
+            google_group: That group's current state, as returned by the Groups API.
+
+        Returns:
+            An error message when Google refuses the label, else None.
+        """
+        labels = google_group.get("labels") or {}
+        already_labeled = GOOGLE_GROUP_LABEL_SECURITY in labels
+        # The group's own setting, read separately from the effective value below: whether to label
+        # is the OR of group and app, but the value that has to stay converged with Google is this
+        # one. Keying the writes on the effective value would leave a mandated group's stored False
+        # untouched forever, and the config form submits that stale False straight back into the
+        # validation error for opting out of the mandate.
+        opted_in_by_group = bool(ctx.get_config(group, CONFIG_SECURITY_GROUP, False))
+
+        if already_labeled:
+            if not opted_in_by_group:
+                logger.info(
+                    f"The Google group for {group.name} is already a security group, which Google cannot "
+                    f"undo; restoring its '{CONFIG_SECURITY_GROUP}' configuration to match."
+                )
+                ctx.set_config(group, CONFIG_SECURITY_GROUP, True)
+            return None
+
+        if not self._get_configured_security_group(ctx, group):
+            return None
+
+        logger.info(f"Labeling the Google group for {group.name} as a Workspace security group...")
+        try:
+            # The patch replaces the label map rather than merging into it, so every label the
+            # group already carries is re-sent. discussion_forum is named explicitly as well
+            # because a group without it is not a Google Group at all, and dropping it here would
+            # be how that happens.
+            await self._patch_google_group(
+                google_group_id,
+                labels={**labels, GOOGLE_GROUP_LABEL_DISCUSSION_FORUM: "", GOOGLE_GROUP_LABEL_SECURITY: ""},
+            )
+        except HttpError as e:
+            # Google rejects the label outright when the group's membership or the caller's role
+            # does not permit it, and will keep rejecting it until one of those changes, so this is
+            # reported rather than deferred. It is an error, not a skip: Access is advertising a
+            # security group it has not actually got, which is worth failing the batch sync over
+            # even though the group's owner (not an admin) is usually the one who can fix it.
+            reason = (e.reason or "").strip() or str(e)
+            return (
+                f"Google refused to label the linked Google group as a security group: {reason}. A security "
+                "group may contain users and service accounts with Google accounts, in any domain, plus "
+                f"other security groups in {self._domain}, and only a Workspace Super Admin or Groups Admin "
+                "may apply the label. Correct the group's membership, or turn off whichever of this group's "
+                f"'{CONFIG_SECURITY_GROUP}' or its app's '{CONFIG_REQUIRE_SECURITY_GROUPS}' configuration is "
+                "asking for the label."
+            )
+
+        # The group is a security group as of this patch, so record that on the group itself even
+        # when it was the app mandate that asked for it: same convergence as the restore above, at
+        # the moment it is established rather than a reconcile later.
+        if not opted_in_by_group:
+            ctx.set_config(group, CONFIG_SECURITY_GROUP, True)
         return None
 
     # ---- Lifecycle hooks ----
