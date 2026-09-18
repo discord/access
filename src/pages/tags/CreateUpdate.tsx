@@ -29,13 +29,18 @@ import {
   TagByIdPutVariables,
 } from '../../api/apiComponents';
 import NumberInput from '../../components/NumberInput';
+import ConstraintHelpTooltip from './ConstraintHelpTooltip';
 import {
-  MEMBER_SELF_ADD_LABEL,
-  OWNER_SELF_ADD_LABEL,
-  SELF_ADD_NEEDS_PROPAGATION,
-  propagationConflictMessage,
-  selfAddRestrictionAvailable,
-} from './propagationRules';
+  CONSTRAINT_LABELS,
+  DISALLOW_SELF_ADD_MEMBERSHIP,
+  DISALLOW_SELF_ADD_OWNERSHIP,
+  MEMBER_TIME_LIMIT,
+  OWNER_TIME_LIMIT,
+  REQUIRE_MEMBER_REASON,
+  REQUIRE_OWNER_REASON,
+  constraintEditHelp,
+} from './constraintHelp';
+import {SELF_ADD_NEEDS_PROPAGATION, propagationConflictMessage, selfAddRestrictionAvailable} from './propagationRules';
 import {OktaUserDetail, TagDetail} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
@@ -86,12 +91,12 @@ interface TagDialogProps {
 // the restriction while it is in effect.
 //
 // Both read sibling fields, so both must render inside `FormContainer`.
-function SelfAddToggle(props: {name: 'ownerAdd' | 'memberAdd'; label: string}) {
+function SelfAddToggle(props: {name: 'ownerAdd' | 'memberAdd'; constraint: string}) {
   const propagateToRoles = useWatch<CreateTagForm>({name: 'propagateToRoles'});
   const withoutPropagation = !selfAddRestrictionAvailable(propagateToRoles);
   return (
     <FormControl fullWidth sx={{marginTop: '18px'}}>
-      <Box sx={{marginLeft: '3px'}}>{props.label}?:</Box>
+      <ConstraintLabel constraint={props.constraint} />
       <ToggleButtonGroupElement
         name={props.name}
         enforceAtLeastOneSelected
@@ -115,6 +120,12 @@ function PropagationToggle() {
   const conflict = propagationConflictMessage({propagateToRoles: 'no', ownerAdd, memberAdd});
   return (
     <FormControl fullWidth sx={{marginTop: '18px'}}>
+      {/* `describeChild` and `tabIndex` for the same reasons as
+          `ConstraintHelpTooltip`: without them this paragraph is the label's
+          accessible *name*, so a screen reader announces the whole explanation
+          and never the label. A string title does at least get a native
+          `title` attribute out of `describeChild`, so the closed state is not
+          silent. */}
       <Tooltip
         title={
           'When yes, these constraints also apply to any role that is a member or owner of a group ' +
@@ -123,8 +134,11 @@ function PropagationToggle() {
           'groups themselves. This is not the same as disabling the tag, which turns off its ' +
           'enforcement everywhere.'
         }
-        placement="top-start">
-        <Box sx={{marginLeft: '3px', width: 'fit-content'}}>Propagate these constraints to roles?</Box>
+        placement="top-start"
+        describeChild>
+        <Box tabIndex={0} sx={{marginLeft: '3px', width: 'fit-content'}}>
+          Propagate these constraints to roles?
+        </Box>
       </Tooltip>
       <ToggleButtonGroupElement
         name="propagateToRoles"
@@ -343,7 +357,7 @@ function TagDialog(props: TagDialogProps) {
           <Grid container spacing={1}>
             <Grid item xs={6}>
               <FormControl fullWidth>
-                <Box sx={{marginLeft: '3px'}}>Owner time limit:</Box>
+                <ConstraintLabel constraint={OWNER_TIME_LIMIT} />
                 <NumberInput
                   label={'days'}
                   setValue={setDaysOwner}
@@ -355,7 +369,7 @@ function TagDialog(props: TagDialogProps) {
             </Grid>
             <Grid item xs={6}>
               <FormControl fullWidth>
-                <Box sx={{marginLeft: '3px'}}>Member time limit:</Box>
+                <ConstraintLabel constraint={MEMBER_TIME_LIMIT} />
                 <NumberInput
                   label={'days'}
                   setValue={setDaysMember}
@@ -369,7 +383,7 @@ function TagDialog(props: TagDialogProps) {
           <Grid container spacing={1}>
             <Grid item xs={6}>
               <FormControl fullWidth sx={{marginTop: '18px'}}>
-                <Box sx={{marginLeft: '3px'}}>Require ownership justification?:</Box>
+                <ConstraintLabel constraint={REQUIRE_OWNER_REASON} />
                 <ToggleButtonGroupElement
                   name="ownerReason"
                   enforceAtLeastOneSelected
@@ -390,7 +404,7 @@ function TagDialog(props: TagDialogProps) {
             </Grid>
             <Grid item xs={6}>
               <FormControl fullWidth sx={{marginTop: '18px'}}>
-                <Box sx={{marginLeft: '3px'}}>Require membership justification?:</Box>
+                <ConstraintLabel constraint={REQUIRE_MEMBER_REASON} />
                 <ToggleButtonGroupElement
                   name="memberReason"
                   enforceAtLeastOneSelected
@@ -412,10 +426,10 @@ function TagDialog(props: TagDialogProps) {
           </Grid>
           <Grid container spacing={1}>
             <Grid item xs={6}>
-              <SelfAddToggle name="ownerAdd" label={OWNER_SELF_ADD_LABEL} />
+              <SelfAddToggle name="ownerAdd" constraint={DISALLOW_SELF_ADD_OWNERSHIP} />
             </Grid>
             <Grid item xs={6}>
-              <SelfAddToggle name="memberAdd" label={MEMBER_SELF_ADD_LABEL} />
+              <SelfAddToggle name="memberAdd" constraint={DISALLOW_SELF_ADD_MEMBERSHIP} />
             </Grid>
           </Grid>
           <Grid container spacing={1}>
@@ -432,6 +446,19 @@ function TagDialog(props: TagDialogProps) {
         </DialogActions>
       </FormContainer>
     </Dialog>
+  );
+}
+
+// A constraint's label doubles as its tooltip trigger, so an admin deciding
+// whether to propagate can read what it means for this constraint without
+// leaving the form. `width: 'fit-content'` keeps the trigger on the text:
+// without it the Box fills its grid column and the tooltip opens from empty
+// space beside the label.
+function ConstraintLabel({constraint}: {constraint: string}) {
+  return (
+    <ConstraintHelpTooltip paragraphs={constraintEditHelp(constraint)} sx={{marginLeft: '3px'}}>
+      {CONSTRAINT_LABELS[constraint]}:
+    </ConstraintHelpTooltip>
   );
 }
 
