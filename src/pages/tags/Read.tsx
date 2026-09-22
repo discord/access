@@ -49,7 +49,6 @@ import {EmptyListEntry} from '../../components/EmptyListEntry';
 import MarkdownDescription from '../../components/MarkdownDescription';
 import TagConstraintList from './TagConstraintList';
 import {NO_CONSTRAINTS_NOTE, SCOPE_LABELS, byConstraintOrder, isConstraintInForce} from '../../constraintCopy';
-import {timeLimitLabel} from '../../constraints';
 
 export default function ReadTag() {
   const currentUser = useCurrentUser();

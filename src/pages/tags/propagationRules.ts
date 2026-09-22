@@ -14,9 +14,6 @@
 
 import {CONSTRAINT_LABELS, DISALLOW_SELF_ADD_MEMBERSHIP, DISALLOW_SELF_ADD_OWNERSHIP} from '../../constraintCopy';
 
-/** The short pointer shown on a self-add control whose restriction is unavailable. */
-export const SELF_ADD_NEEDS_PROPAGATION = 'Requires a tag that reaches roles.';
-
 /**
  * Whether the self-add controls may offer their restriction.
  *
