@@ -17,13 +17,18 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 import {EffectiveConstraintDetail, EffectiveConstraintSourceDetail} from '../api/apiSchemas';
 import {timeLimitLabel} from '../constraints';
+import {byConstraintOrder, constraintLabel} from '../constraintCopy';
 
 const TIME_LIMIT_CONSTRAINTS = ['member_time_limit', 'owner_time_limit'];
 
-function constraintLabel(entry: EffectiveConstraintDetail): string {
+// Keyed off `entry.constraint` rather than the `name` the API also sends, so this
+// panel and the tag pages call a constraint the same thing. `constraintLabel`
+// falls back to the key for a constraint this build has no copy for.
+function constraintRowLabel(entry: EffectiveConstraintDetail): string {
+  const label = constraintLabel(entry.constraint);
   const value = entry.value;
   if (typeof value === 'number' && TIME_LIMIT_CONSTRAINTS.includes(entry.constraint)) {
-    return `${entry.name} — ${timeLimitLabel(value)}`;
+    return `${label} — ${timeLimitLabel(value)}`;
   }
   // Booleans are simple flags: their presence in the list is the information,
   // so appending "— Yes" would be noise. That holds because the API reports
@@ -32,9 +37,9 @@ function constraintLabel(entry: EffectiveConstraintDetail): string {
   // which matters since the tag form writes all four boolean keys on every
   // save. Were a `False` to arrive here it would render as a restriction.
   if (typeof value === 'boolean') {
-    return entry.name;
+    return label;
   }
-  return `${entry.name} — ${value}`;
+  return `${label} — ${value}`;
 }
 
 // The text before the source's name, by origin. `direct` is absent on
@@ -94,6 +99,11 @@ export default function EffectiveConstraints({constraints}: {constraints: Effect
     return null;
   }
 
+  // The API returns entries in `Tag.CONSTRAINTS` order, which is its own concern
+  // and not one this panel should inherit. Sorted here so every listing of
+  // constraints in the app reads in the same order.
+  const ordered = [...constraints].sort((a, b) => byConstraintOrder(a.constraint, b.constraint));
+
   return (
     <Accordion expanded={expanded} onChange={(_e, isExpanded) => setExpanded(isExpanded)}>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -111,9 +121,9 @@ export default function EffectiveConstraints({constraints}: {constraints: Effect
               </TableRow>
             </TableHead>
             <TableBody>
-              {constraints.map((entry) => (
+              {ordered.map((entry) => (
                 <TableRow key={entry.constraint}>
-                  <TableCell>{constraintLabel(entry)}</TableCell>
+                  <TableCell>{constraintRowLabel(entry)}</TableCell>
                   <TableCell>
                     {(entry.sources ?? []).map((source, index) => (
                       <div key={`${source.tag_id}-${source.origin}-${source.source_id ?? index}`}>

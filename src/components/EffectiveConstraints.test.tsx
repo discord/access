@@ -4,10 +4,16 @@ import {MemoryRouter} from 'react-router-dom';
 import {describe, expect, it} from 'vitest';
 
 import EffectiveConstraints from './EffectiveConstraints';
+import {constraintLabel} from '../constraintCopy';
+
+// Read off the shared copy rather than repeated here: a label changing in one
+// place and not the other is what this panel now exists to make impossible.
+const MEMBER_TIME_LIMIT = constraintLabel('member_time_limit');
+const REQUIRE_MEMBER_REASON = constraintLabel('require_member_reason');
 
 const timeLimit = {
   constraint: 'member_time_limit',
-  name: 'Limit time of membership',
+  name: 'a name the panel should ignore',
   value: 7776000,
   sources: [
     {
@@ -22,7 +28,7 @@ const timeLimit = {
 
 const flag = {
   constraint: 'require_member_reason',
-  name: 'Require reason for member access',
+  name: 'a name the panel should ignore',
   value: true,
   sources: [{tag_id: 't1', tag_name: 'SOX', origin: 'direct', source_id: null, source_name: null}],
 };
@@ -56,12 +62,12 @@ describe('EffectiveConstraints', () => {
 
   it('renders a time limit in days, folded into the constraint column', async () => {
     await openPanel([timeLimit]);
-    expect(screen.getByText('Limit time of membership — 90 days')).toBeInTheDocument();
+    expect(screen.getByText(`${MEMBER_TIME_LIMIT} — 90 days`)).toBeInTheDocument();
   });
 
   it('renders a flag without a value suffix', async () => {
     await openPanel([flag]);
-    expect(screen.getByText('Require reason for member access')).toBeInTheDocument();
+    expect(screen.getByText(REQUIRE_MEMBER_REASON)).toBeInTheDocument();
   });
 
   it('links the tag and links the group the constraint reaches this one through', async () => {
@@ -110,7 +116,7 @@ describe('EffectiveConstraints', () => {
 
   it('rounds a time limit that does not divide evenly into days, and says "day" singular', async () => {
     await openPanel([{...timeLimit, value: 90000}]); // 1.0416... days
-    expect(screen.getByText('Limit time of membership — 1 day')).toBeInTheDocument();
+    expect(screen.getByText(`${MEMBER_TIME_LIMIT} — 1 day`)).toBeInTheDocument();
   });
 
   it('renders a sub-day time limit as "<1 day" rather than rounding it to "0 days"', async () => {
@@ -118,12 +124,12 @@ describe('EffectiveConstraints', () => {
     // requires a positive integer), and the propagation tests use exactly
     // this. Rounding it to the nearest day would claim no access at all.
     await openPanel([{...timeLimit, value: 3600}]);
-    expect(screen.getByText('Limit time of membership — <1 day')).toBeInTheDocument();
+    expect(screen.getByText(`${MEMBER_TIME_LIMIT} — <1 day`)).toBeInTheDocument();
   });
 
   it('renders an exactly-one-day limit as singular', async () => {
     await openPanel([{...timeLimit, value: 86400}]);
-    expect(screen.getByText('Limit time of membership — 1 day')).toBeInTheDocument();
+    expect(screen.getByText(`${MEMBER_TIME_LIMIT} — 1 day`)).toBeInTheDocument();
   });
 
   it('renders an unrecognized origin as itself, not as a false "direct" claim', async () => {
@@ -136,9 +142,41 @@ describe('EffectiveConstraints', () => {
     expect(screen.getByText(/some_future_origin/)).toBeInTheDocument();
   });
 
+  it('names a constraint from the shared copy, not from the name the API sends', async () => {
+    // The two are separate vocabularies, and the app's own is the one every
+    // other surface uses. Asserting the API's string is absent is the point.
+    await openPanel([flag]);
+    expect(screen.queryByText('a name the panel should ignore')).not.toBeInTheDocument();
+    expect(screen.getByText(REQUIRE_MEMBER_REASON)).toBeInTheDocument();
+  });
+
+  it('falls back to the constraint key for a constraint this build has no copy for', async () => {
+    // A backend ahead of the deployed frontend. A bare lookup renders an empty
+    // cell; the key at least says which setting is in force.
+    await openPanel([{...flag, constraint: 'some_future_constraint'}]);
+    expect(screen.getByText('some_future_constraint')).toBeInTheDocument();
+  });
+
+  it('orders rows consistently regardless of the order the API returns them in', async () => {
+    await openPanel([
+      {...flag, constraint: 'disallow_self_add_ownership'},
+      {...timeLimit, constraint: 'owner_time_limit'},
+      {...flag, constraint: 'require_member_reason'},
+      {...timeLimit, constraint: 'member_time_limit'},
+    ]);
+    const rendered = screen.getAllByRole('row').map((row) => row.querySelector('th, td')?.textContent);
+    expect(rendered).toEqual([
+      'Constraint',
+      `${constraintLabel('member_time_limit')} — 90 days`,
+      `${constraintLabel('owner_time_limit')} — 90 days`,
+      constraintLabel('require_member_reason'),
+      constraintLabel('disallow_self_add_ownership'),
+    ]);
+  });
+
   it('does not crash when a source entry omits `sources` (an optional field per the API contract)', async () => {
-    const {container} = await openPanel([{constraint: 'require_member_reason', name: 'Require reason', value: true}]);
+    const {container} = await openPanel([{constraint: 'require_member_reason', name: 'ignored', value: true}]);
     expect(container).not.toBeEmptyDOMElement();
-    expect(screen.getByText('Require reason')).toBeInTheDocument();
+    expect(screen.getByText(REQUIRE_MEMBER_REASON)).toBeInTheDocument();
   });
 });
