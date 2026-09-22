@@ -88,7 +88,7 @@ export default function DeleteApp(props: DeleteAppProps) {
 
   return (
     <>
-      <IconButton aria-label="edit" onClick={() => setOpen(true)}>
+      <IconButton aria-label="delete" onClick={() => setOpen(true)}>
         <DeleteIcon />
       </IconButton>
       {open ? <AppDialog setOpen={setOpen} app={props.app}></AppDialog> : null}

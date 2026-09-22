@@ -85,7 +85,7 @@ export default function DeleteTag(props: DeleteTagProps) {
 
   return (
     <>
-      <IconButton aria-label="edit" onClick={() => setOpen(true)}>
+      <IconButton aria-label="delete" onClick={() => setOpen(true)}>
         <DeleteIcon />
       </IconButton>
       {open ? <TagDialog setOpen={setOpen} tag={props.tag}></TagDialog> : null}
