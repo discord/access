@@ -1,4 +1,5 @@
 import React from 'react';
+import ActionTooltip from '../../components/ActionTooltip';
 
 import {Link as RouterLink, useNavigate, useParams} from 'react-router-dom';
 
@@ -18,7 +19,6 @@ import TableContainer from '@mui/material/TableContainer';
 import TableFooter from '@mui/material/TableFooter';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
-import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
 import DeleteIcon from '@mui/icons-material/Close';
@@ -115,8 +115,6 @@ export default function ReadTag() {
     });
   };
 
-  const moveTooltip = {modifiers: [{name: 'offset', options: {offset: [0, -10]}}]};
-
   const constraintsNames: Record<string, string> = {
     member_time_limit: 'Member Time Limit',
     owner_time_limit: 'Owner Time Limit',
@@ -161,16 +159,12 @@ export default function ReadTag() {
                   <>
                     <Divider />
                     <Stack direction="row" justifyContent="center">
-                      <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
-                        <div>
-                          <CreateUpdateTag currentUser={currentUser} tag={tag} />
-                        </div>
-                      </Tooltip>
-                      <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
-                        <div>
-                          <DeleteTag currentUser={currentUser} tag={tag} />
-                        </div>
-                      </Tooltip>
+                      <ActionTooltip title="Edit">
+                        <CreateUpdateTag currentUser={currentUser} tag={tag} />
+                      </ActionTooltip>
+                      <ActionTooltip title="Delete">
+                        <DeleteTag currentUser={currentUser} tag={tag} />
+                      </ActionTooltip>
                     </Stack>
                   </>
                 )}

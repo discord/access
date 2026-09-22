@@ -1,4 +1,5 @@
 import {Grid, Paper, Typography, Box, Chip, Stack, Tooltip, Divider} from '@mui/material';
+import ActionTooltip from '../../../components/ActionTooltip';
 import CreateUpdateApp from '../CreateUpdate';
 import DeleteApp from '../Delete';
 import {AppDetail, OktaUserDetail} from '../../../api/apiSchemas';
@@ -16,8 +17,6 @@ interface AppsHeaderProps {
 
 export const AppsHeader: React.FC<AppsHeaderProps> = React.memo(({app, currentUser}) => {
   const navigate = useNavigate();
-  const moveTooltip = {modifiers: [{name: 'offset', options: {offset: [0, -10]}}]};
-
   const hasActions = React.useMemo(() => {
     return isAccessAdmin(currentUser) || isAppOwnerGroupOwner(currentUser, app.id ?? '');
   }, [currentUser, app.id]);
@@ -56,16 +55,12 @@ export const AppsHeader: React.FC<AppsHeaderProps> = React.memo(({app, currentUs
             <>
               <Divider />
               <Stack direction="row" justifyContent="center">
-                <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
-                  <div>
-                    <CreateUpdateApp currentUser={currentUser} app={app} />
-                  </div>
-                </Tooltip>
-                <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
-                  <div>
-                    <DeleteApp currentUser={currentUser} app={app} />
-                  </div>
-                </Tooltip>
+                <ActionTooltip title="Edit">
+                  <CreateUpdateApp currentUser={currentUser} app={app} />
+                </ActionTooltip>
+                <ActionTooltip title="Delete">
+                  <DeleteApp currentUser={currentUser} app={app} />
+                </ActionTooltip>
               </Stack>
             </>
           )}
