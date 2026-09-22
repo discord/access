@@ -17,9 +17,50 @@ export interface TagSettings {
   disallowSelfAddMembership: boolean;
   disallowSelfAddOwnership: boolean;
   propagatesToRoles: boolean;
+  /** Whether the tag enforces its constraints at all. */
+  enabled: boolean;
 }
 
+/**
+ * The caveat to show alongside the effects when the saved tag is not enabled.
+ *
+ * The effects are still worth showing -- they describe the tag the admin is about
+ * to save -- but a disabled tag enforces nothing, so nothing happens on this save.
+ */
+export const DORMANT_UNTIL_ENABLED = 'These take effect when the tag is enabled. A disabled tag enforces nothing.';
+
 const days = (n: number) => `${n} day${n === 1 ? '' : 's'}`;
+
+/** A tag stripped of every constraint, which is what a disabled tag enforces. */
+function constrainsNothing(settings: TagSettings): TagSettings {
+  return {
+    ...settings,
+    memberTimeLimitDays: undefined,
+    ownerTimeLimitDays: undefined,
+    requireMemberReason: false,
+    requireOwnerReason: false,
+    disallowSelfAddMembership: false,
+    disallowSelfAddOwnership: false,
+  };
+}
+
+/**
+ * What the tag enforced before the edit, which is not always what it stored.
+ *
+ * Enabling a disabled tag is measured against a tag that constrains nothing, so
+ * every limit and flag it already carried counts as newly applied -- the largest
+ * change this dialog makes, and one that comparing the constraints alone misses
+ * entirely, since the edit need not touch any of them.
+ *
+ * A tag that stays disabled is measured against what it stored, so the warning
+ * describes the edit the admin is making rather than re-reporting settings they
+ * left alone. `propagatesToRoles` is never cleared: the scope decides where the
+ * limits reach, and each limit's own sentence already says so.
+ */
+function enforcedBefore(before: TagSettings, after: TagSettings): TagSettings {
+  const beingEnabled = !before.enabled && after.enabled;
+  return beingEnabled ? constrainsNothing(before) : before;
+}
 
 /**
  * Whether a time limit is tighter than it was.
@@ -41,12 +82,16 @@ function limitTightened(before: number | undefined, after: number | undefined): 
  * because that is the part that changes access already granted. The rest gate
  * future changes, so they are phrased that way.
  *
- * @param before The tag as saved.
- * @param after The tag as the form currently stands.
+ * @param saved The tag as saved. Read through `enforcedBefore`, so a tag
+ *   being enabled is compared against one that constrains nothing.
+ * @param after The tag as the form currently stands. When it is not enabled the
+ *   effects describe what the tag will do once it is; pair them with
+ *   `DORMANT_UNTIL_ENABLED`.
  * @returns Sentences to list, or `[]` when nothing tightens, in which case there is
  *   nothing to warn about.
  */
-export function tighteningEffects(before: TagSettings, after: TagSettings): string[] {
+export function tighteningEffects(saved: TagSettings, after: TagSettings): string[] {
+  const before = enforcedBefore(saved, after);
   const effects: string[] = [];
   // A limit reaches a role's roster only while the tag reaches roles, and saying
   // so is the difference between shortening one grant and shortening a whole
