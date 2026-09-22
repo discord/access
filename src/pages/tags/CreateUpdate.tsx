@@ -30,7 +30,7 @@ import {
   TagByIdPutVariables,
 } from '../../api/apiComponents';
 import NumberInput from '../../components/NumberInput';
-import {ConstraintHelpButton, ConstraintHelpRegion} from '../../components/ConstraintHelp';
+import {ConstraintHelpButton, ConstraintHelpRegion, useHelpRegionId} from '../../components/ConstraintHelp';
 import {
   CONSTRAINT_ROW_LABELS,
   DISALLOW_SELF_ADD_MEMBERSHIP,
@@ -46,7 +46,7 @@ import {
   constraintSummary,
 } from '../../constraintCopy';
 import {propagationConflictMessage, selfAddRestrictionAvailable} from './propagationRules';
-import {TagSettings, tighteningEffects} from './tagChanges';
+import {DORMANT_UNTIL_ENABLED, TagSettings, tighteningEffects} from './tagChanges';
 import {OktaUserDetail, TagDetail} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
@@ -95,6 +95,12 @@ interface TagDialogProps {
 // means, which is the question the control is there to settle.
 const SCOPE_ROLES = 'yes';
 const SCOPE_GROUPS_ONLY = 'no';
+
+// The two values of the form's `enabled` field. A disabled tag enforces none of
+// its constraints, so `BlastRadius` reads this alongside the constraints
+// themselves rather than treating it as presentation.
+const ENABLED = 'enabled';
+const DISABLED = 'disabled';
 
 /**
  * Where the tag's constraints apply, and why the narrow option may be unavailable.
@@ -179,6 +185,33 @@ function ConstraintCell({
 }
 
 /**
+ * A constraint's on/off control.
+ *
+ * The visible label is "Yes" because the row label and the column header already
+ * name the setting between them. Those sit in sibling grid cells, though, which
+ * name nothing to a screen reader -- four checkboxes all announcing "Yes" -- so the
+ * constraint's own name is supplied as the input's accessible name.
+ */
+function ConstraintCheckbox({
+  name,
+  constraint,
+  disabled,
+}: {
+  name: 'memberReason' | 'ownerReason' | 'memberAdd' | 'ownerAdd';
+  constraint: string;
+  disabled?: boolean;
+}) {
+  return (
+    <CheckboxElement
+      name={name}
+      label="Yes"
+      disabled={disabled}
+      inputProps={{'aria-label': constraintLabel(constraint)}}
+    />
+  );
+}
+
+/**
  * One row of the matrix: a setting, its membership and ownership controls, and
  * whichever side's help is open.
  *
@@ -203,7 +236,9 @@ function ConstraintRow({
 }) {
   const [openSide, setOpenSide] = React.useState<string | null>(null);
   const toggle = (constraint: string) => setOpenSide((current) => (current === constraint ? null : constraint));
-  const regionId = `constraint-help-${openSide ?? label}`;
+  // Scoped to this row rather than built from the constraint key, which the tag
+  // page also renders behind this dialog; see `useHelpRegionId`.
+  const regionId = useHelpRegionId();
   return (
     <>
       <Grid item xs={3} sx={{paddingTop: '20px !important'}}>
@@ -215,7 +250,7 @@ function ConstraintRow({
           propagates={propagates}
           expanded={openSide === memberConstraint}
           onHelp={() => toggle(memberConstraint)}
-          regionId={`constraint-help-${memberConstraint}`}>
+          regionId={regionId(memberConstraint)}>
           {memberControl}
         </ConstraintCell>
       </Grid>
@@ -225,7 +260,7 @@ function ConstraintRow({
           propagates={propagates}
           expanded={openSide === ownerConstraint}
           onHelp={() => toggle(ownerConstraint)}
-          regionId={`constraint-help-${ownerConstraint}`}>
+          regionId={regionId(ownerConstraint)}>
           {ownerControl}
         </ConstraintCell>
       </Grid>
@@ -233,7 +268,7 @@ function ConstraintRow({
         <Grid item xs={12} sx={{paddingTop: '0 !important'}}>
           <ConstraintHelpRegion
             expanded
-            regionId={regionId}
+            regionId={regionId(openSide)}
             sections={[{label: constraintLabel(openSide), paragraphs: constraintDetail(openSide, propagates)}]}
           />
         </Grid>
@@ -304,8 +339,8 @@ function ConstraintMatrix({
         memberConstraint={REQUIRE_MEMBER_REASON}
         ownerConstraint={REQUIRE_OWNER_REASON}
         propagates={propagates}
-        memberControl={<CheckboxElement name="memberReason" label="Yes" />}
-        ownerControl={<CheckboxElement name="ownerReason" label="Yes" />}
+        memberControl={<ConstraintCheckbox name="memberReason" constraint={REQUIRE_MEMBER_REASON} />}
+        ownerControl={<ConstraintCheckbox name="ownerReason" constraint={REQUIRE_OWNER_REASON} />}
       />
 
       <ConstraintRow
@@ -313,8 +348,12 @@ function ConstraintMatrix({
         memberConstraint={DISALLOW_SELF_ADD_MEMBERSHIP}
         ownerConstraint={DISALLOW_SELF_ADD_OWNERSHIP}
         propagates={propagates}
-        memberControl={<CheckboxElement name="memberAdd" label="Yes" disabled={!selfAddAvailable} />}
-        ownerControl={<CheckboxElement name="ownerAdd" label="Yes" disabled={!selfAddAvailable} />}
+        memberControl={
+          <ConstraintCheckbox name="memberAdd" constraint={DISALLOW_SELF_ADD_MEMBERSHIP} disabled={!selfAddAvailable} />
+        }
+        ownerControl={
+          <ConstraintCheckbox name="ownerAdd" constraint={DISALLOW_SELF_ADD_OWNERSHIP} disabled={!selfAddAvailable} />
+        }
       />
     </Grid>
   );
@@ -324,8 +363,14 @@ function ConstraintMatrix({
  * What saving will do to access that already exists.
  *
  * Shown only when something tightens. Loosening a tag -- raising a limit, clearing
- * a requirement, narrowing its scope -- changes nothing that is already granted, so
- * a warning there would cry wolf and teach an admin to skip reading it.
+ * a requirement, narrowing its scope, disabling it -- changes nothing that is
+ * already granted, so a warning there would cry wolf and teach an admin to skip
+ * reading it.
+ *
+ * Enabling a tag counts as tightening everything it carries, which is the largest
+ * change this dialog makes; `tagChanges.ts` explains how that is measured. A tag
+ * that will not be enabled on save still lists its effects, qualified by
+ * `DORMANT_UNTIL_ENABLED`, since they describe the tag being saved.
  */
 function BlastRadius({tag, daysMember, daysOwner}: {tag?: TagDetail; daysMember?: number; daysOwner?: number}) {
   // Watched per field rather than as a whole: `useWatch()` with no name does not
@@ -336,6 +381,7 @@ function BlastRadius({tag, daysMember, daysOwner}: {tag?: TagDetail; daysMember?
   const ownerReason = useWatch<CreateTagForm>({name: 'ownerReason'});
   const memberAdd = useWatch<CreateTagForm>({name: 'memberAdd'});
   const ownerAdd = useWatch<CreateTagForm>({name: 'ownerAdd'});
+  const enabled = useWatch<CreateTagForm>({name: 'enabled'});
   const apps = tag?.active_app_tags?.length ?? 0;
   const groups = tag?.active_group_tags?.length ?? 0;
   if (tag == null || (apps === 0 && groups === 0)) {
@@ -352,6 +398,8 @@ function BlastRadius({tag, daysMember, daysOwner}: {tag?: TagDetail; daysMember?
     disallowSelfAddMembership: stored[DISALLOW_SELF_ADD_MEMBERSHIP] === true,
     disallowSelfAddOwnership: stored[DISALLOW_SELF_ADD_OWNERSHIP] === true,
     propagatesToRoles: tag.propagate_to_roles ?? true,
+    // `?? true` to match the server default, as with `propagate_to_roles`.
+    enabled: tag.enabled ?? true,
   };
   const after: TagSettings = {
     memberTimeLimitDays: daysMember,
@@ -361,6 +409,7 @@ function BlastRadius({tag, daysMember, daysOwner}: {tag?: TagDetail; daysMember?
     disallowSelfAddMembership: memberAdd === true,
     disallowSelfAddOwnership: ownerAdd === true,
     propagatesToRoles: propagateToRoles !== SCOPE_GROUPS_ONLY,
+    enabled: enabled === ENABLED,
   };
 
   const effects = tighteningEffects(before, after);
@@ -385,6 +434,11 @@ function BlastRadius({tag, daysMember, daysOwner}: {tag?: TagDetail; daysMember?
           {effect}
         </Typography>
       ))}
+      {!after.enabled && (
+        <Typography variant="body2" sx={{marginTop: '4px', fontStyle: 'italic'}}>
+          {DORMANT_UNTIL_ENABLED}
+        </Typography>
+      )}
     </Alert>
   );
 }
@@ -437,7 +491,7 @@ function TagDialog(props: TagDialogProps) {
     const tag = {
       name: tagForm.name,
       description: tagForm.description,
-      enabled: tagForm.enabled == 'enabled',
+      enabled: tagForm.enabled == ENABLED,
       propagate_to_roles: tagForm.propagateToRoles != SCOPE_GROUPS_ONLY,
     } as TagDetail;
 
@@ -474,7 +528,7 @@ function TagDialog(props: TagDialogProps) {
         defaultValues={{
           name: props.tag?.name ?? '',
           description: props.tag?.description ?? '',
-          enabled: props.tag ? (props.tag.enabled ? 'enabled' : 'disabled') : 'enabled',
+          enabled: props.tag ? (props.tag.enabled ? ENABLED : DISABLED) : ENABLED,
           ownerReason: flag(REQUIRE_OWNER_REASON),
           memberReason: flag(REQUIRE_MEMBER_REASON),
           ownerAdd: flag(DISALLOW_SELF_ADD_OWNERSHIP),
@@ -530,8 +584,8 @@ function TagDialog(props: TagDialogProps) {
                   name="enabled"
                   row
                   options={[
-                    {id: 'enabled', label: 'Enabled'},
-                    {id: 'disabled', label: 'Disabled'},
+                    {id: ENABLED, label: 'Enabled'},
+                    {id: DISABLED, label: 'Disabled'},
                   ]}
                 />
               </FormControl>
