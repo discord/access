@@ -9,6 +9,25 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import type {HelpParagraph} from '../constraintCopy';
 
 /**
+ * Builds help-region element ids scoped to one instance of a surface.
+ *
+ * The id has to be unique across the whole document, and a constraint key is not:
+ * the tag page lists a tag's constraints while its edit dialog sets the same ones,
+ * and both are mounted while the dialog is open. Two elements would then share an
+ * id and every `aria-controls` naming it would resolve to whichever came first.
+ *
+ * @returns A function from a key in `Tag.CONSTRAINTS` to that key's region id
+ *   within this component instance. Stable for the life of the instance, so a
+ *   button and the region it reveals agree as long as both ask the same instance.
+ */
+export function useHelpRegionId(): (key: string) => string {
+  // Stripped to word characters because `useId` is free to emit punctuation
+  // (React 18 yields `:r1:`), which would need escaping in a CSS selector.
+  const scope = React.useId().replace(/[^A-Za-z0-9]/g, '');
+  return React.useCallback((key: string) => `constraint-help-${scope}-${key}`, [scope]);
+}
+
+/**
  * State for one constraint's help disclosure, wiring a button to a region.
  *
  * Trigger and region are separate components because their placement differs: in
@@ -17,11 +36,14 @@ import type {HelpParagraph} from '../constraintCopy';
  * would stretch its neighbour. The caller decides where each goes; this keeps the
  * `id` and the open flag consistent between them.
  *
+ * For a surface that shows one constraint's help at a time out of several, reach
+ * for `useHelpRegionId` directly and hold the open flag itself.
+ *
  * @param key A key from `Tag.CONSTRAINTS`, used to build the region's element id.
  */
 export function useConstraintHelp(key: string) {
   const [expanded, setExpanded] = React.useState(false);
-  const regionId = `constraint-help-${key}`;
+  const regionId = useHelpRegionId()(key);
   return {
     expanded,
     toggle: () => setExpanded((open) => !open),
@@ -39,6 +61,10 @@ export function useConstraintHelp(key: string) {
  * @param label The constraint's display name, which names the button for a screen
  *   reader since the icon carries no text. Quoted rather than run into a sentence,
  *   because the labels are noun phrases that no single article fits.
+ * @param regionId The region this reveals. Named only while it is open, because
+ *   the region is unmounted when closed -- `ConstraintHelpRegion` unmounts on
+ *   exit, and the effective-constraints panel drops the whole table row -- and an
+ *   `aria-controls` pointing at no element is worse than none at all.
  */
 export function ConstraintHelpButton({
   label,
@@ -56,7 +82,7 @@ export function ConstraintHelpButton({
       size="small"
       onClick={onToggle}
       aria-expanded={expanded}
-      aria-controls={regionId}
+      aria-controls={expanded ? regionId : undefined}
       aria-label={`What “${label}” means`}
       sx={{padding: '2px'}}>
       <HelpOutlineIcon fontSize="small" />
