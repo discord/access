@@ -10,33 +10,33 @@ version = "2.0"
 requires-python = ">=3.13"
 dependencies = [
     # FastAPI
-    "fastapi==0.139.0",
-    "fastapi-pagination==0.15.15",
-    "uvicorn[standard]==0.51.0",
-    "gunicorn==26.0.0",
+    "fastapi==0.141.1",
+    "fastapi-pagination==0.15.16",
+    "uvicorn[standard]==0.53.0",
+    "gunicorn==26.2.0",
     "itsdangerous==2.2.0",
-    "click==8.4.2",
+    "click==8.5.0",
     "python-dateutil==2.9.0.post0",
     # Pydantic
     "pydantic>=2.7,<3",
     "pydantic-settings>=2.6,<3",
     # Database
     "SQLAlchemy[asyncio]==2.0.50",
-    "alembic==1.18.5",
+    "alembic==1.20.0",
     "sqlalchemy-json==0.7.0",
     "asyncpg==0.31.0",
     "aiosqlite==0.22.1",
-    "cloud-sql-python-connector[asyncpg]==1.20.4",
+    "cloud-sql-python-connector[asyncpg]==1.22.0",
     # HTTP
     "httpx==0.28.1",
     # Security / auth
     "PyJWT[crypto]==2.13.0",
-    "cachetools==7.1.4",
-    "authlib==1.7.2",
+    "cachetools==7.1.8",
+    "authlib==1.8.0",
     # Error Reporting
-    "sentry-sdk[starlette,fastapi]==2.65.0",
+    "sentry-sdk[starlette,fastapi]==2.69.2",
     # Okta
-    "okta==3.4.4",
+    "okta==3.4.5",
     # Plugins
     "pluggy==1.6.0",
     # MCP — embedded Model Context Protocol server (gated behind ENABLE_MCP).
@@ -62,13 +62,13 @@ test = [
     # (its dependency, but imported directly by the factories + a few tests, so
     # declared explicitly) provides the built-in `faker` pytest fixture too.
     "polyfactory==3.3.0",
-    "faker==40.31.0",
+    "faker==40.39.0",
 ]
 dev = [
     # Lint / format
-    "ruff==0.15.21",
+    "ruff==0.16.7",
     # Typing
-    "ty==0.0.59",
+    "ty==0.0.81",
     "types-python-dateutil==2.9.0.20260807",
     "types-cachetools==7.0.0.20260713",
     { include-group = "test" },
