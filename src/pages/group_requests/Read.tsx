@@ -56,8 +56,10 @@ import {
   GroupRequestDetail,
   OktaUserGroupMemberDetail,
   ResolveGroupRequestBody,
+  AppTagMapDetail,
   TagDetail,
   TagListItem,
+  TagSummary,
 } from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
@@ -222,15 +224,11 @@ export default function ReadGroupRequest() {
   const [appName, setAppName] = React.useState('');
   const [appSearchInput, setAppSearchInput] = React.useState('');
   const [selectedTags, setSelectedTags] = React.useState<TagListItem[]>([]);
+  // The app the approver has settled on, which is the requested one until they
+  // change it. Tracked by id because the group inherits that app's tags.
+  const [resolvedAppId, setResolvedAppId] = React.useState<string | null>(null);
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [ownershipUntil, setOwnershipUntil] = React.useState<string | null>(null);
-
-  // The group being tagged does not exist yet, so there is no id to resolve
-  // constraints against — only the tags the approver has picked. That is what
-  // the endpoint's tag mode is for, and it keeps the coalescing on the server
-  // here too.
-  const tagConstraints = useConstraintsForTags(selectedTags.map((tag) => tag.id));
-  const ownershipTimeLimit = tagConstraints.timeLimit(true);
 
   const {data, isError, isLoading} = useGroupRequestById({
     pathParams: {groupRequestId: id ?? ''},
@@ -268,9 +266,46 @@ export default function ReadGroupRequest() {
   React.useEffect(() => {
     if (!appSeeded && requestedAppData?.name) {
       setAppName(requestedAppData.name);
+      setResolvedAppId(requestedAppData.id ?? null);
       setAppSeeded(true);
     }
   }, [requestedAppData, appSeeded]);
+
+  // Reloaded for the resolved app, which is the requested one until the
+  // approver picks another; the app search results carry no tags of their own.
+  // React Query serves the requested app from cache while the two agree.
+  const {data: resolvedAppData} = useAppById(
+    {pathParams: {appId: resolvedAppId ?? ''}},
+    {enabled: resolvedAppId != null && groupType === 'app_group'},
+  );
+
+  // The tags `CreateGroup` will copy from the app onto the new group. Only an
+  // app group inherits them, so a type the approver has switched away from
+  // `app_group` contributes none. Tags already chosen directly are left out:
+  // the Tags field is showing them, and the constraint reader deduplicates.
+  const inheritedAppTags = React.useMemo<TagSummary[]>(() => {
+    if (groupType !== 'app_group') return [];
+    const chosen = new Set(selectedTags.map((tag) => tag.id));
+    const appTagMaps: AppTagMapDetail[] = resolvedAppData?.active_app_tags ?? [];
+    return appTagMaps
+      .map((mapping) => mapping.active_tag)
+      .filter((tag): tag is TagSummary => tag != null && !chosen.has(tag.id));
+  }, [groupType, resolvedAppData, selectedTags]);
+
+  // The group being tagged does not exist yet, so there is no id to resolve
+  // constraints against — only the tags it will be created with. That is what
+  // the endpoint's tag mode is for, and it keeps the coalescing on the server
+  // here too.
+  //
+  // An app group carries the app's tags on top of the chosen ones, so both go
+  // in: asking about the chosen tags alone reports weaker constraints than
+  // creation applies, and the approver is offered durations that
+  // `ApproveGroupRequest` then quietly shortens.
+  const tagConstraints = useConstraintsForTags([
+    ...selectedTags.map((tag) => tag.id),
+    ...inheritedAppTags.map((tag) => tag.id),
+  ]);
+  const ownershipTimeLimit = tagConstraints.timeLimit(true);
 
   const isAppOwner = React.useMemo<boolean>(() => {
     if (admin || ownRequest || requestedGroupType !== 'app_group' || !requestedAppId) {
@@ -809,6 +844,7 @@ export default function ReadGroupRequest() {
                                         onChange={(value) => {
                                           setGroupType(value);
                                           setAppName('');
+                                          setResolvedAppId(null);
                                         }}
                                         required
                                         // `readOnly`, not `disabled`: react-hook-form omits a
@@ -835,8 +871,10 @@ export default function ReadGroupRequest() {
                                               option.id == value?.id,
                                             onInputChange: (_event: React.SyntheticEvent, newInputValue: string) =>
                                               setAppSearchInput(newInputValue),
-                                            onChange: (_event: React.SyntheticEvent, value: AppDetail | null) =>
-                                              setAppName(value?.name ?? ''),
+                                            onChange: (_event: React.SyntheticEvent, value: AppDetail | null) => {
+                                              setAppName(value?.name ?? '');
+                                              setResolvedAppId(value?.id ?? null);
+                                            },
                                             // `readOnly`, not `disabled`: react-hook-form clears a disabled field's value, and
                                             // rhf-mui forwards `autocompleteProps.disabled` into `useController`, so disabling
                                             // this would drop the app from the submitted form.
@@ -915,7 +953,10 @@ export default function ReadGroupRequest() {
                                     }}
                                   />
                                 </FormControl>
-                                <Grid container columnSpacing={2} rowSpacing={0} alignItems="center">
+                                {/* Top-aligned, not centred: the Tags column grows when the
+                                    app contributes tags of its own, and centring would drop the
+                                    duration field below the field beside it. */}
+                                <Grid container columnSpacing={2} rowSpacing={0} alignItems="flex-start">
                                   {ownershipTimeLimit != null && (
                                     <Grid item xs={12}>
                                       <Typography variant="subtitle2" color="text.accent" sx={{pt: 1}}>
@@ -950,6 +991,23 @@ export default function ReadGroupRequest() {
                                           <TextField {...params} label="Tags" placeholder="Tags" />
                                         )}
                                       />
+                                      {/* Shown outside the Tags field because these are not
+                                          the approver's to choose or remove, and because only
+                                          the chosen ones are submitted: the group picks these
+                                          up from the app, and submitting them here would
+                                          write a second, direct tag that outlives the app's. */}
+                                      {inheritedAppTags.length > 0 && (
+                                        <Box sx={{marginTop: '8px'}}>
+                                          <Typography variant="caption" color="text.secondary">
+                                            Also inherited from {appName}:
+                                          </Typography>
+                                          <Box sx={{display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px'}}>
+                                            {inheritedAppTags.map((tag) => (
+                                              <Chip key={tag.id} size="small" variant="outlined" label={tag.name} />
+                                            ))}
+                                          </Box>
+                                        </Box>
+                                      )}
                                     </FormControl>
                                   </Grid>
                                 </Grid>

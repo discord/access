@@ -4,10 +4,20 @@ import userEvent from '@testing-library/user-event';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 
 import {AppDetail, GroupRequestDetail, OktaUserDetail} from '../../api/apiSchemas';
+import {ACCESS_APP_RESERVED_NAME} from '../../authorization';
 
 const resolveMutate = vi.fn();
 
-const APP = {id: 'zendesk-sandbox-0000', name: 'HammerAndChiselZendeskSandbox'} as unknown as AppDetail;
+const APP_TAG = {id: 'sox-tag-00000000000', name: 'SOX'};
+
+// The app carries a tag of its own. `CreateGroup` copies it onto every group
+// created under the app, so it binds the new group whether or not the approver
+// picks it.
+const APP = {
+  id: 'zendesk-sandbox-0000',
+  name: 'HammerAndChiselZendeskSandbox',
+  active_app_tags: [{active_tag: APP_TAG}],
+} as unknown as AppDetail;
 
 // A tag the request names. The tag *list* mock below returns nothing, so this
 // can only be resolved by asking for it by id.
@@ -53,12 +63,15 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-vi.mock('../../authentication', () => ({useCurrentUser: () => APP_OWNER}));
+let currentUser: OktaUserDetail = APP_OWNER;
+vi.mock('../../authentication', () => ({useCurrentUser: () => currentUser}));
 
-// The page asks the constraints endpoint what the selected tags impose, which
-// needs a QueryClient this render does not provide. Stand in a resolved reader,
-// restricting nothing unless a test sets an owner-side limit.
+// The page asks the constraints endpoint what the tags impose, which needs a
+// QueryClient this render does not provide. Stand in a resolved reader that
+// restricts nothing unless a test sets an owner-side limit, and record the ids
+// it is asked about so the tests below can assert which tags it covers.
 let ownerTimeLimit: number | null = null;
+const constraintsAskedFor = vi.fn();
 vi.mock('../../constraints', () => {
   const reader = () => ({
     timeLimit: (isOwner: boolean) => (isOwner ? ownerTimeLimit : null),
@@ -67,13 +80,16 @@ vi.mock('../../constraints', () => {
   });
   return {
     timeLimitLabel: (seconds: number) => `${seconds / 86400} days`,
-    useConstraintsForTags: () => ({
-      pending: false,
-      error: null,
-      blocked: false,
-      ...reader(),
-      forGroup: reader,
-    }),
+    useConstraintsForTags: (ids: string[]) => {
+      constraintsAskedFor(ids);
+      return {
+        pending: false,
+        error: null,
+        blocked: false,
+        ...reader(),
+        forGroup: reader,
+      };
+    },
   };
 });
 
@@ -103,8 +119,13 @@ const renderPage = () =>
 
 beforeEach(() => {
   resolveMutate.mockClear();
+  constraintsAskedFor.mockClear();
+  currentUser = APP_OWNER;
   ownerTimeLimit = null;
 });
+
+// The last id set the page asked about, which is what it will act on.
+const lastConstraintQuery = (): string[] => constraintsAskedFor.mock.calls.at(-1)![0];
 
 describe('an app owner approving an app group request', () => {
   // The Type select is locked for a non-admin approver. `submit` derives the resolved
@@ -169,5 +190,57 @@ describe('an ownership duration the tag forbids', () => {
     const select = screen.getByRole('combobox', {name: /Ownership Ending At/});
     await waitFor(() => expect(select).toHaveTextContent('90 Days'));
     expect(select).not.toHaveTextContent('Indefinite');
+  });
+});
+
+// A group created under an app carries that app's tags on top of the ones the
+// approver picks, so the approval form has to answer for both: the durations it
+// offers come from the constraints it asked about, and `ApproveGroupRequest`
+// shortens the granted ownership against the tags the group actually ends up
+// with.
+describe('tags an app group inherits from its app', () => {
+  it('asks about them alongside the tags the approver picked', async () => {
+    renderPage();
+
+    await screen.findByRole('button', {name: /Approve/});
+    await waitFor(() => expect(lastConstraintQuery()).toContain(APP_TAG.id));
+  });
+
+  it('shows them as belonging to the app rather than as a choice', async () => {
+    renderPage();
+
+    expect(await screen.findByText(`Also inherited from ${APP.name}:`)).toBeInTheDocument();
+    expect(screen.getByText(APP_TAG.name)).toBeInTheDocument();
+  });
+
+  it('leaves them out of the resolved tags, which the app supplies on its own', async () => {
+    renderPage();
+
+    const approve = await screen.findByRole('button', {name: /Approve/});
+    await userEvent.click(approve);
+
+    await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
+    // Submitting them would write a second tag map with no link to the app, so
+    // the tag would stay on the group after being removed from the app.
+    expect(resolveMutate.mock.calls[0][0].body.resolved_group_tags).not.toContain(APP_TAG.id);
+  });
+
+  it('stops asking about them once the type is no longer an app group', async () => {
+    // Only an Access admin can change the type; an app owner's select is read-only.
+    currentUser = {
+      ...APP_OWNER,
+      active_group_memberships: [
+        {active_group: {type: 'app_group', is_owner: true, app: {name: ACCESS_APP_RESERVED_NAME}}},
+      ],
+    } as unknown as OktaUserDetail;
+    renderPage();
+
+    await waitFor(() => expect(lastConstraintQuery()).toContain(APP_TAG.id));
+
+    await userEvent.click(await screen.findByRole('combobox', {name: 'Type'}));
+    await userEvent.click(await screen.findByRole('option', {name: 'Group'}));
+
+    await waitFor(() => expect(lastConstraintQuery()).not.toContain(APP_TAG.id));
+    expect(screen.queryByText(`Also inherited from ${APP.name}:`)).not.toBeInTheDocument();
   });
 });
