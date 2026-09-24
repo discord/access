@@ -11,13 +11,14 @@ import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
+import Divider from '@mui/material/Divider';
 import EditIcon from '@mui/icons-material/Edit';
 import FormControl from '@mui/material/FormControl';
 import Grid from '@mui/material/Grid';
 import IconButton from '@mui/material/IconButton';
-import Tooltip from '@mui/material/Tooltip';
+import Typography from '@mui/material/Typography';
 
-import {ToggleButtonGroupElement, FormContainer, TextFieldElement} from 'react-hook-form-mui';
+import {CheckboxElement, FormContainer, RadioButtonGroup, TextFieldElement} from 'react-hook-form-mui';
 import {useWatch} from 'react-hook-form';
 
 import {
@@ -29,13 +30,23 @@ import {
   TagByIdPutVariables,
 } from '../../api/apiComponents';
 import NumberInput from '../../components/NumberInput';
+import {ConstraintHelpButton, ConstraintHelpRegion, useHelpRegionId} from '../../components/ConstraintHelp';
 import {
-  MEMBER_SELF_ADD_LABEL,
-  OWNER_SELF_ADD_LABEL,
-  SELF_ADD_NEEDS_PROPAGATION,
-  propagationConflictMessage,
-  selfAddRestrictionAvailable,
-} from './propagationRules';
+  CONSTRAINT_ROW_LABELS,
+  DISALLOW_SELF_ADD_MEMBERSHIP,
+  DISALLOW_SELF_ADD_OWNERSHIP,
+  MEMBER_TIME_LIMIT,
+  OWNER_TIME_LIMIT,
+  REQUIRE_MEMBER_REASON,
+  REQUIRE_OWNER_REASON,
+  SCOPE_LABELS,
+  SCOPE_SUMMARIES,
+  constraintDetail,
+  constraintLabel,
+  constraintSummary,
+} from '../../constraintCopy';
+import {propagationConflictMessage, selfAddRestrictionAvailable} from './propagationRules';
+import {DORMANT_UNTIL_ENABLED, TagSettings, tighteningEffects} from './tagChanges';
 import {OktaUserDetail, TagDetail} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
@@ -65,11 +76,10 @@ interface CreateTagForm {
   name: string;
   description?: string;
   enabled?: string;
-  customUntil?: string;
-  ownerReason?: string;
-  memberReason?: string;
-  ownerAdd?: string;
-  memberAdd?: string;
+  ownerReason?: boolean;
+  memberReason?: boolean;
+  ownerAdd?: boolean;
+  memberAdd?: boolean;
   propagateToRoles: string;
 }
 
@@ -79,65 +89,357 @@ interface TagDialogProps {
   tag?: TagDetail;
 }
 
-// A self-add restriction and propagation are not independently configurable
-// (`propagationRules.ts` carries the reason), so each control disables the
-// option that would produce the forbidden pair. That makes the combination
-// unreachable rather than rejected after the fact, and each control explains
-// the restriction while it is in effect.
-//
-// Both read sibling fields, so both must render inside `FormContainer`.
-function SelfAddToggle(props: {name: 'ownerAdd' | 'memberAdd'; label: string}) {
-  const propagateToRoles = useWatch<CreateTagForm>({name: 'propagateToRoles'});
-  const withoutPropagation = !selfAddRestrictionAvailable(propagateToRoles);
+// The scope choice is the form's `propagateToRoles` field, named for what each
+// option does rather than for the flag it sets: "Propagate these constraints to
+// roles?" can only be answered by someone who already knows what propagation
+// means, which is the question the control is there to settle.
+const SCOPE_ROLES = 'yes';
+const SCOPE_GROUPS_ONLY = 'no';
+
+// The two values of the form's `enabled` field. A disabled tag enforces none of
+// its constraints, so `BlastRadius` reads this alongside the constraints
+// themselves rather than treating it as presentation.
+const ENABLED = 'enabled';
+const DISABLED = 'disabled';
+
+/**
+ * Where the tag's constraints apply, and why the narrow option may be unavailable.
+ *
+ * Asked of the value the control would take: the message names whichever
+ * restrictions are keeping the narrow scope out of reach, or is null when none are.
+ */
+function ScopeChoice() {
+  const ownerAdd = useWatch<CreateTagForm>({name: 'ownerAdd'});
+  const memberAdd = useWatch<CreateTagForm>({name: 'memberAdd'});
+  const conflict = propagationConflictMessage({
+    propagateToRoles: SCOPE_GROUPS_ONLY,
+    ownerAdd: ownerAdd as boolean | undefined,
+    memberAdd: memberAdd as boolean | undefined,
+  });
   return (
-    <FormControl fullWidth sx={{marginTop: '18px'}}>
-      <Box sx={{marginLeft: '3px'}}>{props.label}?:</Box>
-      <ToggleButtonGroupElement
-        name={props.name}
-        enforceAtLeastOneSelected
-        exclusive
-        required
-        helperText={withoutPropagation ? SELF_ADD_NEEDS_PROPAGATION : undefined}
+    <Box
+      sx={{
+        backgroundColor: (theme) => theme.palette.action.hover,
+        borderRadius: 1,
+        padding: '10px 12px',
+        marginTop: '12px',
+      }}>
+      <Typography variant="body2" sx={{fontWeight: 'medium'}}>
+        Constraint scope
+      </Typography>
+      <RadioButtonGroup
+        name="propagateToRoles"
+        helperText={conflict ?? undefined}
         options={[
-          {id: 'yes', label: 'Yes', disabled: withoutPropagation},
-          {id: 'no', label: 'No'},
+          {id: SCOPE_ROLES, label: `${SCOPE_LABELS.roles}: ${SCOPE_SUMMARIES.roles}`},
+          {
+            id: SCOPE_GROUPS_ONLY,
+            label: `${SCOPE_LABELS.groupsOnly}: ${SCOPE_SUMMARIES.groupsOnly}`,
+            disabled: conflict !== null,
+          },
         ]}
       />
-    </FormControl>
+    </Box>
   );
 }
 
-function PropagationToggle() {
-  const ownerAdd = useWatch<CreateTagForm>({name: 'ownerAdd'});
-  const memberAdd = useWatch<CreateTagForm>({name: 'memberAdd'});
-  // Asked of the value the control would take: the message names whichever
-  // restrictions are keeping "No" unavailable, or is null when none are.
-  const conflict = propagationConflictMessage({propagateToRoles: 'no', ownerAdd, memberAdd});
+/**
+ * One side of a constraint row: the control, its help button, and its helper line.
+ *
+ * The button sits on the control it explains rather than on the row label, so each
+ * one answers for a single constraint. `onHelp` lifts the open state to the row,
+ * which owns the region: the prose needs both columns, and a region inside this
+ * cell would stretch its neighbour.
+ */
+function ConstraintCell({
+  constraint,
+  propagates,
+  expanded,
+  onHelp,
+  regionId,
+  children,
+}: {
+  constraint: string;
+  propagates: boolean;
+  expanded: boolean;
+  onHelp: () => void;
+  regionId: string;
+  children: React.ReactNode;
+}) {
   return (
-    <FormControl fullWidth sx={{marginTop: '18px'}}>
-      <Tooltip
-        title={
-          'When yes, these constraints also apply to any role that is a member or owner of a group ' +
-          "carrying this tag: The role's own members must satisfy the same time limits, reason " +
-          'requirements, and self-add restrictions. When no, the constraints apply only to the tagged ' +
-          'groups themselves. This is not the same as disabling the tag, which turns off its ' +
-          'enforcement everywhere.'
+    <>
+      <Box sx={{display: 'flex', alignItems: 'center', gap: '4px'}}>
+        <Box sx={{flex: 1, minWidth: 0}}>{children}</Box>
+        <ConstraintHelpButton
+          label={constraintLabel(constraint)}
+          expanded={expanded}
+          onToggle={onHelp}
+          regionId={regionId}
+        />
+      </Box>
+      <Typography variant="caption" color="text.secondary" sx={{display: 'block', marginTop: '2px'}}>
+        {constraintSummary(constraint, propagates)}
+      </Typography>
+    </>
+  );
+}
+
+/**
+ * A constraint's on/off control.
+ *
+ * The visible label is "Yes" because the row label and the column header already
+ * name the setting between them. Those sit in sibling grid cells, though, which
+ * name nothing to a screen reader -- four checkboxes all announcing "Yes" -- so the
+ * constraint's own name is supplied as the input's accessible name.
+ */
+function ConstraintCheckbox({
+  name,
+  constraint,
+  disabled,
+}: {
+  name: 'memberReason' | 'ownerReason' | 'memberAdd' | 'ownerAdd';
+  constraint: string;
+  disabled?: boolean;
+}) {
+  return (
+    <CheckboxElement
+      name={name}
+      label="Yes"
+      disabled={disabled}
+      inputProps={{'aria-label': constraintLabel(constraint)}}
+    />
+  );
+}
+
+/**
+ * One row of the matrix: a setting, its membership and ownership controls, and
+ * whichever side's help is open.
+ *
+ * At most one side is open at a time. Two open regions would push the row's
+ * controls far apart, and the question a reader has is about the control they just
+ * clicked, not both.
+ */
+function ConstraintRow({
+  label,
+  memberConstraint,
+  ownerConstraint,
+  propagates,
+  memberControl,
+  ownerControl,
+}: {
+  label: string;
+  memberConstraint: string;
+  ownerConstraint: string;
+  propagates: boolean;
+  memberControl: React.ReactNode;
+  ownerControl: React.ReactNode;
+}) {
+  const [openSide, setOpenSide] = React.useState<string | null>(null);
+  const toggle = (constraint: string) => setOpenSide((current) => (current === constraint ? null : constraint));
+  // Scoped to this row rather than built from the constraint key, which the tag
+  // page also renders behind this dialog; see `useHelpRegionId`.
+  const regionId = useHelpRegionId();
+  return (
+    <>
+      <Grid item xs={3} sx={{paddingTop: '20px !important'}}>
+        <Typography variant="body2">{label}</Typography>
+      </Grid>
+      <Grid item xs={4.5}>
+        <ConstraintCell
+          constraint={memberConstraint}
+          propagates={propagates}
+          expanded={openSide === memberConstraint}
+          onHelp={() => toggle(memberConstraint)}
+          regionId={regionId(memberConstraint)}>
+          {memberControl}
+        </ConstraintCell>
+      </Grid>
+      <Grid item xs={4.5}>
+        <ConstraintCell
+          constraint={ownerConstraint}
+          propagates={propagates}
+          expanded={openSide === ownerConstraint}
+          onHelp={() => toggle(ownerConstraint)}
+          regionId={regionId(ownerConstraint)}>
+          {ownerControl}
+        </ConstraintCell>
+      </Grid>
+      {openSide != null && (
+        <Grid item xs={12} sx={{paddingTop: '0 !important'}}>
+          <ConstraintHelpRegion
+            expanded
+            regionId={regionId(openSide)}
+            sections={[{label: constraintLabel(openSide), paragraphs: constraintDetail(openSide, propagates)}]}
+          />
+        </Grid>
+      )}
+    </>
+  );
+}
+
+/** The constraint matrix: three settings, each with a membership and an owner side. */
+function ConstraintMatrix({
+  setDaysMember,
+  defaultDaysMember,
+  setDaysOwner,
+  defaultDaysOwner,
+}: {
+  setDaysMember: (value: number | undefined) => void;
+  defaultDaysMember: number | undefined;
+  setDaysOwner: (value: number | undefined) => void;
+  defaultDaysOwner: number | undefined;
+}) {
+  const propagates = useWatch<CreateTagForm>({name: 'propagateToRoles'}) !== SCOPE_GROUPS_ONLY;
+  // A self-add restriction and the narrower scope are not independently
+  // configurable (`propagationRules.ts` carries the reason), so the checkbox is
+  // disabled rather than rejected after the fact. The helper line says why.
+  const selfAddAvailable = selfAddRestrictionAvailable(propagates ? SCOPE_ROLES : SCOPE_GROUPS_ONLY);
+
+  return (
+    <Grid container columnSpacing={2} rowSpacing={2} sx={{marginTop: '4px'}}>
+      <Grid item xs={3} />
+      <Grid item xs={4.5}>
+        <Typography variant="caption" color="text.secondary">
+          Membership
+        </Typography>
+      </Grid>
+      <Grid item xs={4.5}>
+        <Typography variant="caption" color="text.secondary">
+          Ownership
+        </Typography>
+      </Grid>
+
+      <ConstraintRow
+        label={CONSTRAINT_ROW_LABELS.timeLimit}
+        memberConstraint={MEMBER_TIME_LIMIT}
+        ownerConstraint={OWNER_TIME_LIMIT}
+        propagates={propagates}
+        memberControl={
+          <NumberInput
+            label="Membership time limit in days"
+            setValue={setDaysMember}
+            min={1}
+            default={defaultDaysMember}
+            endAdornment="days"
+          />
         }
-        placement="top-start">
-        <Box sx={{marginLeft: '3px', width: 'fit-content'}}>Propagate these constraints to roles?</Box>
-      </Tooltip>
-      <ToggleButtonGroupElement
-        name="propagateToRoles"
-        enforceAtLeastOneSelected
-        exclusive
-        required
-        helperText={conflict ?? undefined}
-        options={[
-          {id: 'yes', label: 'Yes'},
-          {id: 'no', label: 'No', disabled: conflict !== null},
-        ]}
+        ownerControl={
+          <NumberInput
+            label="Ownership time limit in days"
+            setValue={setDaysOwner}
+            min={1}
+            default={defaultDaysOwner}
+            endAdornment="days"
+          />
+        }
       />
-    </FormControl>
+
+      <ConstraintRow
+        label={CONSTRAINT_ROW_LABELS.requireReason}
+        memberConstraint={REQUIRE_MEMBER_REASON}
+        ownerConstraint={REQUIRE_OWNER_REASON}
+        propagates={propagates}
+        memberControl={<ConstraintCheckbox name="memberReason" constraint={REQUIRE_MEMBER_REASON} />}
+        ownerControl={<ConstraintCheckbox name="ownerReason" constraint={REQUIRE_OWNER_REASON} />}
+      />
+
+      <ConstraintRow
+        label={CONSTRAINT_ROW_LABELS.disallowSelfAdd}
+        memberConstraint={DISALLOW_SELF_ADD_MEMBERSHIP}
+        ownerConstraint={DISALLOW_SELF_ADD_OWNERSHIP}
+        propagates={propagates}
+        memberControl={
+          <ConstraintCheckbox name="memberAdd" constraint={DISALLOW_SELF_ADD_MEMBERSHIP} disabled={!selfAddAvailable} />
+        }
+        ownerControl={
+          <ConstraintCheckbox name="ownerAdd" constraint={DISALLOW_SELF_ADD_OWNERSHIP} disabled={!selfAddAvailable} />
+        }
+      />
+    </Grid>
+  );
+}
+
+/**
+ * What saving will do to access that already exists.
+ *
+ * Shown only when something tightens. Loosening a tag -- raising a limit, clearing
+ * a requirement, narrowing its scope, disabling it -- changes nothing that is
+ * already granted, so a warning there would cry wolf and teach an admin to skip
+ * reading it.
+ *
+ * Enabling a tag counts as tightening everything it carries, which is the largest
+ * change this dialog makes; `tagChanges.ts` explains how that is measured. A tag
+ * that will not be enabled on save still lists its effects, qualified by
+ * `DORMANT_UNTIL_ENABLED`, since they describe the tag being saved.
+ */
+function BlastRadius({tag, daysMember, daysOwner}: {tag?: TagDetail; daysMember?: number; daysOwner?: number}) {
+  // Watched per field rather than as a whole: `useWatch()` with no name does not
+  // report the form's values here, and a silently-empty read made the warning
+  // describe a tag nobody was editing.
+  const propagateToRoles = useWatch<CreateTagForm>({name: 'propagateToRoles'});
+  const memberReason = useWatch<CreateTagForm>({name: 'memberReason'});
+  const ownerReason = useWatch<CreateTagForm>({name: 'ownerReason'});
+  const memberAdd = useWatch<CreateTagForm>({name: 'memberAdd'});
+  const ownerAdd = useWatch<CreateTagForm>({name: 'ownerAdd'});
+  const enabled = useWatch<CreateTagForm>({name: 'enabled'});
+  const apps = tag?.active_app_tags?.length ?? 0;
+  const groups = tag?.active_group_tags?.length ?? 0;
+  if (tag == null || (apps === 0 && groups === 0)) {
+    return null;
+  }
+
+  const stored = tag.constraints ?? {};
+  const savedDays = (key: string) => (stored[key] ? Math.floor(stored[key] / 86400) : undefined);
+  const before: TagSettings = {
+    memberTimeLimitDays: savedDays(MEMBER_TIME_LIMIT),
+    ownerTimeLimitDays: savedDays(OWNER_TIME_LIMIT),
+    requireMemberReason: stored[REQUIRE_MEMBER_REASON] === true,
+    requireOwnerReason: stored[REQUIRE_OWNER_REASON] === true,
+    disallowSelfAddMembership: stored[DISALLOW_SELF_ADD_MEMBERSHIP] === true,
+    disallowSelfAddOwnership: stored[DISALLOW_SELF_ADD_OWNERSHIP] === true,
+    propagatesToRoles: tag.propagate_to_roles ?? true,
+    // `?? true` to match the server default, as with `propagate_to_roles`.
+    enabled: tag.enabled ?? true,
+  };
+  const after: TagSettings = {
+    memberTimeLimitDays: daysMember,
+    ownerTimeLimitDays: daysOwner,
+    requireMemberReason: memberReason === true,
+    requireOwnerReason: ownerReason === true,
+    disallowSelfAddMembership: memberAdd === true,
+    disallowSelfAddOwnership: ownerAdd === true,
+    propagatesToRoles: propagateToRoles !== SCOPE_GROUPS_ONLY,
+    enabled: enabled === ENABLED,
+  };
+
+  const effects = tighteningEffects(before, after);
+  if (effects.length === 0) {
+    return null;
+  }
+
+  const where = [
+    apps > 0 ? `${apps} app${apps === 1 ? '' : 's'}` : '',
+    groups > 0 ? `${groups} group${groups === 1 ? '' : 's'}` : '',
+  ]
+    .filter(Boolean)
+    .join(' and ');
+
+  return (
+    <Alert severity="warning" sx={{marginTop: '16px'}}>
+      <Typography variant="body2" sx={{fontWeight: 'medium'}}>
+        This tightens a tag applied to {where}.
+      </Typography>
+      {effects.map((effect) => (
+        <Typography key={effect} variant="body2">
+          {effect}
+        </Typography>
+      ))}
+      {!after.enabled && (
+        <Typography variant="body2" sx={{marginTop: '4px', fontStyle: 'italic'}}>
+          {DORMANT_UNTIL_ENABLED}
+        </Typography>
+      )}
+    </Alert>
   );
 }
 
@@ -147,13 +449,13 @@ function TagDialog(props: TagDialogProps) {
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
   const defaultDaysMember =
-    props.tag && props.tag.constraints && props.tag.constraints['member_time_limit']
-      ? Math.floor(props.tag.constraints['member_time_limit'] / 86400)
+    props.tag && props.tag.constraints && props.tag.constraints[MEMBER_TIME_LIMIT]
+      ? Math.floor(props.tag.constraints[MEMBER_TIME_LIMIT] / 86400)
       : undefined;
   const [daysMember, setDaysMember] = React.useState<number | undefined>(defaultDaysMember);
   const defaultDaysOwner =
-    props.tag && props.tag.constraints && props.tag.constraints['owner_time_limit']
-      ? Math.floor(props.tag.constraints['owner_time_limit'] / 86400)
+    props.tag && props.tag.constraints && props.tag.constraints[OWNER_TIME_LIMIT]
+      ? Math.floor(props.tag.constraints[OWNER_TIME_LIMIT] / 86400)
       : undefined;
   const [daysOwner, setDaysOwner] = React.useState<number | undefined>(defaultDaysOwner);
 
@@ -189,37 +491,21 @@ function TagDialog(props: TagDialogProps) {
     const tag = {
       name: tagForm.name,
       description: tagForm.description,
-      enabled: tagForm.enabled == 'enabled',
-      propagate_to_roles: tagForm.propagateToRoles == 'yes',
+      enabled: tagForm.enabled == ENABLED,
+      propagate_to_roles: tagForm.propagateToRoles != SCOPE_GROUPS_ONLY,
     } as TagDetail;
 
     const constraints: Record<string, number | boolean> = {};
     if (daysMember) {
-      constraints['member_time_limit'] = daysMember * 86400;
+      constraints[MEMBER_TIME_LIMIT] = daysMember * 86400;
     }
     if (daysOwner) {
-      constraints['owner_time_limit'] = daysOwner * 86400;
+      constraints[OWNER_TIME_LIMIT] = daysOwner * 86400;
     }
-    if (tagForm.ownerReason == 'yes') {
-      constraints['require_owner_reason'] = true;
-    } else {
-      constraints['require_owner_reason'] = false;
-    }
-    if (tagForm.memberReason == 'yes') {
-      constraints['require_member_reason'] = true;
-    } else {
-      constraints['require_member_reason'] = false;
-    }
-    if (tagForm.ownerAdd == 'yes') {
-      constraints['disallow_self_add_ownership'] = true;
-    } else {
-      constraints['disallow_self_add_ownership'] = false;
-    }
-    if (tagForm.memberAdd == 'yes') {
-      constraints['disallow_self_add_membership'] = true;
-    } else {
-      constraints['disallow_self_add_membership'] = false;
-    }
+    constraints[REQUIRE_OWNER_REASON] = tagForm.ownerReason === true;
+    constraints[REQUIRE_MEMBER_REASON] = tagForm.memberReason === true;
+    constraints[DISALLOW_SELF_ADD_OWNERSHIP] = tagForm.ownerAdd === true;
+    constraints[DISALLOW_SELF_ADD_MEMBERSHIP] = tagForm.memberAdd === true;
 
     tag.constraints = constraints;
 
@@ -234,35 +520,28 @@ function TagDialog(props: TagDialogProps) {
   };
 
   const createOrUpdateText = props.tag == null ? 'Create' : 'Update';
+  const flag = (key: string) => (props.tag?.constraints ? props.tag.constraints[key] === true : false);
 
   return (
-    <Dialog open fullWidth onClose={() => props.setOpen(false)}>
+    <Dialog open fullWidth maxWidth="md" onClose={() => props.setOpen(false)}>
       <FormContainer<CreateTagForm>
         defaultValues={{
           name: props.tag?.name ?? '',
           description: props.tag?.description ?? '',
-          enabled: props.tag ? (props.tag.enabled ? 'enabled' : 'disabled') : 'enabled',
-          ownerReason:
-            props.tag && props.tag.constraints ? (props.tag.constraints.require_owner_reason ? 'yes' : 'no') : 'no',
-          memberReason:
-            props.tag && props.tag.constraints ? (props.tag.constraints.require_member_reason ? 'yes' : 'no') : 'no',
-          ownerAdd:
-            props.tag && props.tag.constraints
-              ? props.tag.constraints.disallow_self_add_ownership
-                ? 'yes'
-                : 'no'
-              : 'no',
-          memberAdd:
-            props.tag && props.tag.constraints
-              ? props.tag.constraints.disallow_self_add_membership
-                ? 'yes'
-                : 'no'
-              : 'no',
+          enabled: props.tag ? (props.tag.enabled ? ENABLED : DISABLED) : ENABLED,
+          ownerReason: flag(REQUIRE_OWNER_REASON),
+          memberReason: flag(REQUIRE_MEMBER_REASON),
+          ownerAdd: flag(DISALLOW_SELF_ADD_OWNERSHIP),
+          memberAdd: flag(DISALLOW_SELF_ADD_MEMBERSHIP),
           // `?? true` rather than a bare truthiness check: the field is
           // optional in the generated type and the server default is `true`,
-          // so an absent value must prefill "yes", not "no" -- otherwise
-          // opening and saving an older tag silently turns propagation off.
-          propagateToRoles: props.tag ? (props.tag.propagate_to_roles ?? true ? 'yes' : 'no') : 'yes',
+          // so an absent value must prefill the wider scope -- otherwise
+          // opening and saving an older tag silently narrows it.
+          propagateToRoles: props.tag
+            ? props.tag.propagate_to_roles ?? true
+              ? SCOPE_ROLES
+              : SCOPE_GROUPS_ONLY
+            : SCOPE_ROLES,
         }}
         onSuccess={(formData) => submit(formData)}>
         <DialogTitle>{createOrUpdateText} Tag</DialogTitle>
@@ -300,21 +579,13 @@ function TagDialog(props: TagDialogProps) {
               </FormControl>
             </Grid>
             <Grid item xs={4}>
-              <FormControl fullWidth sx={{marginTop: '18px'}}>
-                <ToggleButtonGroupElement
+              <FormControl fullWidth sx={{marginTop: '14px'}}>
+                <RadioButtonGroup
                   name="enabled"
-                  enforceAtLeastOneSelected
-                  exclusive
-                  required
+                  row
                   options={[
-                    {
-                      id: 'enabled',
-                      label: 'Enabled',
-                    },
-                    {
-                      id: 'disabled',
-                      label: 'Disabled',
-                    },
+                    {id: ENABLED, label: 'Enabled'},
+                    {id: DISABLED, label: 'Disabled'},
                   ]}
                 />
               </FormControl>
@@ -325,7 +596,7 @@ function TagDialog(props: TagDialogProps) {
               label="Description"
               name="description"
               multiline
-              rows={4}
+              rows={3}
               rules={{maxLength: 1024}}
               parseError={(error) => {
                 if (error?.message != '') {
@@ -339,90 +610,25 @@ function TagDialog(props: TagDialogProps) {
               required={requireDescriptions}
             />
           </FormControl>
-          <Box sx={{fontWeight: 'medium', fontSize: 18, margin: '8px 0 4px 0'}}>Optional constraints</Box>
-          <Grid container spacing={1}>
-            <Grid item xs={6}>
-              <FormControl fullWidth>
-                <Box sx={{marginLeft: '3px'}}>Owner time limit:</Box>
-                <NumberInput
-                  label={'days'}
-                  setValue={setDaysOwner}
-                  min={1}
-                  default={defaultDaysOwner ? defaultDaysOwner : undefined}
-                  endAdornment="days"
-                />
-              </FormControl>
-            </Grid>
-            <Grid item xs={6}>
-              <FormControl fullWidth>
-                <Box sx={{marginLeft: '3px'}}>Member time limit:</Box>
-                <NumberInput
-                  label={'days'}
-                  setValue={setDaysMember}
-                  min={1}
-                  default={defaultDaysMember ? defaultDaysMember : undefined}
-                  endAdornment="days"
-                />
-              </FormControl>
-            </Grid>
-          </Grid>
-          <Grid container spacing={1}>
-            <Grid item xs={6}>
-              <FormControl fullWidth sx={{marginTop: '18px'}}>
-                <Box sx={{marginLeft: '3px'}}>Require ownership justification?:</Box>
-                <ToggleButtonGroupElement
-                  name="ownerReason"
-                  enforceAtLeastOneSelected
-                  exclusive
-                  required
-                  options={[
-                    {
-                      id: 'yes',
-                      label: 'Yes',
-                    },
-                    {
-                      id: 'no',
-                      label: 'No',
-                    },
-                  ]}
-                />
-              </FormControl>
-            </Grid>
-            <Grid item xs={6}>
-              <FormControl fullWidth sx={{marginTop: '18px'}}>
-                <Box sx={{marginLeft: '3px'}}>Require membership justification?:</Box>
-                <ToggleButtonGroupElement
-                  name="memberReason"
-                  enforceAtLeastOneSelected
-                  exclusive
-                  required
-                  options={[
-                    {
-                      id: 'yes',
-                      label: 'Yes',
-                    },
-                    {
-                      id: 'no',
-                      label: 'No',
-                    },
-                  ]}
-                />
-              </FormControl>
-            </Grid>
-          </Grid>
-          <Grid container spacing={1}>
-            <Grid item xs={6}>
-              <SelfAddToggle name="ownerAdd" label={OWNER_SELF_ADD_LABEL} />
-            </Grid>
-            <Grid item xs={6}>
-              <SelfAddToggle name="memberAdd" label={MEMBER_SELF_ADD_LABEL} />
-            </Grid>
-          </Grid>
-          <Grid container spacing={1}>
-            <Grid item xs={12}>
-              <PropagationToggle />
-            </Grid>
-          </Grid>
+
+          <Divider sx={{margin: '8px 0'}} />
+          <Typography variant="h6" sx={{fontSize: 18}}>
+            Constraints
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Leave a box unchecked or a limit blank to impose nothing.
+          </Typography>
+
+          <ScopeChoice />
+
+          <ConstraintMatrix
+            setDaysMember={setDaysMember}
+            defaultDaysMember={defaultDaysMember}
+            setDaysOwner={setDaysOwner}
+            defaultDaysOwner={defaultDaysOwner}
+          />
+
+          <BlastRadius tag={props.tag} daysMember={daysMember} daysOwner={daysOwner} />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => props.setOpen(false)}>Cancel</Button>

@@ -307,7 +307,6 @@ class EffectiveConstraintSourceDetail(BaseModel):
 class EffectiveConstraintDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     constraint: str
-    name: str
     # Every constraint in `Tag.CONSTRAINTS` is either a seconds count or a
     # flag. Spelling the union out (rather than `Any`) keeps the generated
     # TypeScript client from rendering this as `void`.

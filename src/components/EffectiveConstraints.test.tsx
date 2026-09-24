@@ -13,7 +13,6 @@ const REQUIRE_MEMBER_REASON = constraintLabel('require_member_reason');
 
 const timeLimit = {
   constraint: 'member_time_limit',
-  name: 'a name the panel should ignore',
   value: 7776000,
   sources: [
     {
@@ -28,7 +27,6 @@ const timeLimit = {
 
 const flag = {
   constraint: 'require_member_reason',
-  name: 'a name the panel should ignore',
   value: true,
   sources: [{tag_id: 't1', tag_name: 'SOX', origin: 'direct', source_id: null, source_name: null}],
 };
@@ -62,7 +60,7 @@ describe('EffectiveConstraints', () => {
 
   it('renders a time limit in days, folded into the constraint column', async () => {
     await openPanel([timeLimit]);
-    expect(screen.getByText(`${MEMBER_TIME_LIMIT} — 90 days`)).toBeInTheDocument();
+    expect(screen.getByText(`${MEMBER_TIME_LIMIT}: 90 days`)).toBeInTheDocument();
   });
 
   it('renders a flag without a value suffix', async () => {
@@ -90,7 +88,7 @@ describe('EffectiveConstraints', () => {
 
   it('links an app-inherited source to the app, not to a group', async () => {
     // The "source" of an app origin is an App, which lives at a different
-    // route — hence the origin-agnostic field names on the API side.
+    // route; hence the origin-agnostic field names on the API side.
     await openPanel([
       {...timeLimit, sources: [{...timeLimit.sources[0], origin: 'app', source_id: 'a1', source_name: 'Ledger'}]},
     ]);
@@ -116,7 +114,7 @@ describe('EffectiveConstraints', () => {
 
   it('rounds a time limit that does not divide evenly into days, and says "day" singular', async () => {
     await openPanel([{...timeLimit, value: 90000}]); // 1.0416... days
-    expect(screen.getByText(`${MEMBER_TIME_LIMIT} — 1 day`)).toBeInTheDocument();
+    expect(screen.getByText(`${MEMBER_TIME_LIMIT}: 1 day`)).toBeInTheDocument();
   });
 
   it('renders a sub-day time limit as "<1 day" rather than rounding it to "0 days"', async () => {
@@ -124,12 +122,12 @@ describe('EffectiveConstraints', () => {
     // requires a positive integer), and the propagation tests use exactly
     // this. Rounding it to the nearest day would claim no access at all.
     await openPanel([{...timeLimit, value: 3600}]);
-    expect(screen.getByText(`${MEMBER_TIME_LIMIT} — <1 day`)).toBeInTheDocument();
+    expect(screen.getByText(`${MEMBER_TIME_LIMIT}: <1 day`)).toBeInTheDocument();
   });
 
   it('renders an exactly-one-day limit as singular', async () => {
     await openPanel([{...timeLimit, value: 86400}]);
-    expect(screen.getByText(`${MEMBER_TIME_LIMIT} — 1 day`)).toBeInTheDocument();
+    expect(screen.getByText(`${MEMBER_TIME_LIMIT}: 1 day`)).toBeInTheDocument();
   });
 
   it('renders an unrecognized origin as itself, not as a false "direct" claim', async () => {
@@ -140,14 +138,6 @@ describe('EffectiveConstraints', () => {
       },
     ]);
     expect(screen.getByText(/some_future_origin/)).toBeInTheDocument();
-  });
-
-  it('names a constraint from the shared copy, not from the name the API sends', async () => {
-    // The two are separate vocabularies, and the app's own is the one every
-    // other surface uses. Asserting the API's string is absent is the point.
-    await openPanel([flag]);
-    expect(screen.queryByText('a name the panel should ignore')).not.toBeInTheDocument();
-    expect(screen.getByText(REQUIRE_MEMBER_REASON)).toBeInTheDocument();
   });
 
   it('falls back to the constraint key for a constraint this build has no copy for', async () => {
@@ -167,15 +157,15 @@ describe('EffectiveConstraints', () => {
     const rendered = screen.getAllByRole('row').map((row) => row.querySelector('th, td')?.textContent);
     expect(rendered).toEqual([
       'Constraint',
-      `${constraintLabel('member_time_limit')} — 90 days`,
-      `${constraintLabel('owner_time_limit')} — 90 days`,
+      `${constraintLabel('member_time_limit')}: 90 days`,
+      `${constraintLabel('owner_time_limit')}: 90 days`,
       constraintLabel('require_member_reason'),
       constraintLabel('disallow_self_add_ownership'),
     ]);
   });
 
   it('does not crash when a source entry omits `sources` (an optional field per the API contract)', async () => {
-    const {container} = await openPanel([{constraint: 'require_member_reason', name: 'ignored', value: true}]);
+    const {container} = await openPanel([{constraint: 'require_member_reason', value: true}]);
     expect(container).not.toBeEmptyDOMElement();
     expect(screen.getByText(REQUIRE_MEMBER_REASON)).toBeInTheDocument();
   });
