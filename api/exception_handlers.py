@@ -122,7 +122,11 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
             headers.setdefault("Cache-Control", "no-store")
             return _problem(status_code=404, detail="Not Found", headers=headers)
         if INDEX_HTML.exists():
-            return HTMLResponse(INDEX_HTML.read_text(), status_code=200)
+            # This is an error in disguise (for example an authenticated caller
+            # with no Access user row), and the raw build carries no CSP nonce.
+            # Without a Cache-Control a shared cache may store it under the
+            # route's URL and serve the broken shell to everyone.
+            return HTMLResponse(INDEX_HTML.read_text(), status_code=200, headers={"Cache-Control": "no-store"})
         return _problem(status_code=404, detail="Not Found", headers=exc.headers or None)
     # When the handler raises `HTTPException(detail={...})` it's already
     # supplying a structured body — pass it through as the problem-detail
