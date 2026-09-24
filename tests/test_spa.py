@@ -20,7 +20,7 @@ from typing import AsyncIterator
 
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from starlette.requests import Request
 
 from api import app as app_module
@@ -86,6 +86,33 @@ async def test_unhandled_asset_error_is_not_replaced_with_the_spa_shell(
     assert response.status_code == 500
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["content-type"] == "application/problem+json"
+
+
+async def test_non_api_404_fallback_shell_is_never_stored(stub_build_dir: Path) -> None:
+    # A 404 raised on a non-API path, such as "User not found" for an
+    # authenticated caller with no Access user row, falls back to the raw
+    # shell. That copy has no CSP nonce, so no cache may keep it.
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/groups/some-group",
+            "raw_path": b"/groups/some-group",
+            "query_string": b"",
+            "headers": [],
+            "client": ("127.0.0.1", 1234),
+            "server": ("testserver", 80),
+        }
+    )
+
+    response = await exception_handlers.http_exception_handler(
+        request, HTTPException(status_code=404, detail="User not found")
+    )
+
+    assert response.status_code == 200
+    assert response.body == b"<html><body>shell</body></html>"
+    assert response.headers["cache-control"] == "no-store"
 
 
 async def test_unknown_route_falls_back_to_spa_shell_without_caching(spa_client: httpx.AsyncClient) -> None:
