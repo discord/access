@@ -497,6 +497,30 @@ async def test_audit_groups_default_order_is_newest_first(client: AsyncClient, d
     assert [r["group_id"] for r in seeded_rows] == [g_new.id, g_mid.id, g_old.id]
 
 
+async def test_audit_users_order_breaks_ties_by_id(client: AsyncClient, db: Db, url_for: Any) -> None:
+    """A user's member and owner rows in one group share the email tail, so
+    rows with the same `created_at` must fall back to `id` to keep a stable order."""
+    group = OktaGroupFactory.build()
+    user = OktaUserFactory.build()
+    db.session.add_all([group, user])
+    await db.session.commit()
+    await ModifyGroupUsers(group=group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+
+    pinned = datetime.now(timezone.utc) - timedelta(days=1)
+    ugms = (await db.session.scalars(select(OktaUserGroupMember).where(OktaUserGroupMember.group_id == group.id))).all()
+    for ugm in ugms:
+        ugm.created_at = pinned
+    await db.session.commit()
+
+    for order_desc in (True, False):
+        rep = await client.get(
+            url_for("api-audit.users_and_groups"), params={"group_id": group.id, "order_desc": order_desc}
+        )
+        assert rep.status_code == 200
+        ids = [r["id"] for r in rep.json()["items"]]
+        assert ids == sorted((u.id for u in ugms), reverse=order_desc)
+
+
 # --- Fix 4 parity tests --------------------------------------------------------
 
 
