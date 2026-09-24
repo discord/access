@@ -374,13 +374,23 @@ async def put_app(
         old_prefix = f"{_AppGroup.APP_GROUP_NAME_PREFIX}{old_app_name}{_AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
         new_prefix = f"{_AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}{_AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
         app_groups = (await db.scalars(select(_AppGroup).where(_AppGroup.app_id == app_obj.id))).all()
+        # An owner group's description is seeded with a default naming the app and is
+        # editable afterwards, so the rename refreshes it only while it still holds that
+        # default verbatim. Anything else is text somebody chose, and a rename is not a
+        # reason to overwrite it. Non-owner groups pass `None`, which leaves the
+        # description untouched — owner groups now follow the same rule once edited.
+        seeded_owner_description = app_owners_group_description(old_app_name)
         for ag in app_groups:
             if ag.name.startswith(old_prefix):
                 suffix = ag.name[len(old_prefix) :]
                 new_group_name = f"{new_prefix}{suffix}"
             else:
                 new_group_name = f"{new_prefix}{ag.name}"
-            new_description = app_owners_group_description(app_obj.name) if ag.is_owner else None
+            new_description = (
+                app_owners_group_description(app_obj.name)
+                if ag.is_owner and (ag.description or "") == seeded_owner_description
+                else None
+            )
             await ModifyGroupDetails(group=ag, name=new_group_name, description=new_description).execute()
 
     await db.commit()
