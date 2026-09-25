@@ -125,7 +125,6 @@ class EffectiveConstraintEntry(TypedDict):
     """
 
     constraint: str
-    name: str
     value: ConstraintValue
     sources: list[ConstraintSourceEntry]
 
@@ -461,7 +460,6 @@ def _constraint_entry(
         return None
     return {
         "constraint": constraint_key,
-        "name": constraint.name,
         "value": _fold(constraint, contributing),
         "sources": [
             {
@@ -488,9 +486,8 @@ def effective_constraints(group: OktaGroup) -> list[EffectiveConstraintEntry]:
 
     Returns:
         One entry per constraint that anything sets, in `Tag.CONSTRAINTS`
-        order, each a mapping of `constraint` (the key), `name` (its display
-        name), `value` (coalesced across every source under that constraint's
-        own rule), and `sources`. A source names the tag, how it reached the
+        order, each a mapping of `constraint` (the key), `value` (coalesced
+        across every source under that constraint's own rule), and `sources`. A source names the tag, how it reached the
         group (`origin`), and the app or group it came from -- `source_id` and
         `source_name`, both None for a `DIRECT` origin. Sources are ordered by
         ascending value, so the tag imposing the coalesced value comes first.

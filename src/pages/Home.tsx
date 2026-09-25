@@ -42,6 +42,7 @@ import {
   useGroupsAndRoles,
 } from '../api/apiComponents';
 import {OktaUserGroupMemberDetail} from '../api/apiSchemas';
+import {CONSTRAINT_ORDER, constraintDetail, constraintLabel} from '../constraintCopy';
 
 interface StatConfig {
   id: string;
@@ -142,6 +143,27 @@ const STAT_CONFIGS: StatConfig[] = [
   },
 ];
 
+// The guide's constraint reference, built from the same copy the tag dialog and
+// the constraints panels render. Written out here rather than maintained by hand
+// so a reader cannot be told one thing by the guide and another by the control.
+//
+// What each constraint does, without the two scopes. A tag applies at one scope
+// or the other, and the dialog says which beside the control that sets it;
+// spelling out both cases here turned six entries into twelve.
+const CONSTRAINT_GUIDE = [
+  `A tag also decides where its constraints apply: to tagged groups and the roles that reach them, or to the tagged groups alone. The tag's own page states which, and the dialog that sets it explains what the choice means for each constraint below.`,
+  '',
+  ...CONSTRAINT_ORDER.flatMap((key) => [
+    `**${constraintLabel(key)}**`,
+    constraintDetail(key)
+      .map((paragraph) => paragraph.text)
+      .join(' '),
+    '',
+  ]),
+]
+  .join('\n')
+  .trim();
+
 const sections: Record<string, [string, string, ReactNode]> = {
   // section shorthand --> [guide title, button title, icon]
   general: [`Welcome to ${appName}!`, 'Overview', <GeneralIcon />],
@@ -165,7 +187,7 @@ const guide: Record<string, Record<string, string>> = {
     'Audit Pages':
       "Every user, group, and role has a corresponding audit page, which shows the access history for the entity. It can be viewed by clicking the clock-arrow icon next to the user/role/group name on the entity's page. Roles additionally have a 'Role audit' page that can be viewed by clicking the icon below the clock-arrow icon on a role page (it's similar to a Celtic knot). It displays the role's membership and ownership history.",
     'Tags and Constraints':
-      "Tags can be used to label groups and apps (for their app groups) and, optionally, to apply constraints. These constraints include setting an ownership or membership time limit, requiring a reason for access, and disabling owners from adding themselves as members of a group. To view tags, click the 'Tags' button at the top of the 'Groups' or 'Apps' pages.",
+      "Tags label groups, and apps (for their app groups), and may also carry constraints: a membership or ownership time limit, a required reason, or a restriction on adding oneself. A tag also decides whether its constraints reach the roles that access a tagged group, or stop at the groups themselves. Only enabled tags enforce anything.\n\nTo view tags, click the 'Tags' button at the top of the 'Groups' or 'Apps' pages. To see which constraints apply to a particular group and where each came from, open that group and expand 'Effective constraints'.\n\nFor what each constraint does, see [[admin--what-each-tag-constraint-does|What each tag constraint does]].",
     'Auto-approvals and other plugins': `${appName} uses the Python pluggy framework to allow for additional functionality to be added to the system. Some examples of this include adding a notification plugin to send emails, SMS, etc. when access requests are made and resolved and adding a conditional access plugin to automatically approve or deny requests if they match certain conditions. For more information and examples of plugins, see the ${appName} README at https://github.com/discord/access?tab=readme-ov-file#plugins.`,
     [`Learn more about ${appName}`]: `${appName} is open-sourced under the Apache 2.0 license. View the source code at ((https://github.com/discord/access|https://github.com/discord/access)) and check out our blog post that talks about the development process at ((https://dis.gd/access-blog|dis.gd/access-blog)).`,
   },
@@ -202,7 +224,7 @@ const guide: Record<string, Record<string, string>> = {
       "To view the users whose access is expiring soon for groups you own, navigate to 'Expiring Access' > 'Individual' > 'Owned by Me'. There are filters available to see access that expires during a specific time period, only active or inactive access, and access that has not been reviewed yet or all expring access.\n\nThe 'Bulk Renew' button at the top of the page opens the bulk renewal dialog. Here, you can provide a reason for renewing the access, set an amount of time for the renewal, and select whether or not you would like to renew access for each user. If your organization has notifications enabled, any access that is marked to allow expiration (ie. not renewing the access) will be omitted from subsequent expiring access notifications.\n\nTo view the roles that will be losing access to groups you own soon, navigate to 'Expiring Access' > 'Role-Based' > 'Owned Groups'. This page also has a bulk renewal dialog that functions in the same way as the one for renewing individual access.",
     'Managing expiring access for roles you own':
       "To view access that is expiring for roles that you own, navigate to 'Expiring Access' > 'Role-Based' > 'Owned Roles.' From there, you can see the access that will be expiring soon for roles you own and create an access request on behalf of the role if continued access is still needed.",
-    'Blocked roles': `If a group is marked with a tag that has the 'Owner can't renew their own access' constraint enabled, you may be blocked from renewing a role's access to a group you own. This is generally due to you being both an owner and member of the role in question. To renew this role's access to the group, have either another group owner renew the role's access who is not a member of the role or have an ${appName} admin renew the role.`,
+    'Blocked roles': `If a group is marked with a tag that disallows adding oneself as a member or owner, you may be blocked from renewing a role's access to a group you own. This is generally due to you being both an owner and member of the role in question. To renew this role's access to the group, have either another group owner renew the role's access who is not a member of the role or have an ${appName} admin renew the role.`,
     'Group tags': `Group/role owners are able to apply existing tags to groups they own. If these tags are applied, any enabled tag constraints will be applied to the group. Only ${appName} administrators are able to remove tags.`,
   },
   'app-owner': {
@@ -222,8 +244,8 @@ const guide: Record<string, Record<string, string>> = {
       "To create an app, click the 'Create App' button at the top of the 'Apps' page. That will open a dialog where you can set the app's name and description. The creator of the application will be automatically assigned as the initial owner of the application.\n\nIf the new App is meant to represent an application in Okta, you can optionally 'Assign' and/or add as a 'Push group' the associated app groups in the Okta Administrator dashboard for the Okta application.",
     'Creating a group':
       "On the 'Groups' page, click the 'Create Group' button at the top. This will open a dialog where you can select the group type, which app it is associated with (if it's an app group), and set the group name, description, and tags.\n\nNote that there is a separate flow for app owners to create groups associated with their app, starting from the app's page, for more details see the \"Guide for App Owners\".",
-    'Creating tags, managing tag constraints, and removing tags':
-      "To create a tag, navigate to the 'Tags' page by clicking the button labeled 'Tags' from the 'Groups' or 'Apps' pages. Then, click the 'Create Tag' button at the top of the page. This opens the tag creation dialog. From here, you can set the tag's name and description and, optionally, apply constraints to the tag.\n\nThe possible constraints at the time of writing are setting an ownership or membership time limit, requiring a reason for ownership or membership access changes, and disallowing group owners adding themselves as owners or members of the group. At the top of the dialog, there is a toggle that allows you to enable or diable the tag. If the tag is disabled, the tag constraints will not be enforced.\n\nAfter creating a tag, you can apply it to apps and groups from the tag's page. If you add the tag to an app, all of the app's app groups (including app groups created in the future) will inherit the tag and any constraints associated with it.\n\nFrom each tag's page, you can additionally remove the tag from apps and groups by clicking the X on that row and edit the tag's details by clicking the pencil icon to the right of the tag's name.\n\nYou can also add or remove tags from each app or group's individual pages from the dialog opened by clicking the pencil icon to the right of the app or group's name.",
+    'Creating tags, managing tag constraints, and removing tags': `To create a tag, navigate to the 'Tags' page by clicking the button labeled 'Tags' from the 'Groups' or 'Apps' pages. Then, click the 'Create Tag' button at the top of the page. This opens the tag creation dialog, where you set the tag's name and description, whether it is enabled, and, optionally, its constraints. A disabled tag enforces none of its constraints.\n\nThe dialog asks where the tag's constraints apply before it asks what they are, because the answer changes what each one does. A tag that reaches roles holds membership of the roles accessing a tagged group to the same rules; a tag that applies to tagged groups only governs a role's access to the group but not who is in the role. For what each constraint does under either choice, see [[admin--what-each-tag-constraint-does|What each tag constraint does]].\n\nAfter creating a tag, you can apply it to apps and groups from the tag's page. If you add the tag to an app, all of the app's app groups (including app groups created in the future) will inherit the tag and any constraints associated with it.\n\nEditing a tag's time limit applies to access that already exists: any grant longer than the new limit is shortened when you save. Nothing is ever extended.\n\nFrom each tag's page, you can additionally remove the tag from apps and groups by clicking the X on that row and edit the tag's details by clicking the pencil icon to the right of the tag's name.\n\nYou can also add or remove tags from each app or group's individual pages from the dialog opened by clicking the pencil icon to the right of the app or group's name.`,
+    'What each tag constraint does': CONSTRAINT_GUIDE,
     'Responding to group creation requests':
       "If your organization has the notification system set up, you will receive a notification when someone requests to create a role, group, or app group for an unowned app. Otherwise, you can see group requests for that you may respond to under ‘Group Requests' > 'Assigned to Me'.\n\nFrom there, you can click 'View' to see the details of the group request, modify the group details, provide a reason for your decision, and then either approve or reject the request.",
   },
@@ -232,7 +254,7 @@ const guide: Record<string, Record<string, string>> = {
       "In the menu bar, click 'Access Requests' and navigate to the 'Role-Based' section. From there, if you own at least one role, you can click the 'Create Request' button to create a request for your role to be added to a group. If your organization has notifications enabled, a notification will be sent to the group owner(s) about the access request. If you do not own any roles, you will not be able to create a role-based access request and you will need to reach out to the role owner.",
     'I need to create a new group/role': `If you are an ${appName} admin, please click [[admin--creating-a-group|here]] to see the 'Admins' user guide for step-by-step instructions.\n\nIf you are not an ${appName} admin, please see the instructions [[users--creating-a-group-creation-request|here]].`,
     'I need to create a new app': `If you are an ${appName} admin, please click [[admin--creating-an-app|here]] to see step-by-step instructions.\n\nIf you are not an ${appName} admin, please reach out to one for app creation. At this moment, there is not a way to request that an app is created through ${appName}.`,
-    'I want to set my up my group to enforce a constraint (like a maximum membership duration)': `Tags can be used to enforce a variety of constraints, including enforcing a maximum membership duration. If a tag exists that has the constraint you are looking for enabled, you can apply it to any group you own from the dialog that is opened by clicking the pencil icon next to the group's name. If a tag does not exist, reach out to an ${appName} admin to create the tag for you.`,
+    'I want to set up my group to enforce a constraint (like a maximum membership duration)': `Tags can be used to enforce a variety of constraints, including enforcing a maximum membership duration. If a tag exists that has the constraint you are looking for enabled, you can apply it to any group you own from the dialog that is opened by clicking the pencil icon next to the group's name. If a tag does not exist, reach out to an ${appName} admin to create the tag for you.`,
     'I lost access to something! How can I see more information?':
       'Each user has an audit page that can be accessed from their user page by clicking the clock-arrow icon to the right of their name. On this page, you can see your complete ownership and membership history, when each ownership or membership started and ended, who added or removed your access, and the reason you were added to the group if one was provided. You can filter, sort, and search through this information to troubleshoot your lost access.',
     'I added a role to a group but users in the role were added to the group for less time than I set...':
@@ -248,9 +270,10 @@ function toSlug(section: string, question: string) {
     .replace(/(^-|-$)/g, '')}`;
 }
 
-// Turn [[slug|label]] into internal nav links and ((url|label)) into external hyperlinks
+// Turn [[slug|label]] into internal nav links, ((url|label)) into external
+// hyperlinks, and **text** into bold.
 function AnswerContent({text, onNavigate}: {text: string; onNavigate: (slug: string) => void}) {
-  const parts = text.split(/(\[\[[^\]]+\]\]|\(\([^)]+\)\))/g);
+  const parts = text.split(/(\[\[[^\]]+\]\]|\(\([^)]+\)\)|\*\*[^*]+\*\*)/g);
   return (
     <div style={{whiteSpace: 'pre-wrap'}}>
       {parts.map((part, i) => {
@@ -283,6 +306,14 @@ function AnswerContent({text, onNavigate}: {text: string; onNavigate: (slug: str
               rel="noopener noreferrer"
               sx={{color: 'primary.main', textDecoration: 'underline', cursor: 'pointer'}}>
               {label}
+            </Box>
+          );
+        }
+        const bold = part.match(/^\*\*([^*]+)\*\*$/);
+        if (bold) {
+          return (
+            <Box key={i} component="span" sx={{fontWeight: 'bold'}}>
+              {bold[1]}
             </Box>
           );
         }
