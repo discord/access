@@ -21,6 +21,7 @@ from api.operations.modify_group_details import ModifyGroupDetails
 from api.operations.modify_group_plugin_data import ModifyGroupPluginData
 from api.operations.modify_group_type import ModifyGroupType
 from api.operations.modify_group_users import ModifyGroupUsers
+from api.operations.prune_redundant_direct_access import AccessTarget, PruneRedundantDirectAccess
 from api.operations.modify_role_groups import ModifyRoleGroups
 from api.operations.unmanage_group import UnmanageGroup
 
@@ -44,6 +45,9 @@ __all__ = [
     "ModifyGroupTags",
     "ModifyGroupType",
     "ModifyGroupUsers",
+    "PruneRedundantDirectAccess",
+    # The enum a caller needs to pass a non-default `target`.
+    "AccessTarget",
     "ModifyGroupsTimeLimit",
     "DeleteGroup",
     "ModifyRoleGroups",
