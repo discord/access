@@ -708,22 +708,17 @@ async def prune_redundant_direct_access_command(
     apps: tuple[str, ...],
 ) -> None:
     """Remove direct group access that a role already grants the same user."""
-    from api.redundant_access import (
-        AccessTarget,
-        FilterResolutionError,
-        PruneOutcome,
-        prune_redundant_direct_access,
-    )
+    from api.operations import AccessTarget, PruneRedundantDirectAccess
+    from api.operations.prune_redundant_direct_access import FilterResolutionError, PruneOutcome
 
     try:
-        summary = await prune_redundant_direct_access(
+        summary = await PruneRedundantDirectAccess(
             target=AccessTarget(target),
-            dry_run=not apply_changes,
             allow_shortening=allow_shortening,
             group_filters=groups,
             user_filters=users,
             app_filters=apps,
-        )
+        ).execute(dry_run=not apply_changes)
     except FilterResolutionError as error:
         raise click.ClickException(str(error)) from error
 

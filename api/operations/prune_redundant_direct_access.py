@@ -1,4 +1,4 @@
-"""Detect and remove direct group grants that a role already provides.
+"""Remove direct group grants that a role already provides.
 
 Access prefers role-based access: a role attached to a group grants that group's
 access to every member of the role. A direct grant covering the same access is
@@ -23,7 +23,8 @@ from sqlalchemy.orm import aliased
 
 from api.extensions import db
 from api.models import App, AppGroup, OktaGroup, OktaUser, OktaUserGroupMember
-from api.operations import ModifyGroupUsers
+from api.exceptions import InvalidRequestError
+from api.operations.modify_group_users import ModifyGroupUsers
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +209,7 @@ async def find_redundant_grants(
     return sorted(grants, key=lambda g: (g.group_name, g.user_email, g.is_owner))
 
 
-class FilterResolutionError(ValueError):
+class FilterResolutionError(InvalidRequestError):
     """A `--group`, `--user`, or `--app` filter value matched no active record.
 
     Raised rather than silently narrowing to nothing: a mistyped name would
@@ -358,75 +359,100 @@ class PruneSummary:
         return self._count(PruneOutcome.FAILED)
 
 
-async def prune_redundant_direct_access(
-    *,
-    target: AccessTarget = AccessTarget.BOTH,
-    dry_run: bool = True,
-    allow_shortening: bool = False,
-    group_filters: Sequence[str] = (),
-    user_filters: Sequence[str] = (),
-    app_filters: Sequence[str] = (),
-) -> PruneSummary:
+class PruneRedundantDirectAccess:
     """Remove direct group grants that a role already provides to the same user.
 
-    Args:
-        target: Which access type(s) of direct grant to prune.
-        dry_run: When True, decide and report without writing anything.
-        allow_shortening: When True, also remove direct grants that outlive their
-            role coverage, ending the user's access sooner than it would have.
-        group_filters: Group ids or exact names to restrict the sweep to.
-        user_filters: User ids or emails to restrict the sweep to.
-        app_filters: App ids or exact names whose app groups to restrict to.
+    A sweep rather than a change to one named group: the targets are discovered
+    by query, narrowed by the optional filters, and each is removed through
+    `ModifyGroupUsers`, which is what ends only the direct rows and leaves the
+    role-derived coverage in place.
 
-    Returns:
-        The decision for every candidate, ordered by group name, user email, and
-        access type.
-
-    Raises:
-        FilterResolutionError: A filter value matched no active record. Raised
-            before any write, so a mistyped filter changes nothing.
+    Reports by default. `execute()` only writes when passed `dry_run=False`,
+    which is the reverse of `UnmanageGroup`: that operation repairs state the
+    data model already implies, while this one deletes grants an operator may
+    have meant to keep.
     """
-    group_ids = await resolve_group_ids(group_filters, app_filters)
-    user_ids = await resolve_user_ids(user_filters)
-    grants = await find_redundant_grants(target=target, group_ids=group_ids, user_ids=user_ids)
 
-    summary = PruneSummary()
-    by_group: dict[str, list[RedundantGrant]] = {}
-    for grant in grants:
-        if grant.shortens_access and not allow_shortening:
-            summary.decisions.append(GrantDecision(grant, PruneOutcome.SKIPPED_WOULD_SHORTEN))
-            continue
-        by_group.setdefault(grant.group_id, []).append(grant)
+    def __init__(
+        self,
+        *,
+        target: AccessTarget = AccessTarget.BOTH,
+        allow_shortening: bool = False,
+        group_filters: Sequence[str] = (),
+        user_filters: Sequence[str] = (),
+        app_filters: Sequence[str] = (),
+    ):
+        """
+        Args:
+            target: Which access type(s) of direct grant to prune.
+            allow_shortening: When True, also remove direct grants that outlive
+                their role coverage, ending the user's access sooner than it
+                would have.
+            group_filters: Group ids or exact names to restrict the sweep to.
+            user_filters: User ids or emails to restrict the sweep to.
+            app_filters: App ids or exact names whose app groups to restrict to.
+        """
+        self.target = target
+        self.allow_shortening = allow_shortening
+        self.group_filters = group_filters
+        self.user_filters = user_filters
+        self.app_filters = app_filters
 
-    if dry_run:
-        for group_grants in by_group.values():
+    async def execute(self, dry_run: bool = True) -> PruneSummary:
+        """Find the redundant direct grants and, unless this is a dry run, remove them.
+
+        Args:
+            dry_run: When True, decide and report without writing anything.
+
+        Returns:
+            The decision for every candidate, ordered by group name, user email,
+            and access type.
+
+        Raises:
+            FilterResolutionError: A filter value matched no active record.
+                Raised before any write, so a mistyped filter changes nothing.
+        """
+        group_ids = await resolve_group_ids(self.group_filters, self.app_filters)
+        user_ids = await resolve_user_ids(self.user_filters)
+        grants = await find_redundant_grants(target=self.target, group_ids=group_ids, user_ids=user_ids)
+
+        summary = PruneSummary()
+        by_group: dict[str, list[RedundantGrant]] = {}
+        for grant in grants:
+            if grant.shortens_access and not self.allow_shortening:
+                summary.decisions.append(GrantDecision(grant, PruneOutcome.SKIPPED_WOULD_SHORTEN))
+                continue
+            by_group.setdefault(grant.group_id, []).append(grant)
+
+        if dry_run:
+            for group_grants in by_group.values():
+                summary.decisions.extend(GrantDecision(g, PruneOutcome.REMOVED) for g in group_grants)
+            summary.decisions.sort(key=_decision_sort_key)
+            return summary
+
+        for group_id, group_grants in by_group.items():
+            # `grants` holds plain values, never ORM instances: a failed group's
+            # rollback expires the whole identity map, and re-reading an expired
+            # attribute on an AsyncSession raises MissingGreenlet rather than
+            # refreshing. Holding only scalars keeps the loop independent of that.
+            try:
+                # ModifyGroupUsers ends only rows with a null `role_group_map_id`,
+                # so this touches the direct grants and leaves role-derived coverage
+                # intact. It commits its own unit of work.
+                await ModifyGroupUsers(
+                    group=group_id,
+                    members_to_remove=[g.user_id for g in group_grants if not g.is_owner],
+                    owners_to_remove=[g.user_id for g in group_grants if g.is_owner],
+                ).execute()
+            except Exception:
+                await db.session.rollback()
+                logger.exception("Failed to prune redundant direct access in group %s, skipping.", group_id)
+                summary.decisions.extend(GrantDecision(g, PruneOutcome.FAILED) for g in group_grants)
+                continue
             summary.decisions.extend(GrantDecision(g, PruneOutcome.REMOVED) for g in group_grants)
+
         summary.decisions.sort(key=_decision_sort_key)
         return summary
-
-    for group_id, group_grants in by_group.items():
-        # `grants` holds plain values, never ORM instances: a failed group's
-        # rollback expires the whole identity map, and re-reading an expired
-        # attribute on an AsyncSession raises MissingGreenlet rather than
-        # refreshing. Holding only scalars keeps the loop independent of that.
-        try:
-            # ModifyGroupUsers ends only rows with a null `role_group_map_id`,
-            # so this touches the direct grants and leaves role-derived coverage
-            # intact. It commits its own unit of work.
-            await ModifyGroupUsers(
-                group=group_id,
-                members_to_remove=[g.user_id for g in group_grants if not g.is_owner],
-                owners_to_remove=[g.user_id for g in group_grants if g.is_owner],
-            ).execute()
-        except Exception:
-            await db.session.rollback()
-            logger.exception(f"Failed to prune redundant direct access in group {group_id}, skipping.")
-            summary.decisions.extend(GrantDecision(g, PruneOutcome.FAILED) for g in group_grants)
-            continue
-        summary.decisions.extend(GrantDecision(g, PruneOutcome.REMOVED) for g in group_grants)
-
-    summary.decisions.sort(key=_decision_sort_key)
-    return summary
 
 
 def _decision_sort_key(decision: GrantDecision) -> tuple[str, str, bool]:

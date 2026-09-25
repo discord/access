@@ -1,4 +1,4 @@
-"""Tests for `api.redundant_access` and the `prune-redundant-direct-access` CLI command."""
+"""Tests for `PruneRedundantDirectAccess` and the `prune-redundant-direct-access` CLI command."""
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -18,14 +18,14 @@ from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginSpec,
     hookimpl,
 )
-from api.redundant_access import (
+from api.operations.prune_redundant_direct_access import (
     AccessTarget,
     FilterResolutionError,
     PruneOutcome,
+    PruneRedundantDirectAccess,
     RedundantGrant,
     _later,
     find_redundant_grants,
-    prune_redundant_direct_access,
     resolve_group_ids,
     resolve_user_ids,
 )
@@ -607,7 +607,7 @@ class TestPruneDriverAppGroupLifecycle:
         await _role_grant(user=user, group=app_group, role_group=role_group)
         await db.session.commit()
 
-        summary = await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+        summary = await PruneRedundantDirectAccess(target=AccessTarget.BOTH).execute(dry_run=False)
 
         assert summary.removed == 1
         assert await _active_direct_count(db, user=user, group=app_group) == 0
@@ -625,7 +625,7 @@ class TestPruneDriver:
         await _role_grant(user=user, group=okta_group, role_group=role_group)
         await db.session.commit()
 
-        summary = await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=True)
+        summary = await PruneRedundantDirectAccess(target=AccessTarget.BOTH).execute(dry_run=True)
 
         assert summary.candidates == 1
         assert summary.removed == 1
@@ -641,7 +641,7 @@ class TestPruneDriver:
         await _role_grant(user=user, group=okta_group, role_group=role_group)
         await db.session.commit()
 
-        summary = await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+        summary = await PruneRedundantDirectAccess(target=AccessTarget.BOTH).execute(dry_run=False)
 
         assert summary.removed == 1
         assert await _active_direct_count(db, user=user, group=okta_group) == 0
@@ -658,7 +658,7 @@ class TestPruneDriver:
         await _role_grant(user=user, group=okta_group, role_group=role_group)
         await db.session.commit()
 
-        await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+        await PruneRedundantDirectAccess(target=AccessTarget.BOTH).execute(dry_run=False)
 
         await db.session.refresh(direct)
         assert direct.ended_at is not None
@@ -675,7 +675,7 @@ class TestPruneDriver:
         )
         await db.session.commit()
 
-        summary = await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+        summary = await PruneRedundantDirectAccess(target=AccessTarget.BOTH).execute(dry_run=False)
 
         assert summary.candidates == 1
         assert summary.skipped == 1
@@ -694,7 +694,9 @@ class TestPruneDriver:
         )
         await db.session.commit()
 
-        summary = await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False, allow_shortening=True)
+        summary = await PruneRedundantDirectAccess(target=AccessTarget.BOTH, allow_shortening=True).execute(
+            dry_run=False
+        )
 
         assert summary.removed == 1
         assert await _active_direct_count(db, user=user, group=okta_group) == 0
@@ -713,7 +715,7 @@ class TestPruneDriver:
         remove_member = mocker.patch.object(okta, "remove_user_from_group")
         remove_owner = mocker.patch.object(okta, "remove_owner_from_group")
 
-        await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+        await PruneRedundantDirectAccess(target=AccessTarget.BOTH).execute(dry_run=False)
 
         assert remove_member.call_count == 0
         assert remove_owner.call_count == 0
@@ -728,7 +730,7 @@ class TestPruneDriver:
             await _role_grant(user=user, group=okta_group, role_group=role_group, is_owner=is_owner)
         await db.session.commit()
 
-        summary = await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+        summary = await PruneRedundantDirectAccess(target=AccessTarget.BOTH).execute(dry_run=False)
 
         assert summary.removed == 2
         assert await _active_direct_count(db, user=user, group=okta_group, is_owner=False) == 0
@@ -744,7 +746,7 @@ class TestPruneDriver:
             await _role_grant(user=user, group=okta_group, role_group=role_group, is_owner=is_owner)
         await db.session.commit()
 
-        summary = await prune_redundant_direct_access(target=AccessTarget.MEMBERS, dry_run=False)
+        summary = await PruneRedundantDirectAccess(target=AccessTarget.MEMBERS).execute(dry_run=False)
 
         assert summary.removed == 1
         assert await _active_direct_count(db, user=user, group=okta_group, is_owner=False) == 0
@@ -776,7 +778,7 @@ class TestPruneDriver:
 
         mocker.patch.object(ModifyGroupUsers, "execute", _fail_on_first)
 
-        summary = await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+        summary = await PruneRedundantDirectAccess(target=AccessTarget.BOTH).execute(dry_run=False)
 
         assert summary.failed == 1
         assert summary.removed == 1
@@ -792,8 +794,8 @@ class TestPruneDriver:
             await _role_grant(user=user, group=group, role_group=role_group)
         await db.session.commit()
 
-        summary = await prune_redundant_direct_access(
-            target=AccessTarget.BOTH, dry_run=False, group_filters=("Wanted",)
+        summary = await PruneRedundantDirectAccess(target=AccessTarget.BOTH, group_filters=("Wanted",)).execute(
+            dry_run=False
         )
 
         assert summary.candidates == 1
@@ -810,7 +812,7 @@ class TestPruneDriver:
         await db.session.commit()
 
         with pytest.raises(FilterResolutionError):
-            await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False, group_filters=("Nope",))
+            await PruneRedundantDirectAccess(target=AccessTarget.BOTH, group_filters=("Nope",)).execute(dry_run=False)
 
         assert await _active_direct_count(db, user=user, group=okta_group) == 1
 
@@ -831,8 +833,8 @@ class TestPruneDriver:
             await _role_grant(user=user, group=group, role_group=role_group)
         await db.session.commit()
 
-        summary = await prune_redundant_direct_access(
-            target=AccessTarget.BOTH, dry_run=False, app_filters=(wanted_app.name,)
+        summary = await PruneRedundantDirectAccess(target=AccessTarget.BOTH, app_filters=(wanted_app.name,)).execute(
+            dry_run=False
         )
 
         assert summary.candidates == 1
@@ -856,7 +858,7 @@ class TestPruneDriver:
         await db.session.commit()
 
         with caplog.at_level("INFO", logger="access.audit"):
-            await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+            await PruneRedundantDirectAccess(target=AccessTarget.BOTH).execute(dry_run=False)
 
         audit_messages = [r.getMessage() for r in caplog.records if r.name == "access.audit"]
         assert any("GROUP_MODIFY_USER" in m for m in audit_messages), audit_messages
@@ -875,7 +877,7 @@ class TestPruneDriver:
         ended_at_before = role_row.ended_at
         created_reason_before = role_row.created_reason
 
-        await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+        await PruneRedundantDirectAccess(target=AccessTarget.BOTH).execute(dry_run=False)
 
         await db.session.refresh(role_row)
         assert role_row.ended_at == ended_at_before
