@@ -296,6 +296,36 @@ async def test_read_tool_over_http_returns_its_db_connection(
         await engine.dispose()
 
 
+async def test_cancelled_tool_returns_its_db_connection(tmp_path: Any) -> None:
+    """A tool cancelled mid-call (the client dropped the session) must still
+    return its pooled connection; ``tool_session_scope`` shields its teardown."""
+    import anyio
+
+    from api.mcp.db import tool_session_scope
+
+    # File-backed so the pool is a real AsyncAdaptedQueuePool; see above.
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'mcp_cancel.db'}")
+    _db.init_app(engine=engine)
+    try:
+        checked_out = anyio.Event()
+
+        async def _hung_tool() -> None:
+            async with tool_session_scope():
+                await _db.session.execute(select(1))
+                checked_out.set()
+                await anyio.sleep_forever()
+
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(_hung_tool)
+            await checked_out.wait()
+            assert engine.pool.checkedout() == 1
+            tg.cancel_scope.cancel()
+
+        assert engine.pool.checkedout() == 0, "cancelled MCP tool leaked a pooled DB connection"
+    finally:
+        await engine.dispose()
+
+
 async def test_read_tool_requires_read_all_scope(
     with_mcp_enabled: None,
     db: Db,
