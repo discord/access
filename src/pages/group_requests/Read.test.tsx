@@ -77,6 +77,9 @@ vi.mock('../../constraints', () => {
   };
 });
 
+// What GET /api/apps returns for the App field's search.
+let appSearchResults: AppDetail[] = [APP];
+
 vi.mock('../../api/apiComponents', () => ({
   // The page resolves each requested tag by its own id.
   tagByIdQuery: (variables: {pathParams: {tagId: string}}) => ({
@@ -86,7 +89,7 @@ vi.mock('../../api/apiComponents', () => ({
   useGroupRequestById: () => ({data: PENDING_APP_GROUP_REQUEST, isError: false, isLoading: false}),
   useGroupRequestByIdPut: () => ({mutate: resolveMutate}),
   useAppById: () => ({data: APP, isLoading: false}),
-  useApps: () => ({data: {items: [APP]}}),
+  useApps: () => ({data: {items: appSearchResults}}),
   useTags: () => ({data: {items: []}}),
 }));
 
@@ -104,6 +107,7 @@ const renderPage = () =>
 beforeEach(() => {
   resolveMutate.mockClear();
   ownerTimeLimit = null;
+  appSearchResults = [APP];
 });
 
 describe('an app owner approving an app group request', () => {
@@ -142,6 +146,17 @@ describe('an app owner approving an app group request', () => {
 // is paginated and ordered by name, so a request naming a tag that no single
 // page contains would otherwise seed a partial selection -- and approval
 // submits that selection, silently dropping the rest.
+describe('a requested app the app search does not return', () => {
+  // With many apps, the requested one can fall past the first page of results. The
+  // field must still show it rather than render an empty required dropdown.
+  it('is still shown in the App field', async () => {
+    appSearchResults = [];
+    renderPage();
+
+    expect(await screen.findByRole('combobox', {name: /App/})).toHaveValue(APP.name);
+  });
+});
+
 describe('a requested tag the tag list does not return', () => {
   it('is still resolved and submitted with the approval', async () => {
     renderPage();
