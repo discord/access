@@ -829,6 +829,11 @@ export default function ReadGroupRequest() {
                                           name="resolved_app"
                                           options={appSearchOptions}
                                           required
+                                          // Show the app the form holds. rhf-mui otherwise displays the entry of
+                                          // `options` matching the form value, and `options` is a search this field's
+                                          // input drives: the requested app can fall past the first page and render
+                                          // blank, and an in-flight search empties it, resetting the input mid-typing.
+                                          transform={{input: (app) => app ?? null}}
                                           autocompleteProps={{
                                             getOptionLabel: (option: AppDetail) => option.name,
                                             isOptionEqualToValue: (option: AppDetail, value: AppDetail) =>
