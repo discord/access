@@ -6,7 +6,8 @@ Exposes:
 - `db.session`: the request-scoped AsyncSession bound to the active
   `_session_scope`.
 - `db.engine`: the configured AsyncEngine.
-- `db.init_app(engine=...)`, `db.remove()`, `db.create_all()`, `db.drop_all()`.
+- `db.init_app(engine=...)`, `db.remove()`, `db.remove_shielded()`,
+  `db.create_all()`, `db.drop_all()`.
 
 The session is scoped on a `ContextVar` so each FastAPI request (or CLI
 invocation) gets its own AsyncSession. The dependency in `api.database.get_db`
@@ -25,6 +26,7 @@ import asyncio
 import contextvars
 from typing import Any, Awaitable, Callable, Optional
 
+import anyio
 from sqlalchemy import MetaData
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -48,6 +50,9 @@ from sqlalchemy.orm import DeclarativeBase
 _session_scope: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "access_session_scope", default="__default__"
 )
+
+# Upper bound on `db.remove_shielded()`.
+_REMOVE_SHIELDED_TIMEOUT_SECONDS = 5
 
 
 def _camel_to_snake(name: str) -> str:
@@ -133,6 +138,23 @@ class _DB:
         middleware on request teardown and by CLI entrypoints on exit."""
         if self._scoped is not None:
             await self._scoped.remove()
+
+    async def remove_shielded(self) -> None:
+        """Remove the current scope's session, shielded from cancellation.
+
+        For teardown paths that may run in a cancelled task (a dropped client
+        connection or MCP session). anyio re-cancels every await in a
+        cancelled scope, so an unshielded `remove()` there abandons the
+        connection checked out instead of returning it to the pool. Bounded by
+        `_REMOVE_SHIELDED_TIMEOUT_SECONDS` so a wedged close can't hang the
+        task. Errors are swallowed so a failed close never masks the caller's
+        result or exception.
+        """
+        try:
+            with anyio.move_on_after(_REMOVE_SHIELDED_TIMEOUT_SECONDS, shield=True):
+                await self.remove()
+        except Exception:
+            pass
 
     async def create_all(self) -> None:
         async with self.engine.begin() as conn:

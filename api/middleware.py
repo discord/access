@@ -138,10 +138,9 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
         finally:
             if owns_scope:
-                try:
-                    await db.remove()
-                except Exception:
-                    pass
+                # Shielded: a dropped client cancels this task, and an
+                # unshielded close would leak the connection.
+                await db.remove_shielded()
                 if token is not None:
                     try:
                         _session_scope.reset(token)
