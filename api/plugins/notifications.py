@@ -86,6 +86,14 @@ class NotificationPluginSpec:
     object graph, that graph must be eager-loaded by the operation before dispatch
     — open an issue.
 
+    `approvers` is the request's assigned reviewers in both the `*_created` and
+    the `*_completed` hooks: the eligible reviewers at the nearest owner level
+    that has any (see `api/models/request_reviewers.py`). It never includes the
+    requester. A `*_completed` hook receives the reviewers assigned while the
+    request was open; if ownership changed after creation, they may differ from
+    who was notified at creation, so a plugin that updates messages it sent
+    should track those messages by request id.
+
     (The `access_expiring_*` hooks are the exception: they fire from the syncer
     CronJob, not an HTTP request, and run inline on its session.)
     """

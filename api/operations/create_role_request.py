@@ -5,7 +5,7 @@ from typing import Optional
 
 import logging
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import select
 from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
@@ -16,14 +16,10 @@ from api.models import (
     OktaGroup,
     OktaGroupTagMap,
     OktaUser,
-    OktaUserGroupMember,
     RoleGroup,
     RoleRequest,
-    Tag,
 )
-from api.models.app_group import get_access_owners, get_app_managers
-from api.models.okta_group import get_group_managers
-from api.models.tag import effective_constraint
+from api.models.request_reviewers import get_assigned_reviewers
 from api.operations.approve_role_request import ApproveRoleRequest
 from api.operations.reject_role_request import RejectRoleRequest
 from api.operations._fan_out import defer_notification
@@ -99,52 +95,8 @@ class CreateRoleRequest:
         db.session.add(role_request)
         await db.session.commit()
 
-        # Fetch the users to notify
-        approvers = await get_group_managers(requested_group.id)
-
-        role_memberships = [
-            u.user_id
-            for u in (
-                await db.session.scalars(
-                    select(OktaUserGroupMember)
-                    .where(OktaUserGroupMember.group_id == requester_role.id)
-                    .where(OktaUserGroupMember.is_owner.is_(False))
-                    .where(
-                        or_(
-                            OktaUserGroupMember.ended_at.is_(None),
-                            OktaUserGroupMember.ended_at > func.now(),
-                        )
-                    )
-                )
-            ).all()
-        ]
-
-        # If group tagged with disallow self add constraint, filter out approvers who are also members of the role
-        if self.request_ownership:
-            disallow_self_add_owner = effective_constraint(
-                Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY, requested_group
-            )
-            if disallow_self_add_owner:
-                approvers = [a for a in approvers if a.id not in role_memberships]
-        else:
-            disallow_self_add_member = effective_constraint(
-                Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, requested_group
-            )
-            if disallow_self_add_member:
-                approvers = [a for a in approvers if a.id not in role_memberships]
-
-        # If there are no approvers, try to get the app managers
-        # or if the only approver is the requester, try to get the app managers
-        if (
-            (len(approvers) == 0 and type(requested_group) is AppGroup)
-            or (len(approvers) == 1 and approvers[0].id == requester.id)
-            and type(requested_group) is AppGroup
-        ):
-            approvers = await get_app_managers(requested_group.app_id)
-
-        # If there are still no approvers, try to get the access owners
-        if len(approvers) == 0 or (len(approvers) == 1 and approvers[0].id == requester.id):
-            approvers = await get_access_owners()
+        # Notify the request's assigned reviewers; see api/models/request_reviewers.py.
+        approvers = (await get_assigned_reviewers(role_request)).reviewers
 
         group = (
             await db.session.scalars(

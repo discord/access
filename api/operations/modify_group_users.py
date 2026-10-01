@@ -22,7 +22,7 @@ from api.models import (
     RoleGroupMap,
     Tag,
 )
-from api.models.access_request import get_all_possible_request_approvers
+from api.models.request_reviewers import snapshot_assigned_reviewers
 from api.models.tag import effective_ended_at
 from api.routers._eager import effective_constraint_options
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
@@ -248,6 +248,21 @@ class ModifyGroupUsers:
         # Access requests approved by this operation; their notifications are
         # prepared after the final commit and dispatched alongside async_tasks.
         approved_access_requests: list[AccessRequest] = []
+        # Close notifications go to the reviewers assigned while each request was
+        # open, so capture them before this operation changes ownership. Every
+        # request this operation can fulfil comes from a user it adds.
+        assigned_before_change: dict[str, list[OktaUser]] = {}
+        if self.notify:
+            added_user_ids = {user.id for user in members_to_add} | {user.id for user in owners_to_add}
+            candidates = (
+                await db.session.scalars(
+                    select(AccessRequest)
+                    .where(AccessRequest.status == AccessRequestStatus.PENDING)
+                    .where(AccessRequest.resolved_at.is_(None))
+                    .where(AccessRequest.requester_user_id.in_(added_user_ids))
+                )
+            ).all()
+            assigned_before_change = await snapshot_assigned_reviewers(candidates)
 
         # First remove all users from the group including those that we wish to add.
         # That way we can easily extend time-bounded group memberships and audit when
@@ -779,7 +794,7 @@ class ModifyGroupUsers:
                 # reload it explicitly so the hook sees a concrete value.
                 await db.session.refresh(access_request, attribute_names=["resolved_at"])
                 requester = await db.session.get(OktaUser, access_request.requester_user_id)
-                approvers = await get_all_possible_request_approvers(access_request)
+                approvers = assigned_before_change[access_request.id]
                 # Spawn the notify task and drain it in the same batch as the Okta
                 # tasks below, so on the inline path the notifications run
                 # concurrently (not one-awaited-at-a-time). prepare_notification_task

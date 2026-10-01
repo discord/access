@@ -9,7 +9,7 @@ from sqlalchemy.orm import joinedload, selectin_polymorphic
 from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleRequest
-from api.models.access_request import get_all_possible_request_approvers
+from api.models.request_reviewers import get_assigned_reviewers
 from api.operations._fan_out import defer_notification
 from api.plugins import NotificationHook
 from api.schemas import AuditLogSchema, EventType
@@ -117,7 +117,7 @@ class RejectRoleRequest:
             requester = await db.session.get(OktaUser, role_request.requester_user_id)
             requester_role = await db.session.get(OktaGroup, role_request.requester_role_id)
 
-            approvers = await get_all_possible_request_approvers(role_request)
+            approvers = (await get_assigned_reviewers(role_request)).reviewers
 
             await defer_notification(
                 db.session,

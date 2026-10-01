@@ -9,7 +9,7 @@ from sqlalchemy.orm import joinedload, selectin_polymorphic
 from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequest, AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup
-from api.models.access_request import get_all_possible_request_approvers
+from api.models.request_reviewers import get_assigned_reviewers
 from api.operations._fan_out import defer_notification
 from api.plugins import NotificationHook
 from api.schemas import AuditLogSchema, EventType
@@ -107,7 +107,7 @@ class RejectAccessRequest:
         if self.notify:
             requester = await db.session.get(OktaUser, access_request.requester_user_id)
 
-            approvers = await get_all_possible_request_approvers(access_request)
+            approvers = (await get_assigned_reviewers(access_request)).reviewers
 
             await defer_notification(
                 db.session,
