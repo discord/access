@@ -1,13 +1,20 @@
 // The words for the six tag constraints, in one place.
 //
-// Every surface that names a constraint reads from here: the effective-constraints
-// panel, the tag page, and the tag form. Naming the same constraint differently on
-// two pages is the confusion this module exists to prevent, so a new surface looks
-// a label up rather than writing its own.
+// A surface that names a constraint looks it up here rather than writing its own.
+// The effective-constraints panel on a group links to the tag page that carries
+// each constraint, and the two calling the same setting different things leaves a
+// reader following that link with no way to tell it is the same setting.
 //
 // The values themselves — which tags are enabled, how they coalesce, which reach a
 // role — are resolved server-side and read through `constraints.ts`. Nothing here
 // knows anything about a particular tag; these are the names of the six settings.
+
+export const MEMBER_TIME_LIMIT = 'member_time_limit';
+export const OWNER_TIME_LIMIT = 'owner_time_limit';
+export const REQUIRE_MEMBER_REASON = 'require_member_reason';
+export const REQUIRE_OWNER_REASON = 'require_owner_reason';
+export const DISALLOW_SELF_ADD_MEMBERSHIP = 'disallow_self_add_membership';
+export const DISALLOW_SELF_ADD_OWNERSHIP = 'disallow_self_add_ownership';
 
 /**
  * Display names, keyed by the constraint keys in `Tag.CONSTRAINTS` (`api/models/core_models.py`).
@@ -17,12 +24,12 @@
  * way in each pair so the six read as three settings with two sides.
  */
 export const CONSTRAINT_LABELS: Record<string, string> = {
-  member_time_limit: 'Membership time limit',
-  owner_time_limit: 'Ownership time limit',
-  require_member_reason: 'Require a membership reason',
-  require_owner_reason: 'Require an ownership reason',
-  disallow_self_add_membership: 'Disallow adding oneself as a member',
-  disallow_self_add_ownership: 'Disallow adding oneself as an owner',
+  [MEMBER_TIME_LIMIT]: 'Membership time limit',
+  [OWNER_TIME_LIMIT]: 'Ownership time limit',
+  [REQUIRE_MEMBER_REASON]: 'Require a membership reason',
+  [REQUIRE_OWNER_REASON]: 'Require an ownership reason',
+  [DISALLOW_SELF_ADD_MEMBERSHIP]: 'Disallow adding oneself as a member',
+  [DISALLOW_SELF_ADD_OWNERSHIP]: 'Disallow adding oneself as an owner',
 };
 
 /**
@@ -37,12 +44,12 @@ export const CONSTRAINT_LABELS: Record<string, string> = {
  * privileged one.
  */
 export const CONSTRAINT_ORDER: string[] = [
-  'member_time_limit',
-  'owner_time_limit',
-  'require_member_reason',
-  'require_owner_reason',
-  'disallow_self_add_membership',
-  'disallow_self_add_ownership',
+  MEMBER_TIME_LIMIT,
+  OWNER_TIME_LIMIT,
+  REQUIRE_MEMBER_REASON,
+  REQUIRE_OWNER_REASON,
+  DISALLOW_SELF_ADD_MEMBERSHIP,
+  DISALLOW_SELF_ADD_OWNERSHIP,
 ];
 
 /**

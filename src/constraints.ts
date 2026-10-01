@@ -30,17 +30,21 @@ const SECONDS_PER_DAY = 86400;
 /**
  * Render a time limit the way users think about it: in days.
  *
- * Sub-day limits are legal -- the constraint validator only requires a
- * positive integer -- and rounding one to the nearest day would print
- * "0 days", which reads as no access at all. Values are not guaranteed to
- * divide evenly either, and an unrounded quotient prints a falsely precise
- * fraction.
+ * Rounds **down**, never to nearest. These labels sit in sentences promising how
+ * long access lasts, so a limit reported longer than it is promises access the
+ * backend will not grant: a 36-hour limit reads "1 day", not "2 days". Erring
+ * short is the only safe direction.
+ *
+ * Sub-day limits are legal -- the constraint validator only requires a positive
+ * integer -- and flooring one gives "0 days", which reads as no access at all,
+ * so they get their own label. An unrounded quotient is no better: it prints a
+ * falsely precise fraction.
  */
 export function timeLimitLabel(seconds: number): string {
-  if (seconds < SECONDS_PER_DAY) {
+  const days = Math.floor(seconds / SECONDS_PER_DAY);
+  if (days === 0) {
     return '<1 day';
   }
-  const days = Math.round(seconds / SECONDS_PER_DAY);
   return `${days} ${days === 1 ? 'day' : 'days'}`;
 }
 

@@ -39,6 +39,8 @@ import {
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin} from '../../authorization';
 import ChangeTitle from '../../tab-title';
+import {MEMBER_TIME_LIMIT, OWNER_TIME_LIMIT, constraintLabel} from '../../constraintCopy';
+import {timeLimitLabel} from '../../constraints';
 import AddApps from './AddApps';
 import AddGroups from './AddGroups';
 import CreateUpdateTag from './CreateUpdate';
@@ -113,15 +115,6 @@ export default function ReadTag() {
       body: group,
       pathParams: {groupId: groupToRemove?.id ?? ''},
     });
-  };
-
-  const constraintsNames: Record<string, string> = {
-    member_time_limit: 'Member Time Limit',
-    owner_time_limit: 'Owner Time Limit',
-    require_owner_reason: 'Required to Provide Ownership Reason?',
-    require_member_reason: 'Required to Provide Membership Reason?',
-    disallow_self_add_ownership: 'Owners may not add selves as owners?',
-    disallow_self_add_membership: 'Owners may not add selves as members?',
   };
 
   const hasActions = tag != null && tag.deleted_at == null && isAccessAdmin(currentUser);
@@ -213,11 +206,15 @@ export default function ReadTag() {
                   {tag.constraints && Object.keys(tag.constraints).length > 0 ? (
                     Object.keys(tag.constraints).map((key: string) => (
                       <TableRow key={'constraint' + key}>
-                        <TableCell>{constraintsNames[key]}</TableCell>
+                        <TableCell>{constraintLabel(key)}</TableCell>
                         <TableCell colSpan={2}>
                           {
-                            key == 'member_time_limit' || key == 'owner_time_limit'
-                              ? tag.constraints![key] / 86400 + ' days' // Display days not seconds
+                            // `timeLimitLabel` rather than a bare division: the raw
+                            // quotient prints "0.041666666666666664 days" for an
+                            // hour-long limit, and the panel formats the same value
+                            // with it.
+                            key == MEMBER_TIME_LIMIT || key == OWNER_TIME_LIMIT
+                              ? timeLimitLabel(tag.constraints![key])
                               : tag.constraints![key]
                                 ? 'Yes'
                                 : 'No' // Display Yes and No not booleans

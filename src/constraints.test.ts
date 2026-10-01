@@ -163,9 +163,29 @@ describe('timeLimitLabel', () => {
     expect(timeLimitLabel(604800)).toBe('7 days');
   });
 
-  it('rounds a limit that does not divide evenly into days', () => {
+  it('rounds a limit that does not divide evenly into days down, never up', () => {
+    // The label goes into sentences promising how long access lasts, so it must
+    // never name a limit longer than the backend will honour. 36 hours is "1
+    // day"; rounding to nearest would promise a second day that does not exist.
     expect(timeLimitLabel(90000)).toBe('1 day');
+    expect(timeLimitLabel(129600)).toBe('1 day');
+    expect(timeLimitLabel(172799)).toBe('1 day');
     expect(timeLimitLabel(7776000)).toBe('90 days');
+  });
+
+  it('never names a limit longer than it is, at any value', () => {
+    // The property the direction of rounding exists to hold. Checked across a
+    // spread rather than at one point, since the failure mode is a single
+    // quotient landing just past .5 and promising a day that is not there.
+    for (let seconds = 1; seconds <= 86400 * 10; seconds += 997) {
+      const label = timeLimitLabel(seconds);
+      if (label === '<1 day') {
+        expect(seconds).toBeLessThan(86400);
+        continue;
+      }
+      const claimed = Number(label.split(' ')[0]);
+      expect(claimed * 86400).toBeLessThanOrEqual(seconds);
+    }
   });
 
   it('renders a sub-day limit as "<1 day" rather than rounding it away', () => {
