@@ -98,12 +98,24 @@ def _is_active(row: type[OktaUserGroupMember] | type[OktaGroupTagMap]) -> Column
     return or_(row.ended_at.is_(None), row.ended_at > func.now())
 
 
-def _owns_app(app_id: ColumnExpressionArgument[str | None], reviewer_id: ReviewerId) -> ColumnElement[bool]:
-    """The reviewer owns an active owners group of the app `app_id`."""
+def _app_ownership(
+    app_id: ColumnExpressionArgument[str | None], reviewer_id: ReviewerId
+) -> tuple[tuple[Any, ...], list[ColumnElement[bool]]]:
+    """The tables and conditions for: the reviewer owns an active owners group of the app `app_id`.
+
+    Returned unwrapped so a level can merge them into its own EXISTS. Each
+    owner level is a single EXISTS, never one EXISTS nested inside another:
+    `_anyone_eligible_at` wraps the level in an EXISTS over a correlated
+    reviewer column, and Postgres cannot turn a further nested EXISTS into a
+    join, so it rescans users for every request row.
+
+    The conditions do not check the app's `deleted_at`. `DeleteApp` relies on
+    that: it marks the app deleted and then deletes its groups, owners group
+    last, so the app owners are still found for the other groups' requests.
+    """
     owners_group = aliased(AppGroup, flat=True)
     ownership = aliased(OktaUserGroupMember)
-    return _exists(
-        (owners_group, ownership),
+    return (owners_group, ownership), [
         owners_group.app_id == app_id,
         owners_group.is_owner.is_(True),
         owners_group.deleted_at.is_(None),
@@ -111,7 +123,13 @@ def _owns_app(app_id: ColumnExpressionArgument[str | None], reviewer_id: Reviewe
         ownership.user_id == reviewer_id,
         ownership.is_owner.is_(True),
         _is_active(ownership),
-    )
+    ]
+
+
+def _owns_app(app_id: ColumnExpressionArgument[str | None], reviewer_id: ReviewerId) -> ColumnElement[bool]:
+    """The reviewer owns an active owners group of the app `app_id`; see `_app_ownership`."""
+    froms, conditions = _app_ownership(app_id, reviewer_id)
+    return _exists(froms, *conditions)
 
 
 def _is_access_admin(reviewer_id: ReviewerId) -> ColumnElement[bool]:
@@ -155,11 +173,12 @@ def _owns_app_of_requested_group(request_cls: RequestModel, reviewer_id: Reviewe
     assert request_cls is not GroupRequest
     cls = cast(type[AccessRequest] | type[RoleRequest], request_cls)
     group = aliased(AppGroup, flat=True)
+    app_froms, app_conditions = _app_ownership(group.app_id, reviewer_id)
     return _exists(
-        (group,),
+        (group, *app_froms),
         group.id == cls.requested_group_id,
         group.deleted_at.is_(None),
-        _owns_app(group.app_id, reviewer_id),
+        *app_conditions,
     )
 
 
