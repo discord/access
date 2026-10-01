@@ -25,6 +25,29 @@ const SELF_ADD_KEYS = {member: 'disallow_self_add_membership', owner: 'disallow_
 // dialog still has to answer for every row.
 const MAX_IDS_PER_REQUEST = 200;
 
+const SECONDS_PER_DAY = 86400;
+
+/**
+ * Render a time limit the way users think about it: in days.
+ *
+ * Rounds **down**, never to nearest. These labels sit in sentences promising how
+ * long access lasts, so a limit reported longer than it is promises access the
+ * backend will not grant: a 36-hour limit reads "1 day", not "2 days". Erring
+ * short is the only safe direction.
+ *
+ * Sub-day limits are legal -- the constraint validator only requires a positive
+ * integer -- and flooring one gives "0 days", which reads as no access at all,
+ * so they get their own label. An unrounded quotient is no better: it prints a
+ * falsely precise fraction.
+ */
+export function timeLimitLabel(seconds: number): string {
+  const days = Math.floor(seconds / SECONDS_PER_DAY);
+  if (days === 0) {
+    return '<1 day';
+  }
+  return `${days} ${days === 1 ? 'day' : 'days'}`;
+}
+
 export type Constraints = EffectiveConstraintDetail[] | undefined | null;
 
 function valueOf(constraints: Constraints, key: string): number | boolean | undefined {
