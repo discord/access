@@ -41,17 +41,29 @@ const renderField = (over: Partial<PluginConfigProp>): any =>
   ConfigField({property: prop(over), value: '', fieldName: 'plugin_data.p.configuration.f', locked: false}) as any;
 
 describe('isFieldLocked', () => {
-  it('locks an immutable field when editing an existing entity', () => {
-    expect(isFieldLocked(prop({immutable: true}), true)).toBe(true);
+  it('locks a set immutable field when editing an existing entity', () => {
+    expect(isFieldLocked(prop({immutable: true}), true, 'eng')).toBe(true);
+  });
+
+  it('keeps a set boolean or number immutable field locked when falsy', () => {
+    expect(isFieldLocked(prop({immutable: true, type: 'boolean'}), true, false)).toBe(true);
+    expect(isFieldLocked(prop({immutable: true, type: 'number'}), true, 0)).toBe(true);
+  });
+
+  it('does not lock an unset immutable field on an existing entity', () => {
+    // e.g. a group that predates the plugin, so it has no configuration yet.
+    expect(isFieldLocked(prop({immutable: true}), true, undefined)).toBe(false);
+    expect(isFieldLocked(prop({immutable: true}), true, null)).toBe(false);
+    expect(isFieldLocked(prop({immutable: true}), true, '')).toBe(false);
   });
 
   it('does not lock an immutable field at create time', () => {
-    expect(isFieldLocked(prop({immutable: true}), false)).toBe(false);
+    expect(isFieldLocked(prop({immutable: true}), false, 'eng')).toBe(false);
   });
 
   it('never locks a mutable field', () => {
-    expect(isFieldLocked(prop({immutable: false}), true)).toBe(false);
-    expect(isFieldLocked(prop({}), true)).toBe(false);
+    expect(isFieldLocked(prop({immutable: false}), true, 'eng')).toBe(false);
+    expect(isFieldLocked(prop({}), true, 'eng')).toBe(false);
   });
 });
 
