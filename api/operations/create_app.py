@@ -170,6 +170,11 @@ class CreateApp:
             assert owner_app_group is not None
             owner_app_group.app_id = app_id
             owner_app_group.is_owner = True
+            # A group absorbed by app creation keeps whatever description it already had;
+            # only a group with none is seeded with the default, so an owner group is never
+            # left blank where an operator has REQUIRE_DESCRIPTIONS set.
+            if not (owner_app_group.description or ""):
+                owner_app_group.description = app_owners_group_description(self.app.name)
             await db.session.commit()
 
         if owner_id is not None:

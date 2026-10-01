@@ -22,6 +22,7 @@ from api.models import (
     RoleGroupMap,
     Tag,
 )
+from api.models.app_group import app_owners_group_description
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
 from tests.factories import (
@@ -1154,3 +1155,111 @@ async def test_get_apps_q_via_http(client: AsyncClient, db: Db, url_for: Any) ->
     names = [a["name"] for a in rep.json()["items"]]
     assert "ZelaPaymentsApp" in names
     assert "LoggingApp" not in names
+
+
+async def test_put_app_rename_refreshes_an_unedited_owner_group_description(
+    client: AsyncClient, db: Db, mocker: MockerFixture, access_app: App, url_for: Any
+) -> None:
+    """A rename keeps the seeded default naming the app it belongs to."""
+    db.session.add(access_app)
+    await db.session.commit()
+    owner_group = AppGroupFactory.build(
+        app_id=access_app.id,
+        is_owner=True,
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        description=app_owners_group_description(access_app.name),
+    )
+    db.session.add(owner_group)
+    await db.session.commit()
+    owner_group_id = owner_group.id
+
+    mocker.patch.object(okta, "update_group")
+    rep = await client.put(
+        url_for("api-apps.app_by_id", app_id=access_app.id),
+        json=UpdateAppBodyFactory.json(name="RenamedApp", description=access_app.description),
+    )
+    assert rep.status_code == 200
+
+    db.session.expire_all()
+    refreshed = await db.session.get(AppGroup, owner_group_id)
+    assert refreshed is not None
+    assert refreshed.description == app_owners_group_description("RenamedApp")
+
+
+async def test_put_app_rename_leaves_an_edited_owner_group_description_alone(
+    client: AsyncClient, db: Db, mocker: MockerFixture, access_app: App, url_for: Any
+) -> None:
+    """Text somebody chose survives a rename; a rename is not a reason to overwrite it."""
+    db.session.add(access_app)
+    await db.session.commit()
+    edited = "Owners of the billing stack, and approvers for its quarterly access review."
+    owner_group = AppGroupFactory.build(
+        app_id=access_app.id,
+        is_owner=True,
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        description=edited,
+    )
+    db.session.add(owner_group)
+    await db.session.commit()
+    owner_group_id = owner_group.id
+
+    mocker.patch.object(okta, "update_group")
+    rep = await client.put(
+        url_for("api-apps.app_by_id", app_id=access_app.id),
+        json=UpdateAppBodyFactory.json(name="RenamedApp", description=access_app.description),
+    )
+    assert rep.status_code == 200
+
+    db.session.expire_all()
+    refreshed = await db.session.get(AppGroup, owner_group_id)
+    assert refreshed is not None
+    assert refreshed.description == edited
+    # The name is structural and still tracks the app.
+    assert refreshed.name.startswith(f"{AppGroup.APP_GROUP_NAME_PREFIX}RenamedApp")
+
+
+async def test_create_app_seeds_a_description_only_on_a_blank_absorbed_owner_group(
+    client: AsyncClient,
+    db: Db,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    url_for: Any,
+) -> None:
+    """Absorbing a pre-existing group keeps its description; a blank one gets the default.
+
+    The default matters where an operator has REQUIRE_DESCRIPTIONS set, since an absorbed
+    group would otherwise become an owner group with nothing in its description.
+    """
+    mocker.patch.object(
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
+    )
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
+    mocker.patch.object(okta, "update_group")
+
+    def owner_group_name(app_name: str) -> str:
+        return (
+            f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}"
+            f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+        )
+
+    existing_text = "Runs the payments on-call rotation."
+    await OktaGroupFactory.create_async(name=owner_group_name("Payments"), description=existing_text)
+    await OktaGroupFactory.create_async(name=owner_group_name("Billing"), description="")
+
+    apps_url = url_for("api-apps.apps")
+    assert (await client.post(apps_url, json={"name": "Payments"})).status_code == 201
+    assert (await client.post(apps_url, json={"name": "Billing"})).status_code == 201
+
+    db.session.expire_all()
+    kept = (await db.session.scalars(select(AppGroup).where(AppGroup.name == owner_group_name("Payments")))).first()
+    assert kept is not None
+    assert kept.description == existing_text
+
+    seeded = (await db.session.scalars(select(AppGroup).where(AppGroup.name == owner_group_name("Billing")))).first()
+    assert seeded is not None
+    assert seeded.description == app_owners_group_description("Billing")
