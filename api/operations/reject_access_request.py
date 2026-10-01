@@ -24,7 +24,25 @@ class RejectAccessRequest:
         notify: bool = True,
         notify_requester: bool = True,
         current_user_id: Optional[str | OktaUser] = None,
+        assigned_reviewers: Optional[list[OktaUser]] = None,
     ):
+        """Reject a pending access request.
+
+        Args:
+            access_request: The request, or its id.
+            rejection_reason: Recorded as the request's resolution reason.
+            notify: Send the close notification.
+            notify_requester: Include the requester in the close notification.
+            current_user_id: The rejecting user, or their id; None for a system rejection.
+            assigned_reviewers: The request's assigned reviewers, captured by a
+                caller that changes ownership of the requested group before
+                rejecting, so the close notification goes to the
+                reviewers assigned while the request was open. When None, they
+                are computed at rejection time.
+
+        Raises:
+            ConflictError: From `execute`, when the request is no longer pending.
+        """
         self.access_request_id = access_request if isinstance(access_request, str) else access_request.id
         self.current_user_id = (
             current_user_id.id
@@ -35,6 +53,7 @@ class RejectAccessRequest:
         self.rejection_reason = rejection_reason
         self.notify = notify
         self.notify_requester = notify_requester
+        self.assigned_reviewers = assigned_reviewers
 
     async def execute(self) -> AccessRequest:
         # Lock the request row so a reject can't race a concurrent approve/
@@ -107,7 +126,11 @@ class RejectAccessRequest:
         if self.notify:
             requester = await db.session.get(OktaUser, access_request.requester_user_id)
 
-            approvers = (await get_assigned_reviewers(access_request)).reviewers
+            approvers = (
+                self.assigned_reviewers
+                if self.assigned_reviewers is not None
+                else (await get_assigned_reviewers(access_request)).reviewers
+            )
 
             await defer_notification(
                 db.session,

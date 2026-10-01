@@ -36,6 +36,7 @@ from tests.factories import (
     OktaUserFactory,
     OktaUserGroupMemberFactory,
     RoleGroupFactory,
+    RoleGroupMapFactory,
     RoleRequestFactory,
     TagFactory,
 )
@@ -383,6 +384,22 @@ async def role_tag_blocks_app_owner() -> Scenario:
     )
 
 
+async def role_ownership_tag_blocks_app_owner() -> Scenario:
+    u = await _users("requester", "blocked_app_owner")
+    app, _ = await _app(u["blocked_app_owner"])
+    group = await AppGroupFactory.create_async(app_id=app.id, is_owner=False)
+    tag = await _tag(Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY)
+    await OktaGroupTagMapFactory.create_async(group_id=group.id, tag_id=tag.id)
+    req = await _role_request(u, group, role_members=("blocked_app_owner",), ownership=True)
+    return Scenario(
+        req,
+        u,
+        "access_admins",
+        {"admin"},
+        [("group_owners", set()), ("app_owners", {"blocked_app_owner"}), ("access_admins", {"admin"})],
+    )
+
+
 async def role_admin_exempt_from_tag() -> Scenario:
     u = await _users("requester")
     group = await OktaGroupFactory.create_async()
@@ -477,6 +494,7 @@ SCENARIOS: list[Callable[[], Awaitable[Scenario]]] = [
     role_disabled_tag_does_not_block,
     role_app_inherited_tag_blocks,
     role_tag_blocks_app_owner,
+    role_ownership_tag_blocks_app_owner,
     role_admin_exempt_from_tag,
     group_app_group_with_app_owners,
     group_app_group_unowned_app,
@@ -530,3 +548,141 @@ async def test_close_notification_uses_reviewers_assigned_before_approval(db: Db
     assert completed.call_count == 1
     _, kwargs = completed.call_args
     assert {user.id for user in kwargs["approvers"]} == {u["app_owner"].id}
+
+
+async def test_modify_group_users_batch_close_notifications_use_reviewers_assigned_before_the_batch(
+    db: Db, mocker: MockerFixture
+) -> None:
+    """Adding two requesters as owners in one call makes each an owner before
+    either notification goes out; each still goes to the app owners, who were
+    assigned while the requests were open, not to the other new owner."""
+    from api.operations import ModifyGroupUsers
+    from api.plugins import get_notification_hook
+    from api.services import okta
+
+    u = await _users("app_owner", "requester1", "requester2")
+    app, _ = await _app(u["app_owner"])
+    group = await AppGroupFactory.create_async(app_id=app.id, is_owner=False)
+    requests = [
+        await AccessRequestFactory.create_async(
+            requester_user_id=u[name].id, requested_group_id=group.id, request_ownership=True
+        )
+        for name in ("requester1", "requester2")
+    ]
+
+    mocker.patch.object(okta, "add_owner_to_group")
+    completed = mocker.patch.object(get_notification_hook(), "access_request_completed")
+
+    await ModifyGroupUsers(
+        group=group.id,
+        owners_to_add=[u["requester1"].id, u["requester2"].id],
+        current_user_id=u["app_owner"].id,
+    ).execute()
+
+    assert completed.call_count == 2
+    notified = {call.kwargs["access_request"].id: call.kwargs["approvers"] for call in completed.call_args_list}
+    assert set(notified) == {request.id for request in requests}
+    for approvers in notified.values():
+        assert {user.id for user in approvers} == {u["app_owner"].id}
+
+
+async def test_delete_group_close_notification_uses_reviewers_assigned_before_deletion(
+    db: Db, mocker: MockerFixture
+) -> None:
+    """Deleting an app group closes its pending access requests; the close
+    notification goes to the app owners assigned while the request was open,
+    though the deleted group no longer routes to them."""
+    from api.operations import DeleteGroup
+    from api.plugins import get_notification_hook
+    from api.services import okta
+
+    u = await _users("requester", "app_owner")
+    app, _ = await _app(u["app_owner"])
+    group = await AppGroupFactory.create_async(app_id=app.id, is_owner=False)
+    req = await AccessRequestFactory.create_async(requester_user_id=u["requester"].id, requested_group_id=group.id)
+
+    mocker.patch.object(okta, "delete_group")
+    completed = mocker.patch.object(get_notification_hook(), "access_request_completed")
+
+    await DeleteGroup(group=group.id).execute()
+
+    assert completed.call_count == 1
+    assert completed.call_args.kwargs["access_request"].id == req.id
+    assert {user.id for user in completed.call_args.kwargs["approvers"]} == {u["app_owner"].id}
+
+
+async def test_delete_role_close_notification_uses_reviewers_assigned_before_deletion(
+    db: Db, mocker: MockerFixture
+) -> None:
+    """Deleting the requesting role ends its memberships, which would lift the
+    tag block on a group owner who is a role member; the close notification
+    still goes to the Access admins, who were assigned while it was open."""
+    from api.operations import DeleteGroup
+    from api.plugins import get_notification_hook
+
+    u = await _users("requester", "blocked_owner")
+    group = await OktaGroupFactory.create_async()
+    await _own(u["blocked_owner"], group)
+    tag = await _tag(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY)
+    await OktaGroupTagMapFactory.create_async(group_id=group.id, tag_id=tag.id)
+    req = await _role_request(u, group, role_members=("blocked_owner",))
+
+    completed = mocker.patch.object(get_notification_hook(), "access_role_request_completed")
+
+    await DeleteGroup(group=req.requester_role_id, sync_to_okta=False).execute()
+
+    assert completed.call_count == 1
+    assert {user.id for user in completed.call_args.kwargs["approvers"]} == {u["admin"].id}
+
+
+async def test_delete_app_close_notifications_use_reviewers_assigned_before_deletion(
+    db: Db, mocker: MockerFixture
+) -> None:
+    """Deleting an app deletes its owners group too; the close notification for
+    a pending request on another of its groups still goes to the app owners."""
+    from api.operations import DeleteApp
+    from api.plugins import get_notification_hook
+    from api.services import okta
+
+    u = await _users("requester", "app_owner")
+    app, _ = await _app(u["app_owner"])
+    group = await AppGroupFactory.create_async(app_id=app.id, is_owner=False)
+    req = await AccessRequestFactory.create_async(requester_user_id=u["requester"].id, requested_group_id=group.id)
+
+    mocker.patch.object(okta, "delete_group")
+    completed = mocker.patch.object(get_notification_hook(), "access_request_completed")
+
+    await DeleteApp(app=app.id).execute()
+
+    assert completed.call_count == 1
+    assert completed.call_args.kwargs["access_request"].id == req.id
+    assert {user.id for user in completed.call_args.kwargs["approvers"]} == {u["app_owner"].id}
+
+
+async def test_unmanage_group_close_notification_uses_reviewers_assigned_before_unmanaging(
+    db: Db, mocker: MockerFixture
+) -> None:
+    """Unmanaging a group ends ownership granted through a role; the close
+    notification goes to the role member who owned the group while the request
+    was open."""
+    from api.extensions import db as ext_db
+    from api.operations import UnmanageGroup
+    from api.plugins import get_notification_hook
+
+    u = await _users("requester", "role_owner")
+    group = await OktaGroupFactory.create_async()
+    role = await RoleGroupFactory.create_async()
+    await _join(u["role_owner"], role)
+    role_map = await RoleGroupMapFactory.create_async(role_group_id=role.id, group_id=group.id, is_owner=True)
+    await _own(u["role_owner"], group, role_group_map_id=role_map.id)
+    req = await AccessRequestFactory.create_async(requester_user_id=u["requester"].id, requested_group_id=group.id)
+    assert [user.id for user in (await get_assigned_reviewers(req)).reviewers] == [u["role_owner"].id]
+
+    group.is_managed = False
+    await ext_db.session.commit()
+    completed = mocker.patch.object(get_notification_hook(), "access_request_completed")
+
+    await UnmanageGroup(group=group.id).execute()
+
+    assert completed.call_count == 1
+    assert {user.id for user in completed.call_args.kwargs["approvers"]} == {u["role_owner"].id}

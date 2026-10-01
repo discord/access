@@ -24,7 +24,26 @@ class RejectRoleRequest:
         notify: bool = True,
         notify_requester: bool = True,
         current_user_id: Optional[str | OktaUser] = None,
+        assigned_reviewers: Optional[list[OktaUser]] = None,
     ):
+        """Reject a pending role request.
+
+        Args:
+            role_request: The request, or its id.
+            rejection_reason: Recorded as the request's resolution reason.
+            notify: Send the close notification.
+            notify_requester: Include the requester in the close notification.
+            current_user_id: The rejecting user, or their id; None for a system rejection.
+            assigned_reviewers: The request's assigned reviewers, captured by a
+                caller that changes ownership of the requested group, or
+                membership of the requesting role, before rejecting, so the
+                close notification goes to the reviewers assigned while the
+                request was open. When None, they
+                are computed at rejection time.
+
+        Raises:
+            ConflictError: From `execute`, when the request is no longer pending.
+        """
         self.role_request_id = role_request if isinstance(role_request, str) else role_request.id
         self.current_user_id = (
             current_user_id.id
@@ -35,6 +54,7 @@ class RejectRoleRequest:
         self.rejection_reason = rejection_reason
         self.notify = notify
         self.notify_requester = notify_requester
+        self.assigned_reviewers = assigned_reviewers
 
     async def execute(self) -> RoleRequest:
         # Lock the request row so a reject can't race a concurrent approve/
@@ -117,7 +137,11 @@ class RejectRoleRequest:
             requester = await db.session.get(OktaUser, role_request.requester_user_id)
             requester_role = await db.session.get(OktaGroup, role_request.requester_role_id)
 
-            approvers = (await get_assigned_reviewers(role_request)).reviewers
+            approvers = (
+                self.assigned_reviewers
+                if self.assigned_reviewers is not None
+                else (await get_assigned_reviewers(role_request)).reviewers
+            )
 
             await defer_notification(
                 db.session,
