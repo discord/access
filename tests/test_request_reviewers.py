@@ -5,9 +5,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable, Optional
 
 import pytest
+from httpx import AsyncClient
 from pytest_mock import MockerFixture
 from sqlalchemy import select
+from sqlalchemy.orm import selectin_polymorphic
 
+from api.auth.permissions import can_manage_group, is_access_admin
 from api.config import settings
 from api.extensions import Db
 from api.models import (
@@ -17,14 +20,17 @@ from api.models import (
     GroupRequest,
     OktaGroup,
     OktaUser,
+    RoleGroup,
     RoleRequest,
     Tag,
 )
+from api.models.app_group import get_app_managers
 from api.models.request_reviewers import (
     OwnerLevel,
     get_assigned_reviewers,
     get_possible_reviewers_by_level,
 )
+from api.operations.constraints import CheckForSelfAdd
 from tests.factories import (
     AccessRequestFactory,
     AppFactory,
@@ -686,3 +692,75 @@ async def test_unmanage_group_close_notification_uses_reviewers_assigned_before_
 
     assert completed.call_count == 1
     assert {user.id for user in completed.call_args.kwargs["approvers"]} == {u["role_owner"].id}
+
+
+_LIST_ROUTE = {AccessRequest: "access_requests", RoleRequest: "role_requests", GroupRequest: "group_requests"}
+
+
+async def _assigned_via_list(
+    client: AsyncClient, url_for: Callable[..., str], scenario: Scenario, user: OktaUser
+) -> bool:
+    """Whether the request shows in `user`'s "Assigned to Me" list."""
+    rep = await client.get(
+        url_for(_LIST_ROUTE[type(scenario.request)]), params={"assignee_user_id": user.id, "size": 100}
+    )
+    assert rep.status_code == 200
+    return scenario.request.id in {item["id"] for item in rep.json()["items"]}
+
+
+async def _permitted_to_approve(scenario: Scenario, user: OktaUser) -> bool:
+    """Whether the real resolve checks would let `user` approve the request."""
+    from api.extensions import db
+
+    request = scenario.request
+    if user.deleted_at is not None or request.requester_user_id == user.id:
+        return False
+    if isinstance(request, GroupRequest):
+        if await is_access_admin(db.session, user.id):
+            return True
+        return request.requested_app_id is not None and user.id in {
+            m.id for m in await get_app_managers(request.requested_app_id)
+        }
+    group = (
+        await db.session.scalars(
+            select(OktaGroup)
+            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+            .where(OktaGroup.id == request.requested_group_id)
+        )
+    ).one()
+    if not await can_manage_group(db.session, user.id, group):
+        return False
+    if isinstance(request, RoleRequest):
+        added = [request.requested_group_id]
+        valid, _ = await CheckForSelfAdd(
+            group=request.requester_role_id,
+            current_user=user.id,
+            members_to_add=[] if request.request_ownership else added,
+            owners_to_add=added if request.request_ownership else [],
+        ).execute_for_role()
+        return valid
+    return True
+
+
+@pytest.mark.parametrize("build", SCENARIOS, ids=lambda b: b.__name__)
+async def test_reviewer_directions_agree(
+    db: Db, client: AsyncClient, url_for: Callable[..., str], build: Callable[[], Awaitable[Scenario]]
+) -> None:
+    """For every user: assigned by `get_assigned_reviewers` exactly when the
+    "Assigned to Me" list shows the request; and assigned ⊆ permitted to
+    approve ⊆ possible reviewers."""
+    scenario = await build()
+    assigned = {u.id for u in (await get_assigned_reviewers(scenario.request)).reviewers}
+    possible = {u.id for level in await get_possible_reviewers_by_level(scenario.request) for u in level.reviewers}
+    # Drop identity-map state so the list route and the resolve checks read
+    # the database, then reload the objects this test reads directly.
+    db.session.expire_all()
+    for obj in (scenario.request, *scenario.users.values()):
+        await db.session.refresh(obj)
+    for name, user in scenario.users.items():
+        assert (user.id in assigned) == await _assigned_via_list(client, url_for, scenario, user), name
+        permitted = await _permitted_to_approve(scenario, user)
+        if user.id in assigned:
+            assert permitted, f"{name} is assigned but cannot approve"
+        if permitted:
+            assert user.id in possible, f"{name} can approve but is not a possible reviewer"
