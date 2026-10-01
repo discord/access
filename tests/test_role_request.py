@@ -1442,9 +1442,8 @@ async def test_role_request_assignee_filter_ignores_propagated_self_add_tag_on_r
 
     # `role_owner` owns `owned_role`, and is separately a plain member of
     # `other_role` alongside `other_member` -- `other_member` is who actually
-    # submits the (fixture-inserted) request below, so the unconditional
-    # "never show the assignee their own requests" filter doesn't hide it
-    # for an unrelated reason.
+    # submits the (fixture-inserted) request below, so `role_owner` is not the
+    # requester, whom the reviewer rule never makes eligible.
     await ModifyGroupUsers(group=owned_role, owners_to_add=[role_owner.id], sync_to_okta=False).execute()
     await ModifyGroupUsers(
         group=other_role, members_to_add=[role_owner.id, other_member.id], sync_to_okta=False

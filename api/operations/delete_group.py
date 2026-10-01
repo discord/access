@@ -94,9 +94,7 @@ class DeleteGroup:
             )
         )
 
-        # Deleting the group ends the ownerships its requests are assigned
-        # through, so capture the assigned reviewers for the close
-        # notifications first.
+        # Capture assigned reviewers before deleting changes ownership; see `snapshot_assigned_reviewers`.
         access_reviewers, role_reviewers = await snapshot_obsolete_request_reviewers(group.id)
 
         if self.sync_to_okta:

@@ -594,6 +594,72 @@ async def test_modify_group_users_batch_close_notifications_use_reviewers_assign
         assert {user.id for user in approvers} == {u["app_owner"].id}
 
 
+async def test_modify_group_users_snapshots_only_requests_it_can_fulfil(db: Db, mocker: MockerFixture) -> None:
+    """Adding a member to a role snapshots the member's requests for the role and
+    the groups the role is associated with, not their other pending requests."""
+    import api.operations.modify_group_users as modify_group_users
+    from api.operations import ModifyGroupUsers
+    from api.services import okta
+
+    u = await _users("requester", "group_owner")
+    role = await RoleGroupFactory.create_async()
+    associated = await OktaGroupFactory.create_async()
+    unrelated = await OktaGroupFactory.create_async()
+    await _own(u["group_owner"], associated)
+    await RoleGroupMapFactory.create_async(role_group_id=role.id, group_id=associated.id, is_owner=False)
+    fulfillable = await AccessRequestFactory.create_async(
+        requester_user_id=u["requester"].id, requested_group_id=associated.id
+    )
+    await AccessRequestFactory.create_async(requester_user_id=u["requester"].id, requested_group_id=unrelated.id)
+
+    mocker.patch.object(okta, "add_user_to_group")
+    snapshot = mocker.spy(modify_group_users, "snapshot_assigned_reviewers")
+
+    await ModifyGroupUsers(group=role.id, members_to_add=[u["requester"].id], current_user_id=u["admin"].id).execute()
+
+    assert [request.id for request in snapshot.call_args.args[0]] == [fulfillable.id]
+
+
+@pytest.mark.parametrize("operation", ["ModifyGroupUsers", "ModifyRoleGroups"])
+async def test_close_notification_computes_reviewers_for_a_request_missing_from_the_snapshot(
+    db: Db, mocker: MockerFixture, operation: str
+) -> None:
+    """A request the snapshot misses, such as one opened after it was taken, has
+    its reviewers computed when the operation closes it."""
+    import api.operations.modify_group_users as modify_group_users
+    import api.operations.modify_role_groups as modify_role_groups
+    from api.operations import ModifyGroupUsers, ModifyRoleGroups
+    from api.plugins import get_notification_hook
+    from api.services import okta
+
+    u = await _users("requester", "group_owner", "role_member")
+    group = await OktaGroupFactory.create_async()
+    await _own(u["group_owner"], group)
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
+    hook = get_notification_hook()
+
+    if operation == "ModifyGroupUsers":
+        mocker.patch.object(modify_group_users, "snapshot_assigned_reviewers", return_value={})
+        completed = mocker.patch.object(hook, "access_request_completed")
+        await AccessRequestFactory.create_async(requester_user_id=u["requester"].id, requested_group_id=group.id)
+        await ModifyGroupUsers(
+            group=group.id, members_to_add=[u["requester"].id], current_user_id=u["group_owner"].id
+        ).execute()
+    else:
+        mocker.patch.object(modify_role_groups, "snapshot_assigned_reviewers", return_value={})
+        completed = mocker.patch.object(hook, "access_role_request_completed")
+        role_request = await _role_request(u, group, role_members=("role_member",))
+        await ModifyRoleGroups(
+            role_group=role_request.requester_role_id,
+            groups_to_add=[group.id],
+            current_user_id=u["group_owner"].id,
+        ).execute()
+
+    assert completed.call_count == 1
+    assert {user.id for user in completed.call_args.kwargs["approvers"]} == {u["group_owner"].id}
+
+
 async def test_delete_group_close_notification_uses_reviewers_assigned_before_deletion(
     db: Db, mocker: MockerFixture
 ) -> None:
@@ -711,7 +777,12 @@ async def _assigned_via_list(
 
 
 async def _permitted_to_approve(scenario: Scenario, user: OktaUser) -> bool:
-    """Whether the real resolve checks would let `user` approve the request."""
+    """Whether the resolve routes would let `user` approve the request.
+
+    Reproduces those routes' checks from the same primitives they call
+    (`is_access_admin`, `get_app_managers`, `can_manage_group`,
+    `CheckForSelfAdd`) rather than calling the routes.
+    """
     from api.extensions import db
 
     request = scenario.request
@@ -799,9 +870,22 @@ async def test_reviewers_route(
     ] == scenario.expected_possible
 
 
-@pytest.mark.parametrize("model", [AccessRequest, RoleRequest, GroupRequest], ids=lambda m: m.__name__)
-async def test_reviewers_route_unknown_id(client: AsyncClient, url_for: Callable[..., str], model: type) -> None:
-    name, param = _REVIEWERS_ROUTE[model]
+@pytest.mark.parametrize(
+    "build",
+    [
+        access_requester_is_sole_group_owner_and_an_app_owner,
+        role_tag_blocks_one_group_owner,
+        group_app_group_with_app_owners,
+    ],
+    ids=lambda b: b.__name__,
+)
+async def test_reviewers_route_unknown_id(
+    db: Db, client: AsyncClient, url_for: Callable[..., str], build: Callable[[], Awaitable[Scenario]]
+) -> None:
+    """The same route that answers for a known request answers 404 for an unknown id."""
+    scenario = await build()
+    name, param = _REVIEWERS_ROUTE[type(scenario.request)]
+    assert (await client.get(url_for(name, **{param: scenario.request.id}))).status_code == 200
     rep = await client.get(url_for(name, **{param: "missing"}))
     assert rep.status_code == 404
     assert rep.headers["content-type"].startswith("application/problem+json")

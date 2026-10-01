@@ -24,7 +24,7 @@ from api.models import (
     RoleRequest,
     Tag,
 )
-from api.models.request_reviewers import snapshot_assigned_reviewers
+from api.models.request_reviewers import get_assigned_reviewers, snapshot_assigned_reviewers
 from api.models.tag import effective_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.operations._time_limits import limit_access_conferred_by_roles, propagating_seconds_limit
@@ -246,10 +246,9 @@ class ModifyRoleGroups:
         # prepared after the final commit and dispatched alongside async_tasks.
         approved_access_requests: list[AccessRequest] = []
         approved_role_requests: list[RoleRequest] = []
-        # Close notifications go to the reviewers assigned while each request was
-        # open, so capture them before this operation changes ownership. Every
-        # request this operation can fulfil targets a group it adds the role to:
-        # a role request from this role, or an access request from a role member.
+        # Capture assigned reviewers before ownership changes; see `snapshot_assigned_reviewers`.
+        # The requests it can fulfil target a group it adds the role to: a role
+        # request from this role, or an access request from a role member.
         assigned_before_change: dict[str, list[OktaUser]] = {}
         if self.notify:
             added_group_ids = {g.id for g in groups_to_add} | {g.id for g in owner_groups_to_add}
@@ -727,7 +726,9 @@ class ModifyRoleGroups:
                 # reload it explicitly so the hook sees a concrete value.
                 await db.session.refresh(access_request, attribute_names=["resolved_at"])
                 requester = await db.session.get(OktaUser, access_request.requester_user_id)
-                approvers = assigned_before_change[access_request.id]
+                approvers = assigned_before_change.get(access_request.id)
+                if approvers is None:
+                    approvers = (await get_assigned_reviewers(access_request)).reviewers
                 # Spawn + drain in one batch with the Okta tasks below, so on the
                 # inline path notifications run concurrently. prepare_notification_task
                 # expunges the payload so the async hook can read it after the
@@ -750,7 +751,9 @@ class ModifyRoleGroups:
                 group = role_request.requested_group
                 await db.session.refresh(role_request, attribute_names=["resolved_at"])
                 requester = await db.session.get(OktaUser, role_request.requester_user_id)
-                approvers = assigned_before_change[role_request.id]
+                approvers = assigned_before_change.get(role_request.id)
+                if approvers is None:
+                    approvers = (await get_assigned_reviewers(role_request)).reviewers
                 async_tasks.append(
                     prepare_notification_task(
                         db.session,

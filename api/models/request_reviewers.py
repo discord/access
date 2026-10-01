@@ -361,11 +361,14 @@ async def get_possible_reviewers_by_level(request: AnyRequest) -> list[OwnerLeve
 async def snapshot_assigned_reviewers(requests: Iterable[AnyRequest]) -> dict[str, list[OktaUser]]:
     """Return each request's assigned reviewers, keyed by request id.
 
-    Operations that resolve requests as a side effect of changing ownership
-    call this before the change: approving can change who is assigned (a
-    role granted ownership of a group makes its members owners of that
-    group), and the close notification goes to the reviewers assigned while
-    the request was open.
+    A request's close notification goes to the reviewers assigned while it
+    was open. Operations that close requests as a side effect of changing
+    ownership (adding users or roles to a group, deleting or unmanaging a
+    group) call this before the change, since the change can move who is
+    assigned: a role granted ownership of a group makes its members owners
+    of that group, and deleting a group ends its ownerships. A request the
+    snapshot misses, such as one opened after it was taken, has its
+    reviewers computed when it closes.
 
     Args:
         requests: Persisted access, role, or group requests.

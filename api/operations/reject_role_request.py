@@ -34,12 +34,10 @@ class RejectRoleRequest:
             notify: Send the close notification.
             notify_requester: Include the requester in the close notification.
             current_user_id: The rejecting user, or their id; None for a system rejection.
-            assigned_reviewers: The request's assigned reviewers, captured by a
-                caller that changes ownership of the requested group, or
-                membership of the requesting role, before rejecting, so the
-                close notification goes to the reviewers assigned while the
-                request was open. When None, they
-                are computed at rejection time.
+            assigned_reviewers: The request's assigned reviewers from
+                `snapshot_assigned_reviewers`, for a caller that changes
+                ownership before rejecting. When None, they are computed at
+                rejection time.
 
         Raises:
             ConflictError: From `execute`, when the request is no longer pending.

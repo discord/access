@@ -53,9 +53,7 @@ class UnmanageGroup:
         if group.is_managed:
             return
 
-        # Unmanaging ends ownership granted through roles, which the group's
-        # requests may be assigned through, so capture the assigned reviewers
-        # for the close notifications first.
+        # Capture assigned reviewers before unmanaging changes ownership; see `snapshot_assigned_reviewers`.
         access_reviewers: dict[str, list[OktaUser]] = {}
         role_reviewers: dict[str, list[OktaUser]] = {}
         if not dry_run:

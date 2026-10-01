@@ -351,6 +351,8 @@ class ApproveGroupRequest:
 
         if self.notify:
             requester = await db.session.get(OktaUser, group_request.requester_user_id)
+            # Same as before the commit: a group request's levels are the requested
+            # app's owners and Access admins, which creating the group leaves unchanged.
             approvers = (await get_assigned_reviewers(group_request)).reviewers
             await defer_notification(
                 db.session,

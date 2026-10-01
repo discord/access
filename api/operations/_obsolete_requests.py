@@ -1,11 +1,9 @@
 """The pending requests a group's deletion or unmanaging closes.
 
 `DeleteGroup` and `UnmanageGroup` select these twice: once before they change
-the group's ownership, to snapshot each request's assigned reviewers for its
-close notification, and again when rejecting. Both selections go through here
-so the snapshot covers exactly the requests that are later rejected; a request
-opened in between has no snapshot entry, and its rejection computes its
-reviewers instead.
+the group's ownership, for `snapshot_assigned_reviewers`, and again when
+rejecting. Both selections go through here so the snapshot covers exactly the
+requests that are later rejected.
 """
 
 from typing import Sequence
