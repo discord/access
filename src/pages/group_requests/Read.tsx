@@ -47,6 +47,7 @@ import {
   tagByIdQuery,
   useApps,
   useGroupRequestById,
+  useGroupRequestReviewers,
   useTags,
   useGroupRequestByIdPut,
 } from '../../api/apiComponents';
@@ -67,6 +68,7 @@ import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailable
 
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import Loading from '../../components/Loading';
+import RequestReviewers from '../../components/RequestReviewers';
 import accessConfig from '../../config/accessConfig';
 import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
 import PluginConfigDisplay from './PluginConfigDisplay';
@@ -298,6 +300,11 @@ export default function ReadGroupRequest() {
 
   const canApprove = (admin || isAppOwner) && !ownRequest;
   const canResolve = canApprove || ownRequest;
+
+  const {data: reviewers} = useGroupRequestReviewers(
+    {pathParams: {groupRequestId: groupRequest.id}},
+    {enabled: groupRequest.status == 'PENDING' && !canApprove},
+  );
 
   const {data: appSearchData} = useApps({
     queryParams: {page: 1, size: 10, q: appSearchInput},
@@ -1035,13 +1042,20 @@ export default function ReadGroupRequest() {
                             </FormControl>
                           </FormContainer>
                         </Paper>
+                        {ownRequest ? (
+                          <RequestReviewers
+                            reviewers={reviewers}
+                            groupName={groupRequest.requested_group_name}
+                            appName={requestedAppData?.name}
+                          />
+                        ) : null}
                       </Box>
                     ) : (
-                      <Paper sx={{p: 2, my: 2}}>
-                        <Typography variant="body1">
-                          Request is <b>pending</b> and can be reviewed by app owners or Access admins.
-                        </Typography>
-                      </Paper>
+                      <RequestReviewers
+                        reviewers={reviewers}
+                        groupName={groupRequest.requested_group_name}
+                        appName={requestedAppData?.name}
+                      />
                     )
                   ) : (
                     <Paper sx={{p: 2, my: 2}}>

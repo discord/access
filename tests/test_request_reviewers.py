@@ -5,11 +5,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable, Optional
 
 import pytest
+from fastapi import FastAPI, HTTPException
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
 from sqlalchemy import select
 from sqlalchemy.orm import selectin_polymorphic
 
+from api.auth.dependencies import get_current_user_id
 from api.auth.permissions import can_manage_group, is_access_admin
 from api.config import settings
 from api.extensions import Db
@@ -764,3 +766,57 @@ async def test_reviewer_directions_agree(
             assert permitted, f"{name} is assigned but cannot approve"
         if permitted:
             assert user.id in possible, f"{name} can approve but is not a possible reviewer"
+
+
+_REVIEWERS_ROUTE = {
+    AccessRequest: ("access_request_reviewers", "access_request_id"),
+    RoleRequest: ("role_request_reviewers", "role_request_id"),
+    GroupRequest: ("group_request_reviewers", "group_request_id"),
+}
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        access_requester_is_sole_group_owner_and_an_app_owner,
+        role_tag_blocks_one_group_owner,
+        group_app_group_with_app_owners,
+    ],
+    ids=lambda b: b.__name__,
+)
+async def test_reviewers_route(
+    db: Db, client: AsyncClient, url_for: Callable[..., str], build: Callable[[], Awaitable[Scenario]]
+) -> None:
+    scenario = await build()
+    name, param = _REVIEWERS_ROUTE[type(scenario.request)]
+    rep = await client.get(url_for(name, **{param: scenario.request.id}))
+    assert rep.status_code == 200
+    body = rep.json()
+    assert body["assigned_owner_level"] == scenario.expected_level
+    by_id = {user.id: n for n, user in scenario.users.items()}
+    assert [
+        (level["owner_level"], {by_id[r["id"]] for r in level["reviewers"]}) for level in body["owner_levels"]
+    ] == scenario.expected_possible
+
+
+@pytest.mark.parametrize("model", [AccessRequest, RoleRequest, GroupRequest], ids=lambda m: m.__name__)
+async def test_reviewers_route_unknown_id(client: AsyncClient, url_for: Callable[..., str], model: type) -> None:
+    name, param = _REVIEWERS_ROUTE[model]
+    rep = await client.get(url_for(name, **{param: "missing"}))
+    assert rep.status_code == 404
+    assert rep.headers["content-type"].startswith("application/problem+json")
+
+
+@pytest.mark.parametrize("model", [AccessRequest, RoleRequest, GroupRequest], ids=lambda m: m.__name__)
+async def test_reviewers_route_requires_authentication(
+    app: FastAPI, client: AsyncClient, url_for: Callable[..., str], model: type
+) -> None:
+    """The route declares `CurrentUserId`, so a failing authentication dependency rejects the call."""
+
+    def reject() -> str:
+        raise HTTPException(status_code=401, detail="Unauthenticated")
+
+    app.dependency_overrides[get_current_user_id] = reject
+    name, param = _REVIEWERS_ROUTE[model]
+    rep = await client.get(url_for(name, **{param: "any"}))
+    assert rep.status_code == 401

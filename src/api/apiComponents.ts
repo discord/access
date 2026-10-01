@@ -338,6 +338,95 @@ export const useAccessRequestByIdPut = (
   );
 };
 
+export type AccessRequestReviewersPathParams = {
+  accessRequestId: string;
+};
+
+export type AccessRequestReviewersError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type AccessRequestReviewersVariables = {
+  pathParams: AccessRequestReviewersPathParams;
+} & ApiContext['fetcherOptions'];
+
+/**
+ * Possible reviewers of an access request by owner level, and the assigned level.
+ */
+export const fetchAccessRequestReviewers = (variables: AccessRequestReviewersVariables, signal?: AbortSignal) =>
+  apiFetch<Schemas.RequestReviewers, AccessRequestReviewersError, undefined, {}, {}, AccessRequestReviewersPathParams>({
+    url: '/api/requests/{accessRequestId}/reviewers',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+/**
+ * Possible reviewers of an access request by owner level, and the assigned level.
+ */
+export function accessRequestReviewersQuery(variables: AccessRequestReviewersVariables): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.RequestReviewers>;
+};
+
+export function accessRequestReviewersQuery(variables: AccessRequestReviewersVariables | reactQuery.SkipToken): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.RequestReviewers>) | reactQuery.SkipToken;
+};
+
+export function accessRequestReviewersQuery(variables: AccessRequestReviewersVariables | reactQuery.SkipToken) {
+  return {
+    queryKey: queryKeyFn({
+      path: '/api/requests/{accessRequestId}/reviewers',
+      operationId: 'accessRequestReviewers',
+      variables,
+    }),
+    queryFn:
+      variables === reactQuery.skipToken
+        ? reactQuery.skipToken
+        : ({signal}: QueryFnOptions) => fetchAccessRequestReviewers(variables, signal),
+  };
+}
+
+/**
+ * Possible reviewers of an access request by owner level, and the assigned level.
+ */
+export const useSuspenseAccessRequestReviewers = <TData = Schemas.RequestReviewers>(
+  variables: AccessRequestReviewersVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.RequestReviewers, AccessRequestReviewersError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useSuspenseQuery<Schemas.RequestReviewers, AccessRequestReviewersError, TData>({
+    ...accessRequestReviewersQuery(deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+/**
+ * Possible reviewers of an access request by owner level, and the assigned level.
+ */
+export const useAccessRequestReviewers = <TData = Schemas.RequestReviewers>(
+  variables: AccessRequestReviewersVariables | reactQuery.SkipToken,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.RequestReviewers, AccessRequestReviewersError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.RequestReviewers, AccessRequestReviewersError, TData>({
+    ...accessRequestReviewersQuery(
+      variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables),
+    ),
+    ...options,
+    ...queryOptions,
+  });
+};
+
 export type AppsQueryParams = {
   q?: string | null;
   /**
@@ -1393,6 +1482,95 @@ export const useGroupRequestByIdPut = (
     mutationFn: (variables: GroupRequestByIdPutVariables) =>
       fetchGroupRequestByIdPut(deepMerge(fetcherOptions, variables)),
     ...options,
+  });
+};
+
+export type GroupRequestReviewersPathParams = {
+  groupRequestId: string;
+};
+
+export type GroupRequestReviewersError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type GroupRequestReviewersVariables = {
+  pathParams: GroupRequestReviewersPathParams;
+} & ApiContext['fetcherOptions'];
+
+/**
+ * Possible reviewers of a group request by owner level, and the assigned level.
+ */
+export const fetchGroupRequestReviewers = (variables: GroupRequestReviewersVariables, signal?: AbortSignal) =>
+  apiFetch<Schemas.RequestReviewers, GroupRequestReviewersError, undefined, {}, {}, GroupRequestReviewersPathParams>({
+    url: '/api/group-requests/{groupRequestId}/reviewers',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+/**
+ * Possible reviewers of a group request by owner level, and the assigned level.
+ */
+export function groupRequestReviewersQuery(variables: GroupRequestReviewersVariables): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.RequestReviewers>;
+};
+
+export function groupRequestReviewersQuery(variables: GroupRequestReviewersVariables | reactQuery.SkipToken): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.RequestReviewers>) | reactQuery.SkipToken;
+};
+
+export function groupRequestReviewersQuery(variables: GroupRequestReviewersVariables | reactQuery.SkipToken) {
+  return {
+    queryKey: queryKeyFn({
+      path: '/api/group-requests/{groupRequestId}/reviewers',
+      operationId: 'groupRequestReviewers',
+      variables,
+    }),
+    queryFn:
+      variables === reactQuery.skipToken
+        ? reactQuery.skipToken
+        : ({signal}: QueryFnOptions) => fetchGroupRequestReviewers(variables, signal),
+  };
+}
+
+/**
+ * Possible reviewers of a group request by owner level, and the assigned level.
+ */
+export const useSuspenseGroupRequestReviewers = <TData = Schemas.RequestReviewers>(
+  variables: GroupRequestReviewersVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.RequestReviewers, GroupRequestReviewersError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useSuspenseQuery<Schemas.RequestReviewers, GroupRequestReviewersError, TData>({
+    ...groupRequestReviewersQuery(deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+/**
+ * Possible reviewers of a group request by owner level, and the assigned level.
+ */
+export const useGroupRequestReviewers = <TData = Schemas.RequestReviewers>(
+  variables: GroupRequestReviewersVariables | reactQuery.SkipToken,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.RequestReviewers, GroupRequestReviewersError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.RequestReviewers, GroupRequestReviewersError, TData>({
+    ...groupRequestReviewersQuery(
+      variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables),
+    ),
+    ...options,
+    ...queryOptions,
   });
 };
 
@@ -2830,6 +3008,93 @@ export const useRoleRequestByIdPut = (
   });
 };
 
+export type RoleRequestReviewersPathParams = {
+  roleRequestId: string;
+};
+
+export type RoleRequestReviewersError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type RoleRequestReviewersVariables = {
+  pathParams: RoleRequestReviewersPathParams;
+} & ApiContext['fetcherOptions'];
+
+/**
+ * Possible reviewers of a role request by owner level, and the assigned level.
+ */
+export const fetchRoleRequestReviewers = (variables: RoleRequestReviewersVariables, signal?: AbortSignal) =>
+  apiFetch<Schemas.RequestReviewers, RoleRequestReviewersError, undefined, {}, {}, RoleRequestReviewersPathParams>({
+    url: '/api/role-requests/{roleRequestId}/reviewers',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+/**
+ * Possible reviewers of a role request by owner level, and the assigned level.
+ */
+export function roleRequestReviewersQuery(variables: RoleRequestReviewersVariables): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.RequestReviewers>;
+};
+
+export function roleRequestReviewersQuery(variables: RoleRequestReviewersVariables | reactQuery.SkipToken): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.RequestReviewers>) | reactQuery.SkipToken;
+};
+
+export function roleRequestReviewersQuery(variables: RoleRequestReviewersVariables | reactQuery.SkipToken) {
+  return {
+    queryKey: queryKeyFn({
+      path: '/api/role-requests/{roleRequestId}/reviewers',
+      operationId: 'roleRequestReviewers',
+      variables,
+    }),
+    queryFn:
+      variables === reactQuery.skipToken
+        ? reactQuery.skipToken
+        : ({signal}: QueryFnOptions) => fetchRoleRequestReviewers(variables, signal),
+  };
+}
+
+/**
+ * Possible reviewers of a role request by owner level, and the assigned level.
+ */
+export const useSuspenseRoleRequestReviewers = <TData = Schemas.RequestReviewers>(
+  variables: RoleRequestReviewersVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.RequestReviewers, RoleRequestReviewersError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useSuspenseQuery<Schemas.RequestReviewers, RoleRequestReviewersError, TData>({
+    ...roleRequestReviewersQuery(deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+/**
+ * Possible reviewers of a role request by owner level, and the assigned level.
+ */
+export const useRoleRequestReviewers = <TData = Schemas.RequestReviewers>(
+  variables: RoleRequestReviewersVariables | reactQuery.SkipToken,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.RequestReviewers, RoleRequestReviewersError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.RequestReviewers, RoleRequestReviewersError, TData>({
+    ...roleRequestReviewersQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
 export type RolesQueryParams = {
   q?: string | null;
   owner_id?: string | null;
@@ -3696,6 +3961,11 @@ export type QueryOperation =
       variables: AccessRequestByIdVariables | reactQuery.SkipToken;
     }
   | {
+      path: '/api/requests/{accessRequestId}/reviewers';
+      operationId: 'accessRequestReviewers';
+      variables: AccessRequestReviewersVariables | reactQuery.SkipToken;
+    }
+  | {
       path: '/api/apps';
       operationId: 'apps';
       variables: AppsVariables | reactQuery.SkipToken;
@@ -3734,6 +4004,11 @@ export type QueryOperation =
       path: '/api/group-requests/{groupRequestId}';
       operationId: 'groupRequestById';
       variables: GroupRequestByIdVariables | reactQuery.SkipToken;
+    }
+  | {
+      path: '/api/group-requests/{groupRequestId}/reviewers';
+      operationId: 'groupRequestReviewers';
+      variables: GroupRequestReviewersVariables | reactQuery.SkipToken;
     }
   | {
       path: '/api/groups';
@@ -3794,6 +4069,11 @@ export type QueryOperation =
       path: '/api/role-requests/{roleRequestId}';
       operationId: 'roleRequestById';
       variables: RoleRequestByIdVariables | reactQuery.SkipToken;
+    }
+  | {
+      path: '/api/role-requests/{roleRequestId}/reviewers';
+      operationId: 'roleRequestReviewers';
+      variables: RoleRequestReviewersVariables | reactQuery.SkipToken;
     }
   | {
       path: '/api/roles';

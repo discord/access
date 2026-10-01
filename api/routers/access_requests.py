@@ -27,10 +27,12 @@ from fastapi_pagination.ext.sqlalchemy import apaginate
 from api.pagination import Page, validated
 from api.routers._eager import group_tag_map_options, role_group_map_options
 from api.routers._fan_out import defer_fan_out
+from api.routers._reviewers import request_reviewers_response
 from api.schemas import (
     AccessRequestDetail,
     AccessRequestSummary,
     CreateAccessRequestBody,
+    RequestReviewers,
     ResolveAccessRequestBody,
     SearchAccessRequestQuery,
 )
@@ -197,6 +199,17 @@ async def get_access_request(
     if ar is None:
         raise HTTPException(404, "Not Found")
     return AccessRequestDetail.model_validate(ar, from_attributes=True)
+
+
+@router.get("/{access_request_id}/reviewers", name="access_request_reviewers")
+async def get_access_request_reviewers(
+    access_request_id: str, db: DbSession, current_user_id: CurrentUserId
+) -> RequestReviewers:
+    """Possible reviewers of an access request by owner level, and the assigned level."""
+    request = await db.get(AccessRequest, access_request_id)
+    if request is None:
+        raise HTTPException(404, "Not Found")
+    return await request_reviewers_response(request)
 
 
 @router.post("", name="access_requests_create", status_code=201)
