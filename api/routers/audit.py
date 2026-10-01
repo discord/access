@@ -477,14 +477,15 @@ async def users_and_groups(
     nulls_order = nullsfirst if q_args.order_desc else nullslast
 
     def _users_audit_ordering() -> tuple:
+        id_dir = OktaUserGroupMember.id.desc() if q_args.order_desc else OktaUserGroupMember.id.asc()
         if q_args.order_by == AuditOrderBy.moniker:
             primary = group_alias.name if user is not None else func.lower(OktaUser.email)
             primary_dir = primary.desc() if q_args.order_desc else primary.asc()
-            return (nulls_order(primary_dir), nullslast(OktaUserGroupMember.created_at.asc()))
+            return (nulls_order(primary_dir), nullslast(OktaUserGroupMember.created_at.asc()), id_dir)
         col = getattr(OktaUserGroupMember, q_args.order_by.value)
         primary_dir = col.desc() if q_args.order_desc else col.asc()
         tail = (group_alias.name if user is not None else func.lower(OktaUser.email)).asc()
-        return (nulls_order(primary_dir), tail)
+        return (nulls_order(primary_dir), tail, id_dir)
 
     stmt = stmt.order_by(*_users_audit_ordering())
 
@@ -721,14 +722,15 @@ async def groups_and_roles(
     nulls_order = nullsfirst if q_args.order_desc else nullslast
 
     def _groups_audit_ordering() -> tuple:
+        id_dir = RoleGroupMap.id.desc() if q_args.order_desc else RoleGroupMap.id.asc()
         if q_args.order_by == AuditOrderBy.moniker:
             primary = RoleGroup.name if role is None and group is not None else group_alias.name
             primary_dir = primary.desc() if q_args.order_desc else primary.asc()
-            return (nulls_order(primary_dir), nullslast(RoleGroupMap.created_at.asc()))
+            return (nulls_order(primary_dir), nullslast(RoleGroupMap.created_at.asc()), id_dir)
         col = getattr(RoleGroupMap, q_args.order_by.value)
         primary_dir = col.desc() if q_args.order_desc else col.asc()
         tail = (RoleGroup.name if role is None and group is not None else group_alias.name).asc()
-        return (nulls_order(primary_dir), tail)
+        return (nulls_order(primary_dir), tail, id_dir)
 
     stmt = stmt.order_by(*_groups_audit_ordering())
 
