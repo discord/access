@@ -441,7 +441,6 @@ export type DeleteMessage = {
 
 export type EffectiveConstraintDetail = {
   constraint: string;
-  name: string;
   value: number | boolean;
   sources?: EffectiveConstraintSourceDetail[];
 };
