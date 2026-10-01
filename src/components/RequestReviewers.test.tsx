@@ -59,11 +59,14 @@ describe('RequestReviewers', () => {
     renderPanel({assigned_owner_level: null, owner_levels: LEVELS});
     expect(screen.getByText('No one is currently eligible to review this request.')).toBeTruthy();
     expect(screen.queryByText('Assigned')).toBeNull();
+    expect(screen.getByText(/Its owners at each level are listed below/)).toBeTruthy();
+    expect(screen.queryByText(/assigned to the owners marked below/)).toBeNull();
   });
 
   it('does not warn when a level is assigned', () => {
     renderPanel({assigned_owner_level: 'group_owners', owner_levels: LEVELS});
     expect(screen.queryByText('No one is currently eligible to review this request.')).toBeNull();
+    expect(screen.getByText(/assigned to the owners marked below/)).toBeTruthy();
   });
 
   it('keeps an empty level as a None row', () => {

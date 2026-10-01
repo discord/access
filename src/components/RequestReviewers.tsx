@@ -55,8 +55,16 @@ export default function RequestReviewers({reviewers, groupName, appName}: Reques
     <Box sx={{my: 2}}>
       <Paper sx={{p: 2}}>
         <Typography variant="body1">
-          Request is <b>pending</b>. It's assigned to the owners marked below; if you need to escalate, the remaining
-          owners are listed in order.
+          {reviewers.assigned_owner_level == null ? (
+            <>
+              Request is <b>pending</b>. Its owners at each level are listed below, in order.
+            </>
+          ) : (
+            <>
+              Request is <b>pending</b>. It's assigned to the owners marked below; if you need to escalate, the
+              remaining owners are listed in order.
+            </>
+          )}
         </Typography>
       </Paper>
       {reviewers.assigned_owner_level == null ? (

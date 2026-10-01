@@ -36,7 +36,7 @@ import RelativeTime from 'dayjs/plugin/relativeTime';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
 import RoleMembers from './RoleMembers';
-import {displayUserName, ownerCantAddSelf} from '../../helpers';
+import {ownerCantAddSelf} from '../../helpers';
 import {approvalUntilDefault, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {useCurrentUser} from '../../authentication';
@@ -591,7 +591,7 @@ export default function ReadRoleRequest() {
                         <Typography display="inline" variant="body1">
                           <b>
                             While you own group {group.name}, you are blocked from responding to this request by group
-                            tags. The request has been forwarded to other group owners or Access admins.
+                            tags. The request has been forwarded to other group owners, app owners, or Access admins.
                           </b>
                         </Typography>
                       </Stack>

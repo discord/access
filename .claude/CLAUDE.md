@@ -601,8 +601,7 @@ owner, app owner (if app group), or Access admin.
 
 **`GroupRequest`** — a user requests creation of a new group, app group, or role. A new `App`
 cannot be requested via this flow. On approval, the requester is added as an owner. App group
-requests require selecting a parent app and route to the app's owners if they exist, otherwise
-to Access admins; vanilla group and role requests route to Access admins. (See Approver routing.)
+requests require selecting a parent app. For who reviews it, see Approver routing.
 
 ## Plugin system
 
