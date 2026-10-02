@@ -24,7 +24,7 @@ from api.models import (
     RoleRequest,
     Tag,
 )
-from api.models.access_request import get_all_possible_request_approvers
+from api.models.request_reviewers import get_assigned_reviewers, snapshot_assigned_reviewers
 from api.models.tag import effective_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.operations._time_limits import limit_access_conferred_by_roles, propagating_seconds_limit
@@ -246,6 +246,41 @@ class ModifyRoleGroups:
         # prepared after the final commit and dispatched alongside async_tasks.
         approved_access_requests: list[AccessRequest] = []
         approved_role_requests: list[RoleRequest] = []
+        # Capture assigned reviewers before ownership changes; see `snapshot_assigned_reviewers`.
+        # The requests it can fulfil target a group it adds the role to: a role
+        # request from this role, or an access request from a role member.
+        assigned_before_change: dict[str, list[OktaUser]] = {}
+        if self.notify:
+            added_group_ids = {g.id for g in groups_to_add} | {g.id for g in owner_groups_to_add}
+            role_member_ids = (
+                await db.session.scalars(
+                    select(OktaUserGroupMember.user_id)
+                    .where(OktaUserGroupMember.group_id == self.role.id)
+                    .where(OktaUserGroupMember.is_owner.is_(False))
+                    .where(or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > func.now()))
+                )
+            ).all()
+            candidate_access_requests = (
+                await db.session.scalars(
+                    select(AccessRequest)
+                    .where(AccessRequest.status == AccessRequestStatus.PENDING)
+                    .where(AccessRequest.resolved_at.is_(None))
+                    .where(AccessRequest.requested_group_id.in_(added_group_ids))
+                    .where(AccessRequest.requester_user_id.in_(role_member_ids))
+                )
+            ).all()
+            candidate_role_requests = (
+                await db.session.scalars(
+                    select(RoleRequest)
+                    .where(RoleRequest.status == AccessRequestStatus.PENDING)
+                    .where(RoleRequest.resolved_at.is_(None))
+                    .where(RoleRequest.requester_role_id == self.role.id)
+                    .where(RoleRequest.requested_group_id.in_(added_group_ids))
+                )
+            ).all()
+            assigned_before_change = await snapshot_assigned_reviewers(
+                [*candidate_access_requests, *candidate_role_requests]
+            )
         # App groups whose membership changed, and who gained or lost it. Accumulated during the
         # loops below and handed to the lifecycle hooks after the commit that makes each change
         # durable -- see the comments at the collection sites.
@@ -691,7 +726,9 @@ class ModifyRoleGroups:
                 # reload it explicitly so the hook sees a concrete value.
                 await db.session.refresh(access_request, attribute_names=["resolved_at"])
                 requester = await db.session.get(OktaUser, access_request.requester_user_id)
-                approvers = await get_all_possible_request_approvers(access_request)
+                approvers = assigned_before_change.get(access_request.id)
+                if approvers is None:
+                    approvers = (await get_assigned_reviewers(access_request)).reviewers
                 # Spawn + drain in one batch with the Okta tasks below, so on the
                 # inline path notifications run concurrently. prepare_notification_task
                 # expunges the payload so the async hook can read it after the
@@ -714,7 +751,9 @@ class ModifyRoleGroups:
                 group = role_request.requested_group
                 await db.session.refresh(role_request, attribute_names=["resolved_at"])
                 requester = await db.session.get(OktaUser, role_request.requester_user_id)
-                approvers = await get_all_possible_request_approvers(role_request)
+                approvers = assigned_before_change.get(role_request.id)
+                if approvers is None:
+                    approvers = (await get_assigned_reviewers(role_request)).reviewers
                 async_tasks.append(
                     prepare_notification_task(
                         db.session,

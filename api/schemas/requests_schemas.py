@@ -20,6 +20,7 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, 
 
 from api.access_config import get_access_config
 from api.config import settings
+from api.models.request_reviewers import OwnerLevel
 from api.schemas.core_schemas import (
     AppIdRef,
     GroupRef,
@@ -194,6 +195,30 @@ class ResolveAccessRequestBody(BaseModel):
     approved: StrictBool
     reason: ReasonStr = ""
     ending_at: Optional[FlexibleDatetime] = None
+
+
+# --- Request reviewers ------------------------------------------------------
+
+
+class RequestReviewerLevel(BaseModel):
+    """Everyone who owns a request at one owner level."""
+
+    owner_level: OwnerLevel
+    reviewers: list[OktaUserSummary]
+
+
+class RequestReviewers(BaseModel):
+    """A request's possible reviewers by owner level, and which level is assigned.
+
+    `owner_levels` lists every applicable level nearest first, including the
+    requester where they own, so a requester can see who to contact if they
+    need to escalate. `assigned_owner_level` is the level whose eligible
+    reviewers have the request in "Assigned to Me" and were notified; None
+    when no level has an eligible reviewer.
+    """
+
+    assigned_owner_level: Optional[OwnerLevel] = None
+    owner_levels: list[RequestReviewerLevel]
 
 
 # --- Role requests ----------------------------------------------------------

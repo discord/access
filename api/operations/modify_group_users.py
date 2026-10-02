@@ -22,7 +22,7 @@ from api.models import (
     RoleGroupMap,
     Tag,
 )
-from api.models.access_request import get_all_possible_request_approvers
+from api.models.request_reviewers import get_assigned_reviewers, snapshot_assigned_reviewers
 from api.models.tag import effective_ended_at
 from api.routers._eager import effective_constraint_options
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
@@ -248,6 +248,31 @@ class ModifyGroupUsers:
         # Access requests approved by this operation; their notifications are
         # prepared after the final commit and dispatched alongside async_tasks.
         approved_access_requests: list[AccessRequest] = []
+        # Capture assigned reviewers before ownership changes; see `snapshot_assigned_reviewers`.
+        # The requests it can fulfil come from a user it adds and target this
+        # group or, for a role, a group the role is associated with.
+        assigned_before_change: dict[str, list[OktaUser]] = {}
+        if self.notify:
+            added_user_ids = {user.id for user in members_to_add} | {user.id for user in owners_to_add}
+            fulfillable_group_ids = {group.id}
+            if type(group) is RoleGroup:
+                fulfillable_group_ids |= {
+                    mapping.group_id
+                    for mapping in (
+                        *group.active_role_associated_group_member_mappings,
+                        *group.active_role_associated_group_owner_mappings,
+                    )
+                }
+            candidates = (
+                await db.session.scalars(
+                    select(AccessRequest)
+                    .where(AccessRequest.status == AccessRequestStatus.PENDING)
+                    .where(AccessRequest.resolved_at.is_(None))
+                    .where(AccessRequest.requested_group_id.in_(fulfillable_group_ids))
+                    .where(AccessRequest.requester_user_id.in_(added_user_ids))
+                )
+            ).all()
+            assigned_before_change = await snapshot_assigned_reviewers(candidates)
 
         # First remove all users from the group including those that we wish to add.
         # That way we can easily extend time-bounded group memberships and audit when
@@ -779,7 +804,9 @@ class ModifyGroupUsers:
                 # reload it explicitly so the hook sees a concrete value.
                 await db.session.refresh(access_request, attribute_names=["resolved_at"])
                 requester = await db.session.get(OktaUser, access_request.requester_user_id)
-                approvers = await get_all_possible_request_approvers(access_request)
+                approvers = assigned_before_change.get(access_request.id)
+                if approvers is None:
+                    approvers = (await get_assigned_reviewers(access_request)).reviewers
                 # Spawn the notify task and drain it in the same batch as the Okta
                 # tasks below, so on the inline path the notifications run
                 # concurrently (not one-awaited-at-a-time). prepare_notification_task

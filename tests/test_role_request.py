@@ -20,7 +20,6 @@ from api.models import (
     RoleRequest,
     Tag,
 )
-from api.models.access_request import get_all_possible_request_approvers
 from api.operations import (
     ApproveRoleRequest,
     CreateRoleRequest,
@@ -28,6 +27,7 @@ from api.operations import (
     ModifyRoleGroups,
     RejectRoleRequest,
 )
+from api.operations.constraints import CheckForSelfAdd
 from api.plugins import ConditionalAccessResponse, get_notification_hook
 from api.services import okta
 from tests.factories import (
@@ -709,38 +709,6 @@ async def test_create_app_role_request_notification(
     assert kwargs["requester"] == user
 
 
-async def test_get_all_possible_role_request_approvers(app: FastAPI, mocker: MockerFixture, db: Db) -> None:
-    access_admin = (
-        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
-    ).first()
-
-    users = OktaUserFactory.batch(3)
-    db.session.add_all(users)
-    await db.session.commit()
-
-    mocker.patch(
-        "api.models.access_request.get_group_managers",
-        return_value=[users[0], users[1]],
-    )
-
-    mocker.patch(
-        "api.models.access_request.get_app_managers",
-        return_value=[users[0], users[2]],
-    )
-
-    req = RoleRequest()
-    req.requested_group = AppGroupFactory.build()
-
-    approvers = await get_all_possible_request_approvers(req)
-
-    # Assert that the access admin and 3 users are returned with no duplicates
-    assert len(approvers) == 4
-    assert access_admin in approvers
-    assert users[0] in approvers
-    assert users[1] in approvers
-    assert users[2] in approvers
-
-
 async def test_role_request_approvers_tagged(
     app: FastAPI,
     db: Db,
@@ -811,10 +779,6 @@ async def test_resolve_app_role_request_notification(
     user: OktaUser,
     mocker: MockerFixture,
 ) -> None:
-    access_admin = (
-        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
-    ).first()
-
     app_owner_user1 = OktaUserFactory.build()
     app_owner_user2 = OktaUserFactory.build()
     app_owner_group = AppGroupFactory.build()
@@ -890,11 +854,7 @@ async def test_resolve_app_role_request_notification(
     assert kwargs["role"] == role_group
     assert kwargs["group"] == app_group
     assert kwargs["requester"] == user
-    assert len(kwargs["approvers"]) == 4
-    assert access_admin in kwargs["approvers"]
-    assert app_owner_user1 in kwargs["approvers"]
-    assert app_owner_user2 in kwargs["approvers"]
-    assert user in kwargs["approvers"]
+    assert set(kwargs["approvers"]) == {app_owner_user1, app_owner_user2}
 
     # Reset the access request so we can test the reject path
     role_request.status = AccessRequestStatus.PENDING
@@ -913,11 +873,7 @@ async def test_resolve_app_role_request_notification(
     assert kwargs["role"] == role_group
     assert kwargs["group"] == app_group
     assert kwargs["requester"] == user
-    assert len(kwargs["approvers"]) == 4
-    assert access_admin in kwargs["approvers"]
-    assert app_owner_user1 in kwargs["approvers"]
-    assert app_owner_user2 in kwargs["approvers"]
-    assert user in kwargs["approvers"]
+    assert set(kwargs["approvers"]) == {app_owner_user1, app_owner_user2}
 
 
 async def test_auto_resolve_create_role_request(
@@ -1392,8 +1348,7 @@ async def test_role_request_approval_via_direct_add(
     assert kwargs["role"] == role_group
     assert kwargs["group"] == okta_group2
     assert kwargs["requester"] == user
-    assert len(kwargs["approvers"]) == 2
-    assert access_owner in kwargs["approvers"]
+    assert kwargs["approvers"] == [access_owner]
 
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group2.id)
     rep = await client.get(group_url)
@@ -1471,16 +1426,14 @@ async def test_role_request_list_filters_via_http(client: AsyncClient, db: Db, u
     assert target_rr.id in found and other_rr.id not in found
 
 
-async def test_role_request_assignee_filter_excludes_propagated_self_add_role_target(
+async def test_role_request_assignee_filter_ignores_propagated_self_add_tag_on_role_target(
     client: AsyncClient, db: Db, tag: Tag, url_for: Any
 ) -> None:
-    """`owned_groups_no_self_member` in the `assignee_user_id` branch of the
-    role-requests list must key off `effective_constraint`, which also sees
-    `disallow_self_add_membership` propagated onto a *role* the assignee owns
-    (because that role is itself a member of a tagged group), not only tags
-    applied directly to the role. Keying off only directly-applied tags would
-    offer the assignee a request their approval would then be blocked from
-    resolving."""
+    """A `disallow_self_add_membership` tag that reaches the target only by
+    propagation (the target is a role that is itself a member of a tagged
+    group) does not block approval: `CheckForSelfAdd.execute_for_role` reads
+    only the target's own tags. So the request is listed for the target's
+    owner, who can approve it."""
     role_owner = await OktaUserFactory.create_async()
     other_member = await OktaUserFactory.create_async()
     owned_role = await RoleGroupFactory.create_async()
@@ -1489,9 +1442,8 @@ async def test_role_request_assignee_filter_excludes_propagated_self_add_role_ta
 
     # `role_owner` owns `owned_role`, and is separately a plain member of
     # `other_role` alongside `other_member` -- `other_member` is who actually
-    # submits the (fixture-inserted) request below, so the unconditional
-    # "never show the assignee their own requests" filter doesn't hide it
-    # for an unrelated reason.
+    # submits the (fixture-inserted) request below, so `role_owner` is not the
+    # requester, whom the reviewer rule never makes eligible.
     await ModifyGroupUsers(group=owned_role, owners_to_add=[role_owner.id], sync_to_okta=False).execute()
     await ModifyGroupUsers(
         group=other_role, members_to_add=[role_owner.id, other_member.id], sync_to_okta=False
@@ -1521,19 +1473,20 @@ async def test_role_request_assignee_filter_excludes_propagated_self_add_role_ta
     assignee_user_id = role_owner.id
     pending_rr_id = pending_rr.id
 
-    # The test session already loaded `owned_role`'s (previously empty)
-    # `active_role_associated_group_member_mappings` collection earlier in
-    # this test (e.g. via factory/operation calls before the mapping row
-    # existed); expire it so the endpoint's own query -- sharing this same
-    # session -- repopulates it instead of reading the stale cached state.
-    # A real request never has this staleness since it starts a fresh session.
+    valid, _ = await CheckForSelfAdd(
+        group=other_role.id, current_user=role_owner.id, members_to_add=[owned_role.id]
+    ).execute_for_role()
+    assert valid
+
+    # The endpoint shares this session; drop the role's cached (pre-mapping)
+    # collections so it reads the committed state, as a real request would.
     db.session.expire_all()
 
     list_url = url_for("api-role-requests.role_requests")
     rep = await client.get(list_url, params={"assignee_user_id": assignee_user_id, "status": "PENDING"})
     assert rep.status_code == 200
     ids = [r["id"] for r in rep.json()["items"]]
-    assert pending_rr_id not in ids
+    assert pending_rr_id in ids
 
 
 async def test_get_role_request_detail_requested_group_for_app_group(
@@ -1682,16 +1635,11 @@ async def test_reject_role_request_notify_false_suppresses_completion(
     assert completed_spy.call_count == 0
 
 
-async def test_role_request_assignee_admin_branch_loads_role_target_propagation(
+async def test_role_request_assignee_lists_unowned_role_target_for_admin(
     client: AsyncClient, db: Db, url_for: Any
 ) -> None:
-    """The Access-admin branch of the `assignee_user_id` role-requests list
-    evaluates `effective_constraint(DISALLOW_SELF_ADD_MEMBERSHIP, ...)` over
-    every pending request's `requested_group`. That key is in
-    `OWNER_SIDE_COUNTERPART`, so for a `RoleGroup` target the helper reads the
-    role's `active_role_associated_group_*_mappings` -- all `raise_on_sql`.
-    Without those loaders the endpoint 500s, and it does so whether or not the
-    role carries any tags, because propagation is consulted unconditionally.
+    """A role request whose target is an unowned role is assigned to Access
+    admins, and the `assignee_user_id` list shows it to them.
 
     A `RoleGroup` can become a `RoleRequest.requested_group` in production via
     `ModifyGroupType` converting a group that already has a pending request."""
@@ -1707,15 +1655,15 @@ async def test_role_request_assignee_admin_branch_loads_role_target_propagation(
     # produces when it converts a group with a pending role request.
     target_role = await RoleGroupFactory.create_async()
 
-    await RoleRequestFactory.create_async(
+    pending_rr = await RoleRequestFactory.create_async(
         requester_user_id=requester.id,
         requester_role_id=requester_role.id,
         requested_group_id=target_role.id,
         request_ownership=False,
     )
-
-    db.session.expire_all()
+    pending_rr_id = pending_rr.id
 
     list_url = url_for("api-role-requests.role_requests")
     rep = await client.get(list_url, params={"assignee_user_id": admin_id, "status": "PENDING"})
     assert rep.status_code == 200
+    assert pending_rr_id in [r["id"] for r in rep.json()["items"]]

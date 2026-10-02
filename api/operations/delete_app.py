@@ -59,10 +59,16 @@ class DeleteApp:
         app.deleted_at = func.now()
         await db.session.commit()
 
-        # Delete all associated Okta App Groups and end their membership
+        # Delete all associated Okta App Groups and end their membership. The
+        # owners group goes last: its owners are the app owners, whom requests
+        # on the other groups are assigned to, and each DeleteGroup captures
+        # its requests' assigned reviewers before deleting.
         app_groups = (
             await db.session.scalars(
-                select(AppGroup).where(AppGroup.deleted_at.is_(None)).where(AppGroup.app_id == app.id)
+                select(AppGroup)
+                .where(AppGroup.deleted_at.is_(None))
+                .where(AppGroup.app_id == app.id)
+                .order_by(AppGroup.is_owner)
             )
         ).all()
         app_group_ids = [ag.id for ag in app_groups]

@@ -496,15 +496,32 @@ role membership and the direct grant are not collapsed into one record.
 
 ## Approver routing
 
-For all request types, approval routing follows this chain — this affects notification plugin
-code and any logic that determines who can approve:
+Who reviews a request is defined once, in `api/models/request_reviewers.py`. Notifications
+(open and close), the "Assigned to Me" views, and the request detail pages all read it; never
+rebuild the chain elsewhere.
 
-1. **Group/role owner** — designated owner(s) of the target group or role; groups may be unowned
-2. **App owner** — if the target is an `AppGroup` with no group owners, falls back to app owner; apps may also be unowned
-3. **Access admin** — final fallback if no owners exist at any prior tier
+Each request has owner levels, nearest first:
 
-Implemented in `api/models/okta_group.py` (`get_group_managers`) and
-`api/models/app_group.py` (`get_app_managers`, `get_access_owners`).
+| Request | Owner levels |
+|---|---|
+| Access request, individual or role-based, for group G | owners of G → owners of G's app (app groups only) → Access admins |
+| Group request to create G | owners of the requested app (app groups only) → Access admins |
+
+An **eligible reviewer** owns at a level and is not the requester, not deleted, and (unless an
+Access admin) not blocked by a `disallow_self_add_*` tag: approving a role-based request would
+add a reviewer who is a member of the requesting role to G. This mirrors
+`CheckForSelfAdd.execute_for_role`. A request's **assigned reviewers** are the eligible reviewers
+at the nearest level that has any. The detail pages also show **possible reviewers by level**
+(everyone who owns at each level, ignoring eligibility) so a requester can escalate.
+
+Close notifications go to the reviewers assigned while the request was open, so an operation that
+changes ownership or deletes a group takes that snapshot (`snapshot_assigned_reviewers`, or
+`snapshot_obsolete_request_reviewers` for a group's pending requests) before it makes the change.
+
+Assignment is not authorization. Who may approve or reject is checked by the resolve routes
+(`can_manage_group`, the self-approval guard, `CheckForSelfAdd`, and the group-request
+admin/app-owner checks); an Access admin can resolve any request. Every assigned reviewer can
+approve; `tests/test_request_reviewers.py` checks that.
 
 ## Authorization
 
@@ -584,8 +601,7 @@ owner, app owner (if app group), or Access admin.
 
 **`GroupRequest`** — a user requests creation of a new group, app group, or role. A new `App`
 cannot be requested via this flow. On approval, the requester is added as an owner. App group
-requests require selecting a parent app and route to the app's owners if they exist, otherwise
-to Access admins; vanilla group and role requests route to Access admins.
+requests require selecting a parent app. For who reviews it, see Approver routing.
 
 ## Plugin system
 
@@ -698,3 +714,6 @@ infrastructure details live there too.
   and role adds too
 - **Querying tags without filtering for enabled** — disabled tags still exist in the DB
 - **Putting operator-specific logic in the Access repo** — it belongs in an operator's own plugin
+- **Rebuilding the reviewer chain** — use `api/models/request_reviewers.py`
+  (`get_assigned_reviewers`, `assigned_reviewer_condition`) instead of chaining
+  `get_group_managers` / `get_app_managers` / `get_access_owners`

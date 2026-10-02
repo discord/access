@@ -18,7 +18,8 @@ from api.models import (
     RoleGroup,
     Tag,
 )
-from api.models.app_group import get_access_owners, get_app_managers
+from api.models.app_group import get_app_managers
+from api.models.request_reviewers import get_assigned_reviewers
 from api.models.tag import coalesce_ended_at
 from api.operations.approve_group_request import ApproveGroupRequest
 from api.operations.reject_group_request import RejectGroupRequest
@@ -152,12 +153,8 @@ class CreateGroupRequest:
                 ).execute()
                 return group_request
 
-        # Fetch the users to notify
-        # If app group, notify app managers; otherwise notify access owners
-        if self.requested_app_id is not None:
-            approvers = await get_app_managers(self.requested_app_id)
-        else:
-            approvers = await get_access_owners()
+        # Notify the request's assigned reviewers; see api/models/request_reviewers.py.
+        approvers = (await get_assigned_reviewers(group_request)).reviewers
 
         # Audit logging
         _ctx = get_request_context()
