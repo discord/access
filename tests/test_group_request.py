@@ -96,6 +96,32 @@ async def test_create_app_group_request(
     assert group_request.requested_group_type == "app_group"
 
 
+async def test_create_app_group_request_for_unowned_app_notifies_access_admins(db: Db, mocker: MockerFixture) -> None:
+    """An app group request for an app whose owners group has no owners goes to the Access admins."""
+    requester = await OktaUserFactory.create_async()
+    app_obj = await AppFactory.create_async()
+    await AppGroupFactory.create_async(
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        app_id=app_obj.id,
+        is_owner=True,
+    )
+    admin = (await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))).one()
+    created_spy = mocker.patch.object(get_notification_hook(), "access_group_request_created")
+
+    group_request = await CreateGroupRequest(
+        requester_user=requester,
+        requested_group_name=f"App-{app_obj.name}-NewGroup",
+        requested_group_description="New app group",
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        request_reason="Need app group",
+    ).execute()
+
+    assert group_request is not None
+    assert created_spy.call_count == 1
+    assert [approver.id for approver in created_spy.call_args.kwargs["approvers"]] == [admin.id]
+
+
 async def test_create_role_group_request(
     app: FastAPI,
     client: AsyncClient,
