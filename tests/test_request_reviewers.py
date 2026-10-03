@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable, Optional
 
 import pytest
+from fastapi import FastAPI
+from httpx import AsyncClient
 from pytest_mock import MockerFixture
 from sqlalchemy import select
 
@@ -25,6 +27,7 @@ from api.models.request_reviewers import (
     get_assigned_reviewers,
     get_eligible_reviewers_by_level,
 )
+from api.operations.constraints import CheckForSelfAdd
 from tests.factories import (
     AccessRequestFactory,
     AppFactory,
@@ -39,6 +42,11 @@ from tests.factories import (
     RoleGroupMapFactory,
     RoleRequestFactory,
     TagFactory,
+)
+from tests.request_factories import (
+    ResolveAccessRequestBodyFactory,
+    ResolveGroupRequestBodyFactory,
+    ResolveRoleRequestBodyFactory,
 )
 
 
@@ -752,3 +760,98 @@ async def test_unmanage_group_close_notification_uses_reviewers_assigned_before_
 
     assert completed.call_count == 1
     assert {user.id for user in completed.call_args.kwargs["approvers"]} == {u["role_owner"].id}
+
+
+_LIST_ROUTE = {AccessRequest: "access_requests", RoleRequest: "role_requests", GroupRequest: "group_requests"}
+
+
+async def _assigned_via_list(
+    client: AsyncClient, url_for: Callable[..., str], scenario: Scenario, user: OktaUser
+) -> bool:
+    """Whether the request shows in `user`'s "Assigned to Me" list."""
+    rep = await client.get(
+        url_for(_LIST_ROUTE[type(scenario.request)]), params={"assignee_user_id": user.id, "size": 100}
+    )
+    assert rep.status_code == 200
+    return scenario.request.id in {item["id"] for item in rep.json()["items"]}
+
+
+_RESOLVE_ROUTE = {
+    AccessRequest: ("access_request_by_id_put", "access_request_id", ResolveAccessRequestBodyFactory),
+    RoleRequest: ("role_request_by_id_put", "role_request_id", ResolveRoleRequestBodyFactory),
+    GroupRequest: ("group_request_by_id_put", "group_request_id", ResolveGroupRequestBodyFactory),
+}
+
+
+async def _permitted_by_resolve_routes(
+    app: FastAPI, client: AsyncClient, url_for: Callable[..., str], scenario: Scenario
+) -> set[str]:
+    """The scenario users the resolve route lets approve the request, plus the role approval's self-add check."""
+    request = scenario.request
+    route, param, body_factory = _RESOLVE_ROUTE[type(request)]
+    url = url_for(route, **{param: request.id})
+    body = body_factory.json(approved=True, reason="approve")
+    # Read everything up front: a refused call rolls back the shared session,
+    # which expires the objects this loop would otherwise read.
+    users = [(name, user.id, user.email) for name, user in scenario.users.items()]
+    role_check = (
+        (request.requester_role_id, request.requested_group_id, request.request_ownership)
+        if isinstance(request, RoleRequest)
+        else None
+    )
+    permitted: set[str] = set()
+    prev_email = app.state.current_user_email
+    try:
+        for user_name, user_id, email in users:
+            app.state.current_user_email = email
+            rep = await client.put(url, json=body)
+            # 404 is the authentication dependency refusing a deleted user.
+            assert rep.status_code in {403, 404, 409}, (user_name, rep.status_code, rep.text)
+            if rep.status_code != 409:
+                continue
+            if role_check is not None:
+                role_id, group_id, ownership = role_check
+                valid, _ = await CheckForSelfAdd(
+                    group=role_id,
+                    current_user=user_id,
+                    members_to_add=[] if ownership else [group_id],
+                    owners_to_add=[group_id] if ownership else [],
+                ).execute_for_role()
+                if not valid:
+                    continue
+            permitted.add(user_name)
+    finally:
+        app.state.current_user_email = prev_email
+    return permitted
+
+
+@pytest.mark.parametrize("build", SCENARIOS, ids=lambda b: b.__name__)
+async def test_reviewer_directions_agree(
+    db: Db,
+    app: FastAPI,
+    client: AsyncClient,
+    url_for: Callable[..., str],
+    build: Callable[[], Awaitable[Scenario]],
+) -> None:
+    """Assigned by `get_assigned_reviewers` exactly when the "Assigned to Me"
+    list shows the request; listed by `get_eligible_reviewers_by_level`
+    exactly when permitted to approve; and the first level listed is the
+    assigned one."""
+    scenario = await build()
+    assigned_names = _names(scenario, await get_assigned_reviewers(scenario.request))
+    by_level = [_names(scenario, level.reviewers) for level in await get_eligible_reviewers_by_level(scenario.request)]
+    assert (by_level[0] if by_level else set()) == assigned_names
+    eligible = {name for names in by_level for name in names}
+    # Drop identity-map state so the routes read the database, then reload the
+    # objects this test reads directly.
+    db.session.expire_all()
+    for obj in (scenario.request, *scenario.users.values()):
+        await db.session.refresh(obj)
+    for name, user in scenario.users.items():
+        assert (name in assigned_names) == await _assigned_via_list(client, url_for, scenario, user), name
+    # Each resolve route checks permission before it checks that the request is
+    # pending, so on a resolved request it answers 403 to a user it refuses and
+    # 409 to one it permits, without approving anything.
+    scenario.request.resolved_at = datetime.now(timezone.utc)
+    await db.session.commit()
+    assert eligible == await _permitted_by_resolve_routes(app, client, url_for, scenario)

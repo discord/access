@@ -6,30 +6,25 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from sqlalchemy import String, and_, cast, false, not_, or_, select
-from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload
+from sqlalchemy import String, cast, false, or_, select
+from sqlalchemy.orm import aliased, joinedload, selectinload
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
 from api.database import DbSession
 from api.models import (
     AccessRequestStatus,
-    App,
-    AppGroup,
     OktaGroup,
     OktaUser,
-    OktaUserGroupMember,
     RoleGroup,
     RoleRequest,
-    Tag,
 )
-from api.models.tag import effective_constraint
+from api.models.request_reviewers import is_assigned_reviewer
 from api.operations import ApproveRoleRequest, CreateRoleRequest, RejectRoleRequest
 from fastapi_pagination.ext.sqlalchemy import apaginate
 
 from api.pagination import Page, validated
 from api.routers._eager import (
-    effective_constraint_options,
     group_tag_map_options,
     polymorphic_group_options,
     user_group_member_options,
@@ -92,8 +87,6 @@ async def list_role_requests(
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchRoleRequestQuery, Query()],
 ) -> Page[RoleRequestSummary]:
-    from api.auth.permissions import is_access_admin
-
     stmt = select(RoleRequest).options(*_summary_load_options()).order_by(RoleRequest.created_at.desc())
 
     if q_args.status:
@@ -112,8 +105,7 @@ async def list_role_requests(
             )
 
     # The role and the requested group both live in `okta_group`, so each
-    # filter joins its own alias; the `assignee_user_id` branch below joins
-    # the unaliased `OktaGroup` for the requested group.
+    # filter joins its own alias.
     if q_args.requester_role_id:
         role_alias = aliased(OktaGroup)
         stmt = stmt.join(RoleRequest.requester_role.of_type(role_alias)).where(
@@ -133,12 +125,7 @@ async def list_role_requests(
         )
 
     if q_args.assignee_user_id:
-        # "Requests I can resolve" — same admin/non-admin branching as Flask.
-        # Admins see every PENDING request whose target group has the
-        # `disallow_self_add_*` tag and where every existing owner is also a
-        # member of the requester role (otherwise approval is impossible).
-        # Non-admins are restricted to groups they own, and pre-filtered to
-        # exclude requests they can't resolve due to those same tags.
+        # Requests whose assigned reviewers include the assignee.
         assignee_user_id = current_user_id if q_args.assignee_user_id == "@me" else q_args.assignee_user_id
         assignee_user = (
             await db.scalars(
@@ -146,152 +133,7 @@ async def list_role_requests(
             )
         ).first()
         if assignee_user is not None:
-            groups_owned_subquery = (
-                select(OktaGroup.id)
-                .options(selectinload(OktaGroup.active_user_ownerships))
-                .join(OktaGroup.active_user_ownerships)
-                .where(OktaGroup.deleted_at.is_(None))
-                .where(OktaUserGroupMember.user_id == assignee_user.id)
-            )
-            owner_app_group_alias = aliased(AppGroup)
-            app_groups_owned_subquery = (
-                select(AppGroup.id)
-                .options(
-                    joinedload(AppGroup.app)
-                    .joinedload(App.active_owner_app_groups.of_type(owner_app_group_alias))
-                    .selectinload(owner_app_group_alias.active_user_ownerships)
-                )
-                .join(AppGroup.app)
-                .join(App.active_owner_app_groups.of_type(owner_app_group_alias))
-                .join(owner_app_group_alias.active_user_ownerships)
-                .where(AppGroup.deleted_at.is_(None))
-                .where(OktaUserGroupMember.user_id == assignee_user.id)
-            )
-
-            if await is_access_admin(db, assignee_user.id):
-                # Pending role requests for ownership / membership where the
-                # target group is tagged `disallow_self_add_*` and every
-                # existing owner is in the requester role's membership.
-                tagged_owner_requests = [
-                    rr
-                    for rr in (
-                        await db.scalars(
-                            select(RoleRequest)
-                            .options(
-                                joinedload(RoleRequest.requester_role).options(
-                                    selectinload(OktaGroup.active_user_memberships)
-                                ),
-                                joinedload(RoleRequest.requested_group).options(
-                                    selectinload(OktaGroup.active_user_ownerships),
-                                    selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                                    *effective_constraint_options(),
-                                ),
-                            )
-                            .where(RoleRequest.status == AccessRequestStatus.PENDING)
-                            .where(RoleRequest.request_ownership.is_(True))
-                        )
-                    ).all()
-                    if effective_constraint(Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY, rr.requested_group)
-                ]
-                tagged_member_requests = [
-                    rr
-                    for rr in (
-                        await db.scalars(
-                            select(RoleRequest)
-                            .options(
-                                joinedload(RoleRequest.requester_role).options(
-                                    selectinload(OktaGroup.active_user_memberships)
-                                ),
-                                joinedload(RoleRequest.requested_group).options(
-                                    selectinload(OktaGroup.active_user_ownerships),
-                                    selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                                    *effective_constraint_options(),
-                                ),
-                            )
-                            .where(RoleRequest.status == AccessRequestStatus.PENDING)
-                            .where(RoleRequest.request_ownership.is_(False))
-                        )
-                    ).all()
-                    if effective_constraint(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, rr.requested_group)
-                ]
-
-                blocked_request_ids: list[str] = []
-                for req in tagged_owner_requests + tagged_member_requests:
-                    role_member_ids = [m.user_id for m in req.requester_role.active_user_memberships]
-                    if all(o.user_id in role_member_ids for o in req.requested_group.active_user_ownerships):
-                        blocked_request_ids.append(req.id)
-
-                stmt = stmt.join(RoleRequest.requested_group).where(
-                    or_(
-                        OktaGroup.id.in_(groups_owned_subquery),
-                        OktaGroup.id.in_(app_groups_owned_subquery),
-                        RoleRequest.id.in_(blocked_request_ids),
-                    )
-                )
-            else:
-                stmt = stmt.join(RoleRequest.requested_group).where(
-                    or_(
-                        OktaGroup.id.in_(groups_owned_subquery),
-                        OktaGroup.id.in_(app_groups_owned_subquery),
-                    )
-                )
-
-                owned_groups = (
-                    (
-                        await db.scalars(
-                            select(OktaGroup)
-                            .options(
-                                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                                *effective_constraint_options(),
-                            )
-                            .where(
-                                or_(
-                                    OktaGroup.id.in_(groups_owned_subquery),
-                                    OktaGroup.id.in_(app_groups_owned_subquery),
-                                )
-                            )
-                        )
-                    )
-                    .unique()
-                    .all()
-                )
-                owned_groups_no_self_owner = [
-                    g.id
-                    for g in owned_groups
-                    if effective_constraint(Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY, g)
-                ]
-                owned_groups_no_self_member = [
-                    g.id
-                    for g in owned_groups
-                    if effective_constraint(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, g)
-                ]
-                role_membership_ids = [
-                    rg.id
-                    for rg in (
-                        await db.scalars(select(RoleGroup).options(joinedload(RoleGroup.active_user_memberships)))
-                    )
-                    .unique()
-                    .all()
-                    if assignee_user.id in [m.user_id for m in rg.active_user_memberships]
-                ]
-                stmt = stmt.where(
-                    not_(
-                        or_(
-                            and_(
-                                RoleRequest.requested_group_id.in_(owned_groups_no_self_owner),
-                                RoleRequest.requester_role_id.in_(role_membership_ids),
-                                RoleRequest.request_ownership.is_(True),
-                            ),
-                            and_(
-                                RoleRequest.requested_group_id.in_(owned_groups_no_self_member),
-                                RoleRequest.requester_role_id.in_(role_membership_ids),
-                                RoleRequest.request_ownership.is_(False),
-                            ),
-                        )
-                    )
-                )
-            # Whether admin or not, never include the assignee's own requests.
-            stmt = stmt.where(RoleRequest.requester_user_id != assignee_user.id)
+            stmt = stmt.where(is_assigned_reviewer(RoleRequest, assignee_user.id))
         else:
             stmt = stmt.where(false())
 
