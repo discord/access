@@ -29,7 +29,7 @@ reject routes check that on their own.
 """
 
 from dataclasses import dataclass
-from typing import Any, Callable, Literal, cast
+from typing import Any, Callable, Iterable, Literal, cast
 
 from sqlalchemy import ColumnElement, ColumnExpressionArgument, and_, exists, func, not_, or_, select
 from sqlalchemy.orm import aliased
@@ -308,3 +308,24 @@ async def get_assigned_reviewers(request: AnyRequest) -> list[OktaUser]:
     """
     levels = await get_eligible_reviewers_by_level(request)
     return levels[0].reviewers if levels else []
+
+
+async def snapshot_assigned_reviewers(requests: Iterable[AnyRequest]) -> dict[str, list[OktaUser]]:
+    """Return each request's assigned reviewers, keyed by request id.
+
+    A request's close notification goes to the reviewers assigned while it
+    was open. Some operations close requests as a side effect of changing
+    ownership: adding users or roles to a group, or deleting or unmanaging a
+    group. The change can move who is assigned. A role granted ownership of
+    a group makes its members owners of that group, and deleting a group
+    ends its ownerships. So these operations call this before the change. A
+    request the snapshot misses, such as one opened after it, has its
+    reviewers computed when it closes.
+
+    Args:
+        requests: Persisted access, role, or group requests.
+
+    Returns:
+        Request id to that request's assigned reviewers.
+    """
+    return {request.id: await get_assigned_reviewers(request) for request in requests}
