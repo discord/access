@@ -21,7 +21,7 @@ from api.models import (
     RoleGroup,
     Tag,
 )
-from api.models.access_request import get_all_possible_request_approvers
+from api.models.request_reviewers import get_assigned_reviewers
 from api.models.app_group import get_access_owners
 from api.models.tag import effective_ended_at
 from api.operations._fan_out import defer_notification
@@ -351,7 +351,9 @@ class ApproveGroupRequest:
 
         if self.notify:
             requester = await db.session.get(OktaUser, group_request.requester_user_id)
-            approvers = await get_all_possible_request_approvers(group_request)
+            # Same as before the commit: a group request's levels are the requested
+            # app's owners and Access admins, which creating the group leaves unchanged.
+            approvers = await get_assigned_reviewers(group_request)
             await defer_notification(
                 db.session,
                 NotificationHook.ACCESS_GROUP_REQUEST_COMPLETED,
