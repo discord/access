@@ -20,7 +20,6 @@ from api.models import (
     RoleRequest,
     Tag,
 )
-from api.models.access_request import get_all_possible_request_approvers
 from api.operations import (
     ApproveRoleRequest,
     CreateRoleRequest,
@@ -709,38 +708,6 @@ async def test_create_app_role_request_notification(
     assert kwargs["requester"] == user
 
 
-async def test_get_all_possible_role_request_approvers(app: FastAPI, mocker: MockerFixture, db: Db) -> None:
-    access_admin = (
-        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
-    ).first()
-
-    users = OktaUserFactory.batch(3)
-    db.session.add_all(users)
-    await db.session.commit()
-
-    mocker.patch(
-        "api.models.access_request.get_group_managers",
-        return_value=[users[0], users[1]],
-    )
-
-    mocker.patch(
-        "api.models.access_request.get_app_managers",
-        return_value=[users[0], users[2]],
-    )
-
-    req = RoleRequest()
-    req.requested_group = AppGroupFactory.build()
-
-    approvers = await get_all_possible_request_approvers(req)
-
-    # Assert that the access admin and 3 users are returned with no duplicates
-    assert len(approvers) == 4
-    assert access_admin in approvers
-    assert users[0] in approvers
-    assert users[1] in approvers
-    assert users[2] in approvers
-
-
 async def test_role_request_approvers_tagged(
     app: FastAPI,
     db: Db,
@@ -811,10 +778,6 @@ async def test_resolve_app_role_request_notification(
     user: OktaUser,
     mocker: MockerFixture,
 ) -> None:
-    access_admin = (
-        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
-    ).first()
-
     app_owner_user1 = OktaUserFactory.build()
     app_owner_user2 = OktaUserFactory.build()
     app_owner_group = AppGroupFactory.build()
@@ -890,11 +853,7 @@ async def test_resolve_app_role_request_notification(
     assert kwargs["role"] == role_group
     assert kwargs["group"] == app_group
     assert kwargs["requester"] == user
-    assert len(kwargs["approvers"]) == 4
-    assert access_admin in kwargs["approvers"]
-    assert app_owner_user1 in kwargs["approvers"]
-    assert app_owner_user2 in kwargs["approvers"]
-    assert user in kwargs["approvers"]
+    assert set(kwargs["approvers"]) == {app_owner_user1, app_owner_user2}
 
     # Reset the access request so we can test the reject path
     role_request.status = AccessRequestStatus.PENDING
@@ -913,11 +872,7 @@ async def test_resolve_app_role_request_notification(
     assert kwargs["role"] == role_group
     assert kwargs["group"] == app_group
     assert kwargs["requester"] == user
-    assert len(kwargs["approvers"]) == 4
-    assert access_admin in kwargs["approvers"]
-    assert app_owner_user1 in kwargs["approvers"]
-    assert app_owner_user2 in kwargs["approvers"]
-    assert user in kwargs["approvers"]
+    assert set(kwargs["approvers"]) == {app_owner_user1, app_owner_user2}
 
 
 async def test_auto_resolve_create_role_request(
@@ -1392,8 +1347,7 @@ async def test_role_request_approval_via_direct_add(
     assert kwargs["role"] == role_group
     assert kwargs["group"] == okta_group2
     assert kwargs["requester"] == user
-    assert len(kwargs["approvers"]) == 2
-    assert access_owner in kwargs["approvers"]
+    assert kwargs["approvers"] == [access_owner]
 
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group2.id)
     rep = await client.get(group_url)
