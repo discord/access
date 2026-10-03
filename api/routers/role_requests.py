@@ -30,8 +30,10 @@ from api.routers._eager import (
     user_group_member_options,
 )
 from api.routers._fan_out import defer_fan_out
+from api.routers._reviewers import request_reviewers_response
 from api.schemas import (
     CreateRoleRequestBody,
+    RequestReviewers,
     ResolveRoleRequestBody,
     RoleRequestDetail,
     RoleRequestSummary,
@@ -195,6 +197,17 @@ async def get_role_request(role_request_id: str, db: DbSession, current_user_id:
     if rr is None:
         raise HTTPException(404, "Not Found")
     return RoleRequestDetail.model_validate(rr, from_attributes=True)
+
+
+@router.get("/{role_request_id}/reviewers", name="role_request_reviewers")
+async def get_role_request_reviewers(
+    role_request_id: str, db: DbSession, current_user_id: CurrentUserId
+) -> RequestReviewers:
+    """Eligible reviewers of a role request by owner level, nearest first; the first level is assigned."""
+    request = await db.get(RoleRequest, role_request_id)
+    if request is None:
+        raise HTTPException(404, "Not Found")
+    return await request_reviewers_response(request)
 
 
 @router.post("", name="role_requests_create", status_code=201)
