@@ -16,11 +16,6 @@ import AlertIcon from '@mui/icons-material/Campaign';
 import PendingIcon from '@mui/icons-material/HelpOutline';
 import ApprovedIcon from '@mui/icons-material/CheckCircleOutline';
 import RejectedIcon from '@mui/icons-material/HighlightOff';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Alert from '@mui/material/Alert';
 import FormControl from '@mui/material/FormControl';
 import Timeline from '@mui/lab/Timeline';
@@ -41,17 +36,16 @@ import RelativeTime from 'dayjs/plugin/relativeTime';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
 import RoleMembers from './RoleMembers';
-import {groupBy, displayUserName, ownerCantAddSelf} from '../../helpers';
+import {ownerCantAddSelf} from '../../helpers';
 import {approvalUntilDefault, timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {useCurrentUser} from '../../authentication';
-import {canManageGroup, isAccessAdmin, ACCESS_APP_RESERVED_NAME} from '../../authorization';
+import {canManageGroup} from '../../authorization';
 import {
   useRoleRequestById,
+  useRoleRequestReviewers,
   useGroupById,
   useAppById,
-  useAppGroupsById,
-  useGroupMemberDetailsById,
   useRoleRequestByIdPut,
   RoleRequestByIdPutError,
   RoleRequestByIdPutVariables,
@@ -63,7 +57,6 @@ import {
   AppGroupForAppDetail,
   GroupRefForMembership,
   OktaUserGroupMemberDetail,
-  OktaUserSummary,
   GroupDetail,
   RoleGroupDetail,
   RoleRequestDetail,
@@ -77,18 +70,10 @@ import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import ChangeTitle from '../../tab-title';
 import AccessHistory from '../../components/AccessHistory';
+import RequestReviewers from '../../components/RequestReviewers';
 
 dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
-
-function sortGroupMembers(
-  [aUserId, aUsers]: [string, Array<OktaUserGroupMemberDetail>],
-  [bUserId, bUsers]: [string, Array<OktaUserGroupMemberDetail>],
-): number {
-  let aEmail = aUsers[0].active_user?.email ?? '';
-  let bEmail = bUsers[0].active_user?.email ?? '';
-  return aEmail.localeCompare(bEmail);
-}
 
 interface ResolveRequestForm {
   until?: string;
@@ -135,7 +120,6 @@ export default function ReadRoleRequest() {
   const {id} = useParams();
 
   const currentUser = useCurrentUser();
-  const admin = isAccessAdmin(currentUser);
 
   const [until, setUntil] = React.useState<string | null>(null);
   const [requestError, setRequestError] = React.useState('');
@@ -285,66 +269,9 @@ export default function ReadRoleRequest() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeLimit, autofill_until, requestedUntil, requestedUntilAdjusted]);
 
-  // Owner/approver lists are no longer inlined on the group/app payloads; they
-  // come from the bounded owner-filtered endpoints instead.
-  const {data: groupOwnerData} = useGroupMemberDetailsById(
-    {
-      pathParams: {groupId: roleRequest.requested_group?.id ?? ''},
-      queryParams: {owner: true, size: 100},
-    },
-    {
-      enabled: roleRequest.requested_group != null && (!requestedGroupManager || ownRequest),
-    },
-  );
-  let ownerships = groupBy(groupOwnerData?.items ?? [], (m: OktaUserGroupMemberDetail) => m.active_user?.id);
-  const ownerIds = Object.keys(ownerships);
-
-  // If Access admin and all group owners are blocked, add a note
-  const adminNoteForBlocked = tagged && admin && ownerIds.every((v) => roleMembers.includes(v)) && ownerIds.length > 0;
-
-  const {data: appOwnerGroupsData} = useAppGroupsById(
-    {
-      pathParams: {appId: ((roleRequest.requested_group ?? {}) as AppGroupDetail).app?.id ?? ''},
-      queryParams: {owner: true},
-    },
-    {
-      enabled: roleRequest.requested_group?.type == 'app_group' && (!requestedGroupManager || ownRequest),
-    },
-  );
-
-  // App owners = owners of the app's owner group; the app-groups payload only
-  // carries counts, so fetch that group's owners explicitly.
-  const appOwnerGroupId = appOwnerGroupsData?.items?.[0]?.id ?? '';
-  const {data: appOwnerMemberData} = useGroupMemberDetailsById(
-    {pathParams: {groupId: appOwnerGroupId}, queryParams: {owner: true, size: 100}},
-    {enabled: appOwnerGroupId !== ''},
-  );
-  const appOwnershipsArray = appOwnerMemberData?.items ?? [];
-  const appOwnerships = groupBy(appOwnershipsArray, (m: OktaUserGroupMemberDetail) => m.active_user?.id);
-
-  const {data: accessAppOwnerGroupsData} = useAppGroupsById(
-    {
-      pathParams: {appId: ACCESS_APP_RESERVED_NAME},
-      queryParams: {owner: true},
-    },
-    {
-      enabled:
-        roleRequest.requested_group != null &&
-        (!requestedGroupManager || ownRequest) &&
-        (groupOwnerData?.items?.length ?? 0) == 0 &&
-        (roleRequest.requested_group?.type != 'app_group' || appOwnershipsArray.length == 0),
-    },
-  );
-
-  // Final fallback approvers = members of the Access app's owner group.
-  const accessAppOwnerGroupId = accessAppOwnerGroupsData?.items?.[0]?.id ?? '';
-  const {data: accessAppOwnerMemberData} = useGroupMemberDetailsById(
-    {pathParams: {groupId: accessAppOwnerGroupId}, queryParams: {owner: false, size: 100}},
-    {enabled: accessAppOwnerGroupId !== ''},
-  );
-  const accessAppOwnerships = groupBy(
-    accessAppOwnerMemberData?.items ?? [],
-    (m: OktaUserGroupMemberDetail) => m.active_user?.id,
+  const {data: reviewers} = useRoleRequestReviewers(
+    {pathParams: {roleRequestId: roleRequest.id}},
+    {enabled: roleRequest.status == 'PENDING' && (!requestedGroupManager || ownRequest)},
   );
 
   // Fetch role/group audit data for the requester role and requested group
@@ -654,28 +581,13 @@ export default function ReadRoleRequest() {
                         <Typography display="inline" variant="body1">
                           <b>
                             While you own group {group.name}, you are blocked from responding to this request by group
-                            tags. The request has been forwarded to other group owners or Access admins.
+                            tags. The request has been forwarded to other group owners, app owners, or Access admins.
                           </b>
                         </Typography>
                       </Stack>
                     </Paper>
                   ) : (
                     <>
-                      {adminNoteForBlocked ? (
-                        <Paper sx={{p: 2, mb: 1}}>
-                          <Stack alignItems="center" direction="row" gap={2}>
-                            <AlertIcon fontSize="large" sx={{color: 'primary.main'}} />
-                            <Typography display="inline" variant="body1">
-                              <b>
-                                All owners of group {group.name} are blocked from approving this request due to group
-                                tags. As an Access admin, you may respond to it on their behalf.
-                              </b>
-                            </Typography>
-                          </Stack>
-                        </Paper>
-                      ) : (
-                        <></>
-                      )}
                       <Paper sx={{p: 2}}>
                         <RoleMembers
                           rows={roleRequest.requester_role?.active_user_memberships ?? []}
@@ -844,228 +756,11 @@ export default function ReadRoleRequest() {
                         </Box>
                       ) : null}{' '}
                       {!requestedGroupManager || ownRequest ? (
-                        <Box sx={{my: 2}}>
-                          <Paper sx={{p: 2}}>
-                            <Typography variant="body1">
-                              Request is <b>pending</b> and can be reviewed by the following owners or by Access admins
-                            </Typography>
-                          </Paper>
-                          {roleRequest.requested_group?.type != 'app_group' ||
-                          !(roleRequest.requested_group as AppGroupDetail).is_owner ? (
-                            <Paper sx={{p: 2, mt: 1}}>
-                              <Table size="small" aria-label="group owners">
-                                <TableHead>
-                                  <TableRow>
-                                    <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="text.accent">
-                                        {roleRequest.requested_group?.name}{' '}
-                                        {roleRequest.requested_group?.type == 'role_group' ? 'Owners' : 'Group Owners'}
-                                      </Typography>
-                                    </TableCell>
-                                  </TableRow>
-                                  <TableRow>
-                                    <TableCell>Name</TableCell>
-                                    <TableCell>Email</TableCell>
-                                    <TableCell>
-                                      <Box
-                                        sx={{
-                                          display: 'flex',
-                                          justifyContent: 'flex-end',
-                                          alignItems: 'right',
-                                        }}>
-                                        <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                                        Total Owners: {ownerIds.length}
-                                      </Box>
-                                    </TableCell>
-                                  </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                  {ownerIds.length > 0 ? (
-                                    Object.entries(ownerships)
-                                      .sort(sortGroupMembers)
-                                      .map(([userId, users]: [string, Array<OktaUserGroupMemberDetail>]) => (
-                                        <TableRow key={'owner' + userId}>
-                                          <TableCell>
-                                            <Link
-                                              to={`/users/${users[0].active_user?.email.toLowerCase()}`}
-                                              sx={{
-                                                textDecoration: 'none',
-                                                color: 'inherit',
-                                              }}
-                                              component={RouterLink}>
-                                              {displayUserName(users[0].active_user)}
-                                            </Link>
-                                          </TableCell>
-                                          <TableCell colSpan={2}>
-                                            <Link
-                                              to={`/users/${users[0].active_user?.email.toLowerCase()}`}
-                                              sx={{
-                                                textDecoration: 'none',
-                                                color: 'inherit',
-                                              }}
-                                              component={RouterLink}>
-                                              {users[0].active_user?.email.toLowerCase()}
-                                            </Link>
-                                          </TableCell>
-                                        </TableRow>
-                                      ))
-                                  ) : (
-                                    <TableRow key="owners">
-                                      <TableCell colSpan={3}>
-                                        <Typography variant="body2" color="text.secondary">
-                                          None
-                                        </Typography>
-                                      </TableCell>
-                                    </TableRow>
-                                  )}
-                                </TableBody>
-                              </Table>
-                            </Paper>
-                          ) : null}
-                          {roleRequest.requested_group?.type == 'app_group' ? (
-                            <Paper sx={{p: 2, mt: 1}}>
-                              <Table size="small" aria-label="app owners">
-                                <TableHead>
-                                  <TableRow>
-                                    <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="text.accent">
-                                        {((roleRequest.requested_group ?? {}) as AppGroupDetail).app?.name}
-                                        {' App Owners'}
-                                      </Typography>
-                                    </TableCell>
-                                  </TableRow>
-                                  <TableRow>
-                                    <TableCell>Name</TableCell>
-                                    <TableCell>Email</TableCell>
-                                    <TableCell>
-                                      <Box
-                                        sx={{
-                                          display: 'flex',
-                                          justifyContent: 'flex-end',
-                                          alignItems: 'right',
-                                        }}>
-                                        <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                                        Total Owners: {Object.keys(appOwnerships).length}
-                                      </Box>
-                                    </TableCell>
-                                  </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                  {Object.keys(appOwnerships).length > 0 ? (
-                                    Object.entries(appOwnerships)
-                                      .sort(sortGroupMembers)
-                                      .map(([userId, users]: [string, Array<OktaUserGroupMemberDetail>]) => (
-                                        <TableRow key={'owner' + userId}>
-                                          <TableCell>
-                                            <Link
-                                              to={`/users/${users[0].active_user?.email.toLowerCase()}`}
-                                              sx={{
-                                                textDecoration: 'none',
-                                                color: 'inherit',
-                                              }}
-                                              component={RouterLink}>
-                                              {displayUserName(users[0].active_user)}
-                                            </Link>
-                                          </TableCell>
-                                          <TableCell colSpan={2}>
-                                            <Link
-                                              to={`/users/${users[0].active_user?.email.toLowerCase()}`}
-                                              sx={{
-                                                textDecoration: 'none',
-                                                color: 'inherit',
-                                              }}
-                                              component={RouterLink}>
-                                              {users[0].active_user?.email.toLowerCase()}
-                                            </Link>
-                                          </TableCell>
-                                        </TableRow>
-                                      ))
-                                  ) : (
-                                    <TableRow key="owners">
-                                      <TableCell colSpan={3}>
-                                        <Typography variant="body2" color="text.secondary">
-                                          None
-                                        </Typography>
-                                      </TableCell>
-                                    </TableRow>
-                                  )}
-                                </TableBody>
-                              </Table>
-                            </Paper>
-                          ) : null}
-                          {ownerIds.length == 0 &&
-                          (roleRequest.requested_group?.type != 'app_group' || appOwnershipsArray.length == 0) ? (
-                            <Paper sx={{p: 2, mt: 1}}>
-                              <Table size="small" aria-label="app owners">
-                                <TableHead>
-                                  <TableRow>
-                                    <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="text.accent">
-                                        {ACCESS_APP_RESERVED_NAME}
-                                        {' Admins'}
-                                      </Typography>
-                                    </TableCell>
-                                  </TableRow>
-                                  <TableRow>
-                                    <TableCell>Name</TableCell>
-                                    <TableCell>Email</TableCell>
-                                    <TableCell>
-                                      <Box
-                                        sx={{
-                                          display: 'flex',
-                                          justifyContent: 'flex-end',
-                                          alignItems: 'right',
-                                        }}>
-                                        <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                                        Total Owners: {Object.keys(accessAppOwnerships).length}
-                                      </Box>
-                                    </TableCell>
-                                  </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                  {Object.keys(accessAppOwnerships).length > 0 ? (
-                                    Object.entries(accessAppOwnerships)
-                                      .sort(sortGroupMembers)
-                                      .map(([userId, users]: [string, Array<OktaUserGroupMemberDetail>]) => (
-                                        <TableRow key={'owner' + userId}>
-                                          <TableCell>
-                                            <Link
-                                              to={`/users/${users[0].active_user?.email.toLowerCase()}`}
-                                              sx={{
-                                                textDecoration: 'none',
-                                                color: 'inherit',
-                                              }}
-                                              component={RouterLink}>
-                                              {displayUserName(users[0].active_user)}
-                                            </Link>
-                                          </TableCell>
-                                          <TableCell colSpan={2}>
-                                            <Link
-                                              to={`/users/${users[0].active_user?.email.toLowerCase()}`}
-                                              sx={{
-                                                textDecoration: 'none',
-                                                color: 'inherit',
-                                              }}
-                                              component={RouterLink}>
-                                              {users[0].active_user?.email.toLowerCase()}
-                                            </Link>
-                                          </TableCell>
-                                        </TableRow>
-                                      ))
-                                  ) : (
-                                    <TableRow key="owners">
-                                      <TableCell colSpan={3}>
-                                        <Typography variant="body2" color="text.secondary">
-                                          None
-                                        </Typography>
-                                      </TableCell>
-                                    </TableRow>
-                                  )}
-                                </TableBody>
-                              </Table>
-                            </Paper>
-                          ) : null}
-                        </Box>
+                        <RequestReviewers
+                          reviewers={reviewers}
+                          groupName={roleRequest.requested_group?.name}
+                          appName={((roleRequest.requested_group ?? {}) as AppGroupDetail).app?.name}
+                        />
                       ) : null}
                     </>
                   ) : (
