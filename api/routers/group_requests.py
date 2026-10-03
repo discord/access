@@ -6,13 +6,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from sqlalchemy import String, and_, cast, false, or_, select
+from sqlalchemy import String, cast, false, or_, select
 from sqlalchemy.orm import aliased, joinedload
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
 from api.database import DbSession
 from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, Tag
+from api.models.request_reviewers import is_assigned_reviewer
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
 from api.pagination import Page, validated
 from api.plugins.app_group_lifecycle import (
@@ -52,9 +53,6 @@ async def list_group_requests(
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchGroupRequestQuery, Query()],
 ) -> Page[GroupRequestDetail]:
-    from api.auth.permissions import is_access_admin
-    from api.models.app_group import get_app_managers
-
     stmt = select(GroupRequest).options(*_load_options()).order_by(GroupRequest.created_at.desc())
 
     if q_args.status:
@@ -79,9 +77,7 @@ async def list_group_requests(
         stmt = stmt.where(GroupRequest.requested_app_id == q_args.requested_app_id)
 
     if q_args.assignee_user_id:
-        # "Requests I can resolve". Admins see every pending request; app
-        # owners see app-group requests for apps they own. In both cases the
-        # assignee's own requests are stripped out.
+        # Requests whose assigned reviewers include the assignee.
         assignee_user_id = current_user_id if q_args.assignee_user_id == "@me" else q_args.assignee_user_id
         assignee_user = (
             await db.scalars(
@@ -89,22 +85,7 @@ async def list_group_requests(
             )
         ).first()
         if assignee_user is not None:
-            if not await is_access_admin(db, assignee_user.id):
-                owned_app_ids: list[str] = []
-                for app in (await db.scalars(select(App).where(App.deleted_at.is_(None)))).all():
-                    manager_ids = [m.id for m in await get_app_managers(app.id)]
-                    if assignee_user.id in manager_ids:
-                        owned_app_ids.append(app.id)
-                if owned_app_ids:
-                    stmt = stmt.where(
-                        and_(
-                            GroupRequest.requested_app_id.in_(owned_app_ids),
-                            GroupRequest.requested_group_type == "app_group",
-                        )
-                    )
-                else:
-                    stmt = stmt.where(false())
-            stmt = stmt.where(GroupRequest.requester_user_id != assignee_user.id)
+            stmt = stmt.where(is_assigned_reviewer(GroupRequest, assignee_user.id))
         else:
             stmt = stmt.where(false())
 
