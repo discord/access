@@ -1471,6 +1471,61 @@ async def test_role_request_list_filters_via_http(client: AsyncClient, db: Db, u
     assert target_rr.id in found and other_rr.id not in found
 
 
+async def test_role_request_list_filters_by_role_and_group_together(client: AsyncClient, db: Db, url_for: Any) -> None:
+    """`requester_role_id` and `requested_group_id` both join `okta_group`, so
+    combining them must still resolve each filter against its own side of the
+    request. Seed requests that share only the role or only the group with the
+    target so each filter has to exclude one of them, and match by id and by
+    name to cover both branches of each filter."""
+    target_user = OktaUserFactory.build()
+    other_user = OktaUserFactory.build()
+    target_role = RoleGroupFactory.build()
+    other_role = RoleGroupFactory.build()
+    target_group = OktaGroupFactory.build()
+    other_group = OktaGroupFactory.build()
+    db.session.add_all([target_user, other_user, target_role, other_role, target_group, other_group])
+    await db.session.commit()
+    await ModifyGroupUsers(
+        group=target_role, members_to_add=[target_user.id], owners_to_add=[target_user.id], sync_to_okta=False
+    ).execute()
+    await ModifyGroupUsers(
+        group=other_role, members_to_add=[other_user.id], owners_to_add=[other_user.id], sync_to_okta=False
+    ).execute()
+
+    target_rr = await CreateRoleRequest(
+        requester_user=target_user,
+        requester_role=target_role,
+        requested_group=target_group,
+        request_ownership=False,
+        request_reason="please",
+    ).execute()
+    same_role_rr = await CreateRoleRequest(
+        requester_user=target_user,
+        requester_role=target_role,
+        requested_group=other_group,
+        request_ownership=False,
+        request_reason="please",
+    ).execute()
+    same_group_rr = await CreateRoleRequest(
+        requester_user=other_user,
+        requester_role=other_role,
+        requested_group=target_group,
+        request_ownership=False,
+        request_reason="please",
+    ).execute()
+    assert target_rr is not None and same_role_rr is not None and same_group_rr is not None
+
+    list_url = url_for("api-role-requests.role_requests")
+
+    for params in (
+        {"requester_role_id": target_role.id, "requested_group_id": target_group.id},
+        {"requester_role_id": target_role.name, "requested_group_id": target_group.name},
+    ):
+        rep = await client.get(list_url, params=params)
+        assert rep.status_code == 200, rep.text
+        assert [r["id"] for r in rep.json()["items"]] == [target_rr.id]
+
+
 async def test_role_request_assignee_filter_excludes_propagated_self_add_role_target(
     client: AsyncClient, db: Db, tag: Tag, url_for: Any
 ) -> None:

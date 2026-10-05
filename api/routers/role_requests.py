@@ -111,19 +111,24 @@ async def list_role_requests(
                 )
             )
 
+    # The role and the requested group both live in `okta_group`, so each
+    # filter joins its own alias; the `assignee_user_id` branch below joins
+    # the unaliased `OktaGroup` for the requested group.
     if q_args.requester_role_id:
-        stmt = stmt.join(RoleRequest.requester_role).where(
+        role_alias = aliased(OktaGroup)
+        stmt = stmt.join(RoleRequest.requester_role.of_type(role_alias)).where(
             or_(
                 RoleRequest.requester_role_id == q_args.requester_role_id,
-                RoleGroup.name.ilike(q_args.requester_role_id),
+                role_alias.name.ilike(q_args.requester_role_id),
             )
         )
 
     if q_args.requested_group_id:
-        stmt = stmt.join(RoleRequest.requested_group).where(
+        group_alias = aliased(OktaGroup)
+        stmt = stmt.join(RoleRequest.requested_group.of_type(group_alias)).where(
             or_(
                 RoleRequest.requested_group_id == q_args.requested_group_id,
-                OktaGroup.name.ilike(q_args.requested_group_id),
+                group_alias.name.ilike(q_args.requested_group_id),
             )
         )
 
