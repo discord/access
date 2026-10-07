@@ -267,6 +267,16 @@ async def put_group(
     if not group.is_managed:
         raise HTTPException(400, "Groups not managed by Access cannot be modified")
 
+    # Only Access admins may change a group's type. Check this here, before
+    # any write: the rename below is committed and pushed to Okta first, and
+    # it skips the reserved-prefix rules when the type is also changing. If
+    # the admin check ran after that, a non-admin owner could rename an app
+    # group to a plain name (or a plain group to a Role- name), get a 403,
+    # and still leave the renamed group behind.
+    type_changed = body.type != group.type
+    if type_changed and not await is_access_admin(db, current_user_id):
+        raise HTTPException(403, "Current user is not an Access admin and not allowed to change group types")
+
     new_plugin_data = (
         body.plugin_data if isinstance(body, _AppGroupUpdateBody) and "plugin_data" in fields_set else None
     )
@@ -403,10 +413,7 @@ async def put_group(
         raise HTTPException(400, str(e)) from e
 
     body_type = body.type
-    type_changed = body_type != group.type
     if type_changed:
-        if not await is_access_admin(db, current_user_id):
-            raise HTTPException(403, "Current user is not an Access admin and not allowed to change group types")
         type_klass = {"okta_group": OktaGroup, "role_group": RoleGroup, "app_group": AppGroup}[body_type]
         new_group = type_klass()
         for k in ("name", "description", "is_managed"):
