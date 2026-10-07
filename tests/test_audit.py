@@ -783,3 +783,83 @@ async def test_groups_audit_returns_rows_when_role_group_is_soft_deleted(
     assert row["role_group"]["deleted_at"] is not None
     for absent in ("active_group", "active_role_group"):
         assert absent not in row, f"audit row should not include {absent!r}"
+
+
+async def test_users_audit_order_is_total_for_member_and_owner_rows(client: AsyncClient, db: Db, url_for: Any) -> None:
+    """A user who is both member and owner of a group produces two rows that
+    tie on every visible sort column (same email, same created_at). The
+    ordering must still be total so the audit table does not reshuffle
+    between refetches: ties fall back to the row id, ascending."""
+    group = OktaGroupFactory.build()
+    user = OktaUserFactory.build()
+    db.session.add_all([group, user])
+    await db.session.commit()
+    await ModifyGroupUsers(
+        group=group,
+        members_to_add=[user.id],
+        owners_to_add=[user.id],
+        sync_to_okta=False,
+    ).execute()
+
+    pinned = datetime.now(timezone.utc) - timedelta(days=1)
+    rows = (await db.session.scalars(select(OktaUserGroupMember).where(OktaUserGroupMember.group_id == group.id))).all()
+    # Rewrite the rows newest-id first. On Postgres an UPDATE writes a fresh
+    # tuple, so this flips the physical order the rows sit in on disk, and a
+    # plain sequential scan with no tie-breaker would return them reversed.
+    for ugm in sorted(rows, key=lambda r: r.id, reverse=True):
+        ugm.created_at = pinned
+        await db.session.flush()
+    await db.session.commit()
+    expected_ids = sorted(ugm.id for ugm in rows)
+
+    url = url_for("api-audit.users_and_groups")
+    for params in (
+        {"group_id": group.id, "order_by": "created_at", "order_desc": "true"},
+        {"group_id": group.id, "order_by": "created_at", "order_desc": "false"},
+        {"group_id": group.id, "order_by": "moniker", "order_desc": "true"},
+        {"user_id": user.id, "order_by": "created_at", "order_desc": "true"},
+    ):
+        first = await client.get(url, params=params)
+        second = await client.get(url, params=params)
+        assert first.status_code == 200, first.text
+        got = [r["id"] for r in first.json()["items"]]
+        assert got == expected_ids, params
+        assert got == [r["id"] for r in second.json()["items"]], params
+
+
+async def test_groups_audit_order_is_total_for_member_and_owner_rows(client: AsyncClient, db: Db, url_for: Any) -> None:
+    """Same contract for role-to-group rows: a role that is both member and
+    owner of a group yields two rows that tie on name and created_at, and
+    they must come back in row-id order on every request."""
+    group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    db.session.add_all([group, role])
+    await db.session.commit()
+    await ModifyRoleGroups(
+        role_group=role,
+        groups_to_add=[group.id],
+        owner_groups_to_add=[group.id],
+        sync_to_okta=False,
+    ).execute()
+
+    pinned = datetime.now(timezone.utc) - timedelta(days=1)
+    rows = (await db.session.scalars(select(RoleGroupMap).where(RoleGroupMap.group_id == group.id))).all()
+    # Same physical-order flip as the users test above.
+    for rgm in sorted(rows, key=lambda r: r.id, reverse=True):
+        rgm.created_at = pinned
+        await db.session.flush()
+    await db.session.commit()
+    expected_ids = sorted(rgm.id for rgm in rows)
+
+    url = url_for("api-audit.groups_and_roles")
+    for params in (
+        {"group_id": group.id, "order_by": "created_at", "order_desc": "true"},
+        {"role_id": role.id, "order_by": "created_at", "order_desc": "true"},
+        {"group_id": group.id, "order_by": "moniker", "order_desc": "false"},
+    ):
+        first = await client.get(url, params=params)
+        second = await client.get(url, params=params)
+        assert first.status_code == 200, first.text
+        got = [r["id"] for r in first.json()["items"]]
+        assert got == expected_ids, params
+        assert got == [r["id"] for r in second.json()["items"]], params
