@@ -471,20 +471,24 @@ async def users_and_groups(
         if owner is not None or (user is None and group is None):
             stmt = stmt.where(or_(*group_cols, *user_cols))
 
-    # Compound order_by — the tail tie-breaker keeps page boundaries stable
-    # when two rows share the primary sort value. Without it, paginated
-    # results can repeat or skip rows between requests.
+    # Compound order_by. The middle column breaks ties on the primary sort
+    # value, and the row id at the end makes the order total: a user who is
+    # both member and owner of a group shares the same email and the same
+    # created_at, so without the id the database is free to return those
+    # two rows in a different order on every request, and the audit table
+    # visibly reshuffles when React Query refetches.
     nulls_order = nullsfirst if q_args.order_desc else nullslast
+    row_id_tail = OktaUserGroupMember.id.asc()
 
     def _users_audit_ordering() -> tuple:
         if q_args.order_by == AuditOrderBy.moniker:
             primary = group_alias.name if user is not None else func.lower(OktaUser.email)
             primary_dir = primary.desc() if q_args.order_desc else primary.asc()
-            return (nulls_order(primary_dir), nullslast(OktaUserGroupMember.created_at.asc()))
+            return (nulls_order(primary_dir), nullslast(OktaUserGroupMember.created_at.asc()), row_id_tail)
         col = getattr(OktaUserGroupMember, q_args.order_by.value)
         primary_dir = col.desc() if q_args.order_desc else col.asc()
         tail = (group_alias.name if user is not None else func.lower(OktaUser.email)).asc()
-        return (nulls_order(primary_dir), tail)
+        return (nulls_order(primary_dir), tail, row_id_tail)
 
     stmt = stmt.order_by(*_users_audit_ordering())
 
@@ -496,11 +500,11 @@ async def users_and_groups(
         if q_args.order_by == AuditOrderBy.moniker:
             primary = func.lower(OktaUser.email)
             primary_dir = primary.desc() if q_args.order_desc else primary.asc()
-            stmt = stmt.order_by(nulls_order(primary_dir), nullslast(OktaUserGroupMember.created_at.asc()))
+            stmt = stmt.order_by(nulls_order(primary_dir), nullslast(OktaUserGroupMember.created_at.asc()), row_id_tail)
         else:
             col = getattr(OktaUserGroupMember, q_args.order_by.value)
             primary_dir = col.desc() if q_args.order_desc else col.asc()
-            stmt = stmt.order_by(nulls_order(primary_dir), func.lower(OktaUser.email).asc())
+            stmt = stmt.order_by(nulls_order(primary_dir), func.lower(OktaUser.email).asc(), row_id_tail)
 
     return await apaginate(
         db,
@@ -714,21 +718,23 @@ async def groups_and_roles(
         if owner is not None or (group is None and role is None):
             stmt = stmt.where(or_(*role_cols, *group_cols))
 
-    # Compound order_by — the tail tie-breaker keeps page boundaries stable.
-    # Primary column depends on context: when `group_id` is pinned, the
-    # listing is ordered by role; otherwise it's ordered by the associated
-    # group.
+    # Compound order_by. Primary column depends on context: when `group_id`
+    # is pinned, the listing is ordered by role; otherwise it's ordered by
+    # the associated group. The row id at the end makes the order total, so
+    # a role that is both member and owner of the same group (same name,
+    # same created_at) comes back in the same order on every request.
     nulls_order = nullsfirst if q_args.order_desc else nullslast
+    row_id_tail = RoleGroupMap.id.asc()
 
     def _groups_audit_ordering() -> tuple:
         if q_args.order_by == AuditOrderBy.moniker:
             primary = RoleGroup.name if role is None and group is not None else group_alias.name
             primary_dir = primary.desc() if q_args.order_desc else primary.asc()
-            return (nulls_order(primary_dir), nullslast(RoleGroupMap.created_at.asc()))
+            return (nulls_order(primary_dir), nullslast(RoleGroupMap.created_at.asc()), row_id_tail)
         col = getattr(RoleGroupMap, q_args.order_by.value)
         primary_dir = col.desc() if q_args.order_desc else col.asc()
         tail = (RoleGroup.name if role is None and group is not None else group_alias.name).asc()
-        return (nulls_order(primary_dir), tail)
+        return (nulls_order(primary_dir), tail, row_id_tail)
 
     stmt = stmt.order_by(*_groups_audit_ordering())
 
