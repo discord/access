@@ -20,6 +20,14 @@ vi.mock('../../api/apiComponents', () => ({
   useTags: () => ({data: {items: []}}),
   useGroupsCreate: () => ({mutate: createMutate}),
   useGroupByIdPut: () => ({mutate: updateMutate}),
+  // A configured lifecycle plugin with group-level fields, so the configuration form has
+  // something to render and its absence for an owner group is a real assertion.
+  useAppGroupLifecyclePlugins: () => ({data: [{id: 'audit_logger', name: 'Audit Logger'}], isLoading: false}),
+  useAppGroupLifecyclePluginAppConfigProps: () => ({data: {}, isLoading: false}),
+  useAppGroupLifecyclePluginGroupConfigProps: () => ({
+    data: {level: {display_name: 'Level', type: 'text', required: false}},
+    isLoading: false,
+  }),
 }));
 
 import CreateUpdateGroup from './CreateUpdate';
@@ -147,5 +155,36 @@ describe('editing an app owner group', () => {
 
     expect(updateMutate).toHaveBeenCalledTimes(1);
     expect(updateMutate.mock.calls[0][0].body).toMatchObject({description: 'Owners of the sandbox'});
+  });
+});
+
+describe('the app group lifecycle plugin configuration form', () => {
+  const PLUGIN_APP = {...APP, app_group_lifecycle_plugin: 'audit_logger'} as unknown as AppDetail;
+  const PLUGIN_FORM = /Configure the App Group Lifecycle Plugin/;
+
+  it('is offered for an ordinary app group', async () => {
+    const memberGroup = {
+      ...OWNER_APP_GROUP,
+      id: 'member-group-0000000',
+      name: 'App-HammerAndChiselZendeskSandbox-Members',
+      is_owner: false,
+      app: PLUGIN_APP,
+    } as unknown as GroupDetail;
+    render(<CreateUpdateGroup currentUser={ACCESS_ADMIN} defaultGroupType="app_group" group={memberGroup} />);
+
+    await openDialog('edit');
+    expect(screen.getByText(PLUGIN_FORM)).toBeInTheDocument();
+  });
+
+  // The API refuses a plugin configuration change on an owner group, so offering an
+  // editable form there would only invite a rejected submit.
+  it('is not offered for an owner group', async () => {
+    const ownerGroup = {...OWNER_APP_GROUP, app: PLUGIN_APP} as unknown as GroupDetail;
+    render(<CreateUpdateGroup currentUser={ACCESS_ADMIN} defaultGroupType="app_group" group={ownerGroup} />);
+
+    await openDialog('edit');
+    expect(screen.queryByText(PLUGIN_FORM)).not.toBeInTheDocument();
+    // The dialog did open; the description field is there, only the plugin form is not.
+    expect(screen.getByLabelText(/^Description/)).toBeInTheDocument();
   });
 });

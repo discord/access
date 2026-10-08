@@ -385,7 +385,9 @@ function GroupDialog(props: GroupDialogProps) {
               renderInput={(params) => <TextField {...params} label="Tags" placeholder="Tags" />}
             />
           </FormControl>
-          {appGroupLifecyclePluginId && isAllowedToConfigureAppGroupLifecyclePlugin && (
+          {/* Not offered for an owner group: the API refuses a plugin configuration change
+              there, so an editable form would only invite a rejected submit. */}
+          {appGroupLifecyclePluginId && isAllowedToConfigureAppGroupLifecyclePlugin && !props.app_owner_group && (
             <AppGroupLifecyclePluginConfigurationForm
               entityType="group"
               selectedPluginId={appGroupLifecyclePluginId}

@@ -223,6 +223,34 @@ async def post_group(
     return _group_adapter.validate_python(refreshed, from_attributes=True)
 
 
+def _owner_group_plugin_config_changing(group: AppGroup, new_plugin_data: dict[str, Any]) -> bool:
+    """Whether a plugin_data patch asks to change an owner group's plugin configuration.
+
+    `plugin_data` is a patch: ModifyGroupPluginData keeps the top-level plugin entries and
+        the per-plugin sections a patch omits, and the edit form submits configuration only.
+        Comparing the raw patch against the stored document would therefore report a change on
+        every edit once a plugin has written status the submitter never sends back. Only the
+        sections a patch actually names are compared, so a status a patch omits is irrelevant
+        while an entry naming something that differs -- including one in an unrecognised shape
+        -- still counts, rather than being accepted and then quietly dropped.
+
+        Args:
+            group: The owner group being edited.
+            new_plugin_data: The submitted plugin_data patch.
+
+        Returns:
+            True if the patch asks for a different configuration than the one stored.
+    """
+
+    def asks_for_change(patch_entry: Any, stored_entry: Any) -> bool:
+        if not isinstance(patch_entry, dict) or not isinstance(stored_entry, dict):
+            return patch_entry != stored_entry
+        return any(stored_entry.get(section) != value for section, value in patch_entry.items())
+
+    stored = group.plugin_data or {}
+    return any(asks_for_change(entry, stored.get(plugin_id)) for plugin_id, entry in new_plugin_data.items())
+
+
 @router.put("/{group_id}", name="group_by_id_put")
 async def put_group(
     group_id: str,
@@ -351,7 +379,7 @@ async def put_group(
         rebinding = isinstance(body, _AppGroupUpdateBody) and "app_id" in fields_set and body.app_id != original_app_id
         if renaming or retyping or rebinding:
             raise HTTPException(400, "Only tags and the description can be modified for application owner groups")
-        if new_plugin_data is not None and new_plugin_data != (group.plugin_data or {}):
+        if new_plugin_data is not None and _owner_group_plugin_config_changing(group, new_plugin_data):
             raise HTTPException(400, "Plugin configuration cannot be modified for application owner groups")
 
         if description is not None:

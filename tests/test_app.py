@@ -984,6 +984,8 @@ async def test_create_app_fails_when_preexisting_owner_group_is_occupied(
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
+    # Absorbing a group with no description seeds the default, which syncs to Okta.
+    mocker.patch.object(okta, "update_group")
 
     owner_group_name = (
         f"{AppGroup.APP_GROUP_NAME_PREFIX}Payments"
@@ -1015,6 +1017,8 @@ async def test_create_app_succeeds_with_empty_preexisting_owner_group(
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
+    # Absorbing a group with no description seeds the default, which syncs to Okta.
+    mocker.patch.object(okta, "update_group")
 
     owner_group_name = (
         f"{AppGroup.APP_GROUP_NAME_PREFIX}Payments"
@@ -1051,6 +1055,8 @@ async def test_create_app_succeeds_with_members_only_preexisting_owner_group(
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
+    # Absorbing a group with no description seeds the default, which syncs to Okta.
+    mocker.patch.object(okta, "update_group")
 
     owner_group_name = (
         f"{AppGroup.APP_GROUP_NAME_PREFIX}Payments"
@@ -1239,7 +1245,7 @@ async def test_create_app_seeds_a_description_only_on_a_blank_absorbed_owner_gro
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
-    mocker.patch.object(okta, "update_group")
+    update_group_mock = mocker.patch.object(okta, "update_group")
 
     def owner_group_name(app_name: str) -> str:
         return (
@@ -1263,3 +1269,12 @@ async def test_create_app_seeds_a_description_only_on_a_blank_absorbed_owner_gro
     seeded = (await db.session.scalars(select(AppGroup).where(AppGroup.name == owner_group_name("Billing")))).first()
     assert seeded is not None
     assert seeded.description == app_owners_group_description("Billing")
+
+    # The seed has to reach Okta. Under non-authoritative sync Okta is the source of truth
+    # for a group's description, so a seed that only landed in the database would be
+    # overwritten by the blank one there on the next run.
+    pushed = [c.args[2] for c in update_group_mock.call_args_list if c.args and c.args[0] == seeded.id]
+    assert app_owners_group_description("Billing") in pushed
+
+    # The group whose description was kept is not pushed, since nothing about it changed.
+    assert not [c for c in update_group_mock.call_args_list if c.args and c.args[0] == kept.id]

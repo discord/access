@@ -12,6 +12,7 @@ from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
 from api.models.app_group import app_owners_group_description
 from api.operations.create_group import CreateGroup, GroupDict
+from api.operations.modify_group_details import ModifyGroupDetails
 from api.operations.modify_group_type import ModifyGroupType
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_role_groups import ModifyRoleGroups
@@ -170,12 +171,23 @@ class CreateApp:
             assert owner_app_group is not None
             owner_app_group.app_id = app_id
             owner_app_group.is_owner = True
+            await db.session.commit()
             # A group absorbed by app creation keeps whatever description it already had;
             # only a group with none is seeded with the default, so an owner group is never
-            # left blank where an operator has REQUIRE_DESCRIPTIONS set.
+            # left blank where an operator has REQUIRE_DESCRIPTIONS set. Seeded through
+            # ModifyGroupDetails rather than assigned directly so the value reaches Okta:
+            # under non-authoritative sync Okta is the source of truth for a group's
+            # description, and a blank one there would overwrite the seed on the next run.
+            # No group_updated fire: the description is part of bringing this group under
+            # the app, which the creation and conversion hooks already report, and a group
+            # loaded by id here has no eager-loaded `app` for a hook to read.
             if not (owner_app_group.description or ""):
-                owner_app_group.description = app_owners_group_description(self.app.name)
-            await db.session.commit()
+                await ModifyGroupDetails(
+                    group=owner_app_group,
+                    description=app_owners_group_description(self.app.name),
+                    current_user_id=current_user_id,
+                    fire_lifecycle_hook=False,
+                ).execute()
 
         if owner_id is not None:
             # Add the app owner to the app owner group as members and owners

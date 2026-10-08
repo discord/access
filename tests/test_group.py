@@ -2164,3 +2164,57 @@ async def test_non_admin_type_change_is_rejected_before_rename(
         json={"type": "app_group", "name": f"{original_name}2", "description": "desc", "app_id": app_id},
     )
     assert rep.status_code == 200, rep.text
+
+
+async def test_put_group_app_owner_group_tolerates_a_plugin_status_echo(
+    client: AsyncClient, db: Db, mocker: MockerFixture, url_for: Any
+) -> None:
+    """A plugin status echo is not a configuration change.
+
+    plugin_data arrives as a patch and ModifyGroupPluginData preserves the per-plugin
+    status keys it omits, so the edit form submits configuration only. Once a lifecycle
+    plugin has written status, comparing the raw patch against the stored document would
+    report a change on every edit and reject it.
+    """
+    owner_app = AppFactory.build()
+    owner_group = AppGroupFactory.build(
+        app_id=owner_app.id,
+        is_owner=True,
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{owner_app.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        description=app_owners_group_description(owner_app.name),
+        plugin_data={"audit_logger": {"configuration": {"level": "info"}, "status": {"synced_at": "yesterday"}}},
+    )
+    db.session.add_all([owner_app, owner_group])
+    await db.session.commit()
+    owner_group_id = owner_group.id
+
+    mocker.patch.object(okta, "update_group")
+    group_url = url_for("api-groups.group_by_id", group_id=owner_group_id)
+
+    # The configuration is unchanged; only `status` is absent, as the form submits it.
+    echo = await client.put(
+        group_url,
+        json=AppGroupUpdateBodyFactory.json(
+            description="Owners, plus billing approvers.",
+            plugin_data={"audit_logger": {"configuration": {"level": "info"}}},
+        ),
+    )
+    assert echo.status_code == 200, echo.text
+    assert echo.json()["description"] == "Owners, plus billing approvers."
+
+    # A real configuration change is still refused.
+    changed = await client.put(
+        group_url,
+        json=AppGroupUpdateBodyFactory.json(
+            plugin_data={"audit_logger": {"configuration": {"level": "debug"}}},
+        ),
+    )
+    assert changed.status_code == 400
+    assert "Plugin configuration" in changed.json()["detail"]
+
+    # The status a plugin wrote survives the accepted edit.
+    db.session.expire_all()
+    refreshed = await db.session.get(AppGroup, owner_group_id)
+    assert refreshed is not None
+    assert refreshed.plugin_data["audit_logger"]["status"] == {"synced_at": "yesterday"}
