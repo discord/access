@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from api.extensions import db
 from api.models import OktaUser, Tag
+from api.models.tag import validate_constraint_propagation
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -33,6 +34,12 @@ class CreateTag:
             tag_model = cast(Tag, tag)
             tag_model.id = id
             self.tag = tag_model
+
+        # Reject an incoherent tag before it reaches the DB, so CLI and seed
+        # callers are held to the same invariant as the router. Reads the
+        # attributes off the constructed instance rather than the input, which
+        # may be either a dict or a model.
+        validate_constraint_propagation(self.tag.constraints, self.tag.propagate_to_roles)
 
         self.current_user_id = current_user_id
 

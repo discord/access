@@ -281,6 +281,16 @@ If you change what fields are logged or add a new `EventType`, any downstream de
 that parses these audit logs (e.g. a SIEM or a Panther detection schema) also needs to be
 updated. Those schemas typically live in the operator's own private repo, outside Access.
 
+## Logging: use parameterized format strings, not f-strings
+
+For any `logger.error`/`logger.exception`/`logger.warning` call that Sentry might capture, pass
+the variable parts as `%s` arguments — e.g. `logger.error("Reconciliation failed for group %s: %s",
+group.name, err)` — rather than an f-string or `.format()` call. Sentry's logging integration
+groups issues by the literal, uninterpolated message template. An f-string bakes the
+interpolated value into that template, so every distinct group name, user id, or error detail
+mints its own Sentry issue instead of coalescing into the one issue that captures how often the
+failure actually recurs.
+
 ## Comments and docstrings describe the present
 
 **Write what the code does now, not what changed.** Comments, docstrings, READMEs, and these

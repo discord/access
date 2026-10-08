@@ -402,6 +402,25 @@ def _validate_tag_constraints(v: Optional[dict[str, Any]]) -> Optional[dict[str,
     return valid
 
 
+#: Ceiling on how many ids one request may name. The eager loads scale with
+#: the requested set, so it is bounded rather than left to the caller. Well
+#: above any real dialog selection.
+_EFFECTIVE_CONSTRAINTS_MAX_IDS = 200
+
+
+class EffectiveConstraintsQuery(BaseModel):
+    """Query for GET /api/constraints/effective.
+
+    Exactly one of the two lists is populated; the router rejects naming both
+    or neither, since the two modes answer different questions and combining
+    them would silently invent a third.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+    group_ids: list[str] = Field(default_factory=list, max_length=_EFFECTIVE_CONSTRAINTS_MAX_IDS)
+    tag_ids: list[str] = Field(default_factory=list, max_length=_EFFECTIVE_CONSTRAINTS_MAX_IDS)
+
+
 class CreateTagBody(BaseModel):
     """Body for POST /api/tags."""
 
@@ -410,6 +429,7 @@ class CreateTagBody(BaseModel):
     description: Optional[str] = Field(default=None, max_length=_TAG_DESC_MAX_LENGTH)
     constraints: Optional[dict[str, Any]] = None
     enabled: bool = True
+    propagate_to_roles: Optional[bool] = None
 
     @model_validator(mode="after")
     def _check_description_required(self) -> Self:
@@ -439,16 +459,18 @@ class UpdateTagBody(BaseModel):
     """Body for PUT /api/tags/{id}. All fields optional (partial update)."""
 
     model_config = ConfigDict(extra="ignore")
-    # `name` and `enabled` are deliberately not `Optional`: their columns
-    # forbid null and neither has a meaningful empty value, so the annotation
-    # rejects an explicit `null` on its own. The defaults exist only to keep
-    # the fields omittable for a partial update and are never applied, hence
-    # `_hide_default`. `description` and `constraints` stay nullable because a
-    # null there *is* meaningful -- the handler coerces it to `""` / `{}`.
+    # `name`, `enabled` and `propagate_to_roles` are deliberately not
+    # `Optional`: their columns forbid null and none of them has a meaningful
+    # empty value, so the annotation rejects an explicit `null` on its own. The
+    # defaults exist only to keep the fields omittable for a partial update and
+    # are never applied, hence `_hide_default`. `description` and `constraints`
+    # stay nullable because a null there *is* meaningful -- the handler coerces
+    # it to `""` / `{}`.
     name: str = Field(default="", min_length=1, max_length=_TAG_NAME_MAX_LENGTH, json_schema_extra=_hide_default)
     description: Optional[str] = Field(default=None, max_length=_TAG_DESC_MAX_LENGTH)
     constraints: Optional[dict[str, Any]] = None
     enabled: bool = Field(default=True, json_schema_extra=_hide_default)
+    propagate_to_roles: bool = Field(default=True, json_schema_extra=_hide_default)
 
     @model_validator(mode="after")
     def _check_description_required(self) -> Self:

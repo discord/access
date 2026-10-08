@@ -406,6 +406,44 @@ access init <YOUR_OKTA_USER_EMAIL>
 
 Visit [http://localhost:3000/](http://localhost:3000/) to view your running version of Access!
 
+### Interactive shell
+
+`access shell` opens a Python REPL with the application context bootstrapped: the database
+engine is bound, plugins are loaded, and `db.session` is ready. Use it for one-off inspection
+and for repairs that don't yet have a command of their own.
+
+```
+access shell
+```
+
+In a running container, that is `docker compose exec discord-access access shell` (or
+`kubectl exec ... -- access shell`).
+
+The session starts with `db`, every ORM model and operation class, and the query and eager-load
+helpers (`select`, `func`, `joinedload`, `selectinload`, ...) already in scope. Statements may
+use top-level `await`, which they need to -- the session, the operation classes, and the Okta
+service are all async:
+
+```python
+>>> group = (await db.session.scalars(
+...     select(OktaGroup).where(OktaGroup.name == "App-Example-Owners")
+...     .options(selectinload(OktaGroup.active_group_memberships))
+... )).one()
+>>> [m.user_id for m in group.active_group_memberships]
+```
+
+Two things to keep in mind:
+
+- **Work commits when the session ends.** Call `await db.session.rollback()` to discard instead.
+- **Relationships are `lazy="raise_on_sql"`.** Reading one you did not eagerly load raises rather
+  than emitting a query, so reach for `joinedload` / `selectinload` in the query itself.
+
+Operations run here exactly as they do under the API server, including their Okta calls and
+notification hooks -- outside an HTTP request those drain inline, so `await
+SomeOperation(...).execute()` returns only once its fan-out has finished. A repair you expect to
+run more than once belongs in `api/integrity.py` behind a CLI command with a `--dry-run` flag
+(see `fix-unmanaged-groups`), not in shell history.
+
 ### Kubernetes Deployment and CronJobs
 
 As Access is a web application packaged with Docker, it can easily be deployed to a Kubernetes cluster. We've included example Kubernetes yaml objects you can use to deploy Access in the [examples/kubernetes](https://github.com/discord/access/tree/main/examples/kubernetes) directory.

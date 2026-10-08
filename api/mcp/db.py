@@ -24,7 +24,9 @@ duration of a single tool call and removes it *in the same task the tool
 ran in*, so the connection is returned to the pool by its owning task.
 ``requires_scope`` (the wrapper every tool passes through) enters it, so
 both read-only tools (``db.session`` directly) and write tools
-(``mcp_db_session``) are covered without per-tool boilerplate.
+(``mcp_db_session``) are covered without per-tool boilerplate. The
+teardown is shielded from cancellation, so a tool cancelled mid-call (the
+client drops the session) still returns its connection.
 """
 
 from __future__ import annotations
@@ -53,20 +55,15 @@ async def tool_session_scope() -> AsyncIterator[None]:
     try:
         yield
     finally:
+        # Shielded: a cancelled tool (the client dropped the session) would
+        # otherwise leak its connection.
+        await _db_shim.remove_shielded()
         try:
-            # Swallow teardown errors so a failed close never masks the
-            # tool's result (or its own exception) — mirrors the
-            # RequestIdMiddleware teardown.
-            await _db_shim.remove()
-        except Exception:
-            pass
-        finally:
-            try:
-                _session_scope.reset(token)
-            except ValueError:
-                # Scope was set on a context copy; the token isn't valid
-                # here. Fall back to the process-global default.
-                _session_scope.set("__default__")
+            _session_scope.reset(token)
+        except ValueError:
+            # Scope was set on a context copy; the token isn't valid
+            # here. Fall back to the process-global default.
+            _session_scope.set("__default__")
 
 
 @asynccontextmanager

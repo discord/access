@@ -20,6 +20,7 @@ from api.operations import CreateTag, DeleteTag
 from fastapi_pagination.ext.sqlalchemy import apaginate
 
 from api.pagination import Page, validated
+from api.models.tag import validate_constraint_propagation
 from api.routers._eager import group_tag_map_options
 from api.schemas import (
     TagListItem,
@@ -99,6 +100,7 @@ async def post_tag(
         description=body.description if body.description is not None else "",
         constraints=body.constraints or {},
         enabled=body.enabled,
+        propagate_to_roles=True if body.propagate_to_roles is None else body.propagate_to_roles,
     )
     created = await CreateTag(tag=tag, current_user_id=current_user_id).execute()
     # Drop cached ORM state so the response reflects what the operation
@@ -121,8 +123,19 @@ async def put_tag(
 
     from api.operations import ModifyGroupsTimeLimit
 
+    # Locked for the rest of this transaction, because the validation below
+    # reads whichever half of the tag this request is not sending. Two updates
+    # arriving together -- one turning propagation off, one switching a
+    # self-add restriction on -- would each read the other's stale half, both
+    # pass, and store the pair neither is allowed to create. Released by the
+    # commit below.
     tag = (
-        await db.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(or_(Tag.id == tag_id, Tag.name == tag_id)))
+        await db.scalars(
+            select(Tag)
+            .where(Tag.deleted_at.is_(None))
+            .where(or_(Tag.id == tag_id, Tag.name == tag_id))
+            .with_for_update()
+        )
     ).first()
     if tag is None:
         raise HTTPException(404, "Not Found")
@@ -136,6 +149,7 @@ async def put_tag(
         description=tag.description,
         constraints=tag.constraints,
         enabled=tag.enabled,
+        propagate_to_roles=tag.propagate_to_roles,
     )
 
     # Reject renames that collide with another existing tag (case-insensitive).
@@ -156,7 +170,16 @@ async def put_tag(
         payload["constraints"] = {}
     if "description" in payload and payload["description"] is None:
         payload["description"] = ""
-    for key in ("name", "description", "constraints", "enabled"):
+    # Validate the merged result, not the body: this is a partial update, so
+    # either half of the conflict may be arriving now while the other is
+    # already stored. Runs before the setattr loop so a rejected edit leaves
+    # the session unmutated.
+    validate_constraint_propagation(
+        payload["constraints"] if "constraints" in payload else tag.constraints,
+        payload["propagate_to_roles"] if "propagate_to_roles" in payload else tag.propagate_to_roles,
+    )
+
+    for key in ("name", "description", "constraints", "enabled", "propagate_to_roles"):
         if key in payload:
             setattr(tag, key, payload[key])
     await db.commit()

@@ -449,7 +449,7 @@ async def test_put_app_group_rebind_authorization(
     # A group owner who does not own the target app cannot rebind the group
     mocker.patch.object(AuthorizationHelpers, "is_access_admin", return_value=False)
     rep = await client.put(group_url, json=rebind_data)
-    assert rep.status_code == 403
+    assert rep.status_code == 403, rep.text
     assert (await db.session.get(AppGroup, app_group_id)).app_id == source_app_id
 
     # An Access admin can rebind the group to a different app
@@ -1033,7 +1033,7 @@ async def test_do_not_renew(
     # should fail
     group_url = url_for("api-groups.group_members_by_id", group_id=group_id)
     rep = await client.put(group_url, json=data)
-    assert rep.status_code == 403
+    assert rep.status_code == 403, rep.text
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
@@ -2116,3 +2116,51 @@ async def test_put_group_app_owner_group_structural_fields_stay_locked(
     assert refreshed.app_id == original_app_id
     assert refreshed.type == "app_group"
     assert not refreshed.plugin_data
+
+
+async def test_non_admin_type_change_is_rejected_before_rename(
+    client: AsyncClient,
+    db: Db,
+    mocker: MockerFixture,
+    access_app: App,
+    user: OktaUser,
+    url_for: Any,
+    mock_user: Any,
+) -> None:
+    """A group owner who is not an Access admin asks to change the group's
+    type and rename it in one PUT. The request must fail with 403 before
+    anything is written: the name must stay as it was in the database and
+    nothing may be pushed to Okta."""
+    update_group_spy = mocker.patch.object(okta, "update_group")
+
+    app_group = AppGroupFactory.build(
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Members",
+        app_id=access_app.id,
+        is_owner=False,
+    )
+    db.session.add_all([user, access_app, app_group])
+    await db.session.commit()
+    await ModifyGroupUsers(group=app_group, owners_to_add=[user.id], sync_to_okta=False).execute()
+
+    group_id = app_group.id
+    app_id = access_app.id
+    original_name = app_group.name
+    mock_user(user.id)
+
+    group_url = url_for("api-groups.group_by_id", group_id=group_id)
+    rep = await client.put(group_url, json={"type": "okta_group", "name": "Engineering", "description": "desc"})
+    assert rep.status_code == 403, rep.text
+
+    db.session.expire_all()
+    stored = await db.session.get(OktaGroup, group_id)
+    assert stored is not None
+    assert stored.name == original_name
+    assert type(stored) is AppGroup
+    update_group_spy.assert_not_called()
+
+    # The same owner can still do a plain rename within the current type.
+    rep = await client.put(
+        group_url,
+        json={"type": "app_group", "name": f"{original_name}2", "description": "desc", "app_id": app_id},
+    )
+    assert rep.status_code == 200, rep.text

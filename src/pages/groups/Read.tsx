@@ -1,4 +1,5 @@
 import React from 'react';
+import ActionTooltip from '../../components/ActionTooltip';
 import {Link as RouterLink, useParams, useNavigate} from 'react-router-dom';
 
 import Box from '@mui/material/Box';
@@ -399,16 +400,12 @@ export default function ReadGroup() {
                 </Stack>
                 <Divider />
                 <Stack direction="row" justifyContent="center">
-                  <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
-                    <div>
-                      <CreateUpdateGroup currentUser={currentUser} group={group} />
-                    </div>
-                  </Tooltip>
-                  <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
-                    <div>
-                      <DeleteGroup currentUser={currentUser} group={group} />
-                    </div>
-                  </Tooltip>
+                  <ActionTooltip title="Edit">
+                    <CreateUpdateGroup currentUser={currentUser} group={group} />
+                  </ActionTooltip>
+                  <ActionTooltip title="Delete">
+                    <DeleteGroup currentUser={currentUser} group={group} />
+                  </ActionTooltip>
                   <Tooltip
                     title={group.type == 'role_group' ? 'Users audit' : 'Audit'}
                     placement="top"

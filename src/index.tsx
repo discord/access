@@ -4,6 +4,8 @@ import {createRoot} from 'react-dom/client';
 import {BrowserRouter} from 'react-router-dom';
 import {AdapterDayjs} from '@mui/x-date-pickers/AdapterDayjs';
 import {LocalizationProvider} from '@mui/x-date-pickers';
+import createCache from '@emotion/cache';
+import {CacheProvider} from '@emotion/react';
 import * as Sentry from '@sentry/react';
 
 import App from './App';
@@ -47,16 +49,27 @@ if (['production', 'staging'].includes(import.meta.env.MODE)) {
   });
 }
 
+// Every MUI component styles itself by injecting a `<style>` element at runtime, and the
+// production `style-src` admits inline styles only by nonce (see `build_csp` in
+// api/middleware.py). Emotion stamps the nonce on the elements it inserts, but only when the
+// cache is built with one, so this provider is what stands between the app and an entirely
+// unstyled page. `api.app.serve_spa` publishes the per-response nonce as
+// `window.__webpack_nonce__`; it is absent under `vite dev`, whose relaxed policy carries
+// 'unsafe-inline' instead.
+const emotionCache = createCache({key: 'css', nonce: window.__webpack_nonce__});
+
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <Sentry.ErrorBoundary fallback={<Error />} showDialog>
-      <BrowserRouter>
-        <QueryClientProvider client={queryClient}>
-          <LocalizationProvider dateAdapter={AdapterDayjs}>
-            <App />
-          </LocalizationProvider>
-        </QueryClientProvider>
-      </BrowserRouter>
-    </Sentry.ErrorBoundary>
+    <CacheProvider value={emotionCache}>
+      <Sentry.ErrorBoundary fallback={<Error />} showDialog>
+        <BrowserRouter>
+          <QueryClientProvider client={queryClient}>
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <App />
+            </LocalizationProvider>
+          </QueryClientProvider>
+        </BrowserRouter>
+      </Sentry.ErrorBoundary>
+    </CacheProvider>
   </React.StrictMode>,
 );

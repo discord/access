@@ -264,6 +264,10 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               name="app"
               options={appSearchOptions}
               required
+              // Show the app the form holds. rhf-mui otherwise displays the entry of `options`
+              // matching the form value, and `options` is a search this field's input drives: an
+              // in-flight search empties it, so the selection blanks and the input resets.
+              transform={{input: (app) => app ?? null}}
               autocompleteProps={{
                 getOptionLabel: (option) => option.name,
                 isOptionEqualToValue: (option, value) => option.id === value?.id,

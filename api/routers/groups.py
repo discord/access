@@ -31,6 +31,7 @@ from api.auth.permissions import (
 )
 from api.database import DbSession
 from api.models import App, AppGroup, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
+from api.models.tag import effective_constraints
 from api.operations import (
     CreateGroup,
     DeleteGroup,
@@ -45,6 +46,7 @@ from api.pagination import Page, validated
 from api.plugins.app_group_lifecycle import validate_group_plugin_config_or_raise
 from api.routers._eager import (
     bind_role_group_map_own_groups,
+    effective_constraint_options,
     group_tag_map_options,
     role_group_map_options,
     role_group_map_options_for_own_group,
@@ -54,6 +56,7 @@ from api.routers._fan_out import defer_fan_out
 from api.schemas import (
     CreateGroupBody,
     DeleteMessage,
+    EffectiveConstraintDetail,
     GroupDetail,
     GroupMembersSummary,
     GroupSummary,
@@ -80,6 +83,7 @@ DEFAULT_LOAD_OPTIONS = (
     selectinload(RoleGroup.active_role_associated_group_owner_mappings).options(*role_group_map_options()),
     joinedload(AppGroup.app),
     selectinload(OktaGroup.active_group_tags).options(*group_tag_map_options()),
+    *effective_constraint_options(),
 )
 
 # `GroupDetail` is a discriminated union (`Annotated[Union[...], Field(discriminator="type")]`),
@@ -142,7 +146,11 @@ async def get_group(group_id: str, db: DbSession, current_user_id: CurrentUserId
     group = await _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(status_code=404, detail="Not Found")
-    return _group_adapter.validate_python(group, from_attributes=True)
+    detail = _group_adapter.validate_python(group, from_attributes=True)
+    detail.effective_constraints = [
+        EffectiveConstraintDetail.model_validate(entry) for entry in effective_constraints(group)
+    ]
+    return detail
 
 
 @router.post("", name="groups_create", status_code=201)
@@ -264,6 +272,16 @@ async def put_group(
         raise HTTPException(403, "Current user is not allowed to perform this action")
     if not group.is_managed:
         raise HTTPException(400, "Groups not managed by Access cannot be modified")
+
+    # Only Access admins may change a group's type. Check this here, before
+    # any write: the rename below is committed and pushed to Okta first, and
+    # it skips the reserved-prefix rules when the type is also changing. If
+    # the admin check ran after that, a non-admin owner could rename an app
+    # group to a plain name (or a plain group to a Role- name), get a 403,
+    # and still leave the renamed group behind.
+    type_changed = body.type != group.type
+    if type_changed and not await is_access_admin(db, current_user_id):
+        raise HTTPException(403, "Current user is not an Access admin and not allowed to change group types")
 
     new_plugin_data = (
         body.plugin_data if isinstance(body, _AppGroupUpdateBody) and "plugin_data" in fields_set else None
@@ -424,10 +442,7 @@ async def put_group(
         raise HTTPException(400, str(e)) from e
 
     body_type = body.type
-    type_changed = body_type != group.type
     if type_changed:
-        if not await is_access_admin(db, current_user_id):
-            raise HTTPException(403, "Current user is not an Access admin and not allowed to change group types")
         type_klass = {"okta_group": OktaGroup, "role_group": RoleGroup, "app_group": AppGroup}[body_type]
         new_group = type_klass()
         for k in ("name", "description", "is_managed"):

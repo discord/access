@@ -1,7 +1,3 @@
-# Build Arg on whether to push the sentry release or not
-# Default is false as it requires mounting a .sentryclirc secret file
-ARG PUSH_SENTRY_RELEASE="false"
-
 # Build step #1: build the React front end
 FROM node:24-alpine AS build-step
 WORKDIR /app
@@ -19,36 +15,34 @@ RUN npm install
 RUN touch .env.production
 # Set Vite environment variables
 ENV VITE_API_SERVER_URL=""
-# Set Sentry plugin environment variables for production build
 ENV NODE_ENV=production
-# If a frontend config override (e.g. IdP deep-link URLs) is provided as a build
-# secret, write it where Vite's config loader picks it up; otherwise build against
-# config.default.json. The secret is absent for open-source builds, so plain
-# `docker build` still works.
+# The release the browser SDK reports on every event, and the release the uploaded source maps
+# are filed under. Empty for a plain `docker build`, which reports events with no release.
+ARG SENTRY_RELEASE=""
+ENV SENTRY_RELEASE=$SENTRY_RELEASE
+# One build produces both the assets that ship and the source maps that explain them. Uploading
+# from a second build would file maps against a bundle nobody serves: @sentry/vite-plugin injects
+# a debug id into every asset, which changes its content hash, so two builds of the same commit
+# disagree on the hashed filenames Sentry matches against.
+#
+# Every secret here is optional and none are available on forks, where the loop below leaves the
+# SENTRY_* variables unset, vite.config.ts skips the plugin, and this is an ordinary production
+# build with no source maps. Likewise ACCESS_CONFIG_OVERRIDE: without it the frontend builds
+# against config/config.default.json.
 RUN --mount=type=secret,id=ACCESS_CONFIG_OVERRIDE \
+  --mount=type=secret,id=SENTRY_AUTH_TOKEN \
+  --mount=type=secret,id=SENTRY_ORG \
+  --mount=type=secret,id=SENTRY_PROJECT \
   if [ -s /run/secrets/ACCESS_CONFIG_OVERRIDE ]; then \
     cp /run/secrets/ACCESS_CONFIG_OVERRIDE config/config.override.json; \
   fi; \
+  for secret in SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT; do \
+    if [ -s "/run/secrets/$secret" ]; then export "$secret=$(cat "/run/secrets/$secret")"; fi; \
+  done; \
   ACCESS_CONFIG_FILE=$(test -f config/config.override.json && echo config.override.json) npm run build
 
-# Optional build step #2: upload source maps to Sentry
-FROM build-step AS sentry
-ARG SENTRY_RELEASE=""
-ENV SENTRY_RELEASE=$SENTRY_RELEASE
-# Use secret mount for SENTRY_AUTH_TOKEN, SENTRY_ORG, SENTRY_PROJECT
-RUN --mount=type=secret,id=SENTRY_AUTH_TOKEN \
-  --mount=type=secret,id=SENTRY_ORG \
-  --mount=type=secret,id=SENTRY_PROJECT \
-  SENTRY_AUTH_TOKEN=$(cat /run/secrets/SENTRY_AUTH_TOKEN) \
-  SENTRY_ORG=$(cat /run/secrets/SENTRY_ORG) \
-  SENTRY_PROJECT=$(cat /run/secrets/SENTRY_PROJECT) \
-  ACCESS_CONFIG_FILE=$(test -f config/config.override.json && echo config.override.json) \
-  npm run build
-# Source maps are automatically uploaded and deleted by Vite Sentry plugin during build
-RUN touch sentry
-
-# Build step #3: build the API with the client as static files
-FROM python:3.13 AS false
+# Build step #2: build the API with the client as static files
+FROM python:3.13
 ARG SENTRY_RELEASE=""
 WORKDIR /app
 
@@ -118,14 +112,6 @@ RUN --mount=type=bind,source=examples/plugins,target=examples/plugins,rw \
     if [ "$INSTALL_HEALTH_CHECK_PLUGIN" = "true" ]; then install_plugin ./examples/plugins/health_check_plugin; else echo "Skipping health_check_plugin plugin"; fi; \
     if [ "$INSTALL_NOTIFICATIONS_PLUGIN" = "true" ]; then install_plugin ./examples/plugins/notifications; else echo "Skipping notifications plugin"; fi; \
     if [ "$INSTALL_SLACK_NOTIFICATIONS_PLUGIN" = "true" ]; then install_plugin ./examples/plugins/notifications_slack; else echo "Skipping notifications_slack plugin"; fi
-
-# Build an image that includes the optional sentry release push build step
-FROM false AS true
-COPY --from=sentry /app/sentry ./sentry
-
-# Final build step: copy the API and the client from the previous steps
-# Choose whether to include the sentry release push build step or not
-FROM ${PUSH_SENTRY_RELEASE}
 
 ENV ENV=production
 ENV SENTRY_RELEASE=$SENTRY_RELEASE

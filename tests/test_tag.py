@@ -455,7 +455,16 @@ async def test_list_tags_response_is_summary_shape(
     item = matched[0]
     assert "active_group_tags" not in item
     assert "deleted_at" not in item
-    expected_keys = {"id", "name", "description", "constraints", "enabled", "created_at", "updated_at"}
+    expected_keys = {
+        "id",
+        "name",
+        "description",
+        "constraints",
+        "enabled",
+        "propagate_to_roles",
+        "created_at",
+        "updated_at",
+    }
     assert set(item.keys()) == expected_keys
 
 

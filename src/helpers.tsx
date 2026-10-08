@@ -70,7 +70,18 @@ export function groupBy<T>(xs: T[] | undefined, keyFn: (item: T) => string | und
   );
 }
 
-export function getActiveTagsFromGroups(groups: GroupWithTags[]) {
+// Constraint helpers reading a group's OWN tags — direct and app-inherited —
+// and nothing else. They do not know about propagation to roles, and they must
+// not be handed a role's associated groups to simulate it: that walk lived in
+// several dialogs, drifted from the backend, and is now served by
+// `GET /api/constraints/effective` (see `src/constraints.ts`).
+//
+// What is left is the one direction where no propagation exists: attaching a
+// role to a group, where the constraints that apply are the target group's and
+// the target is never itself a role. `roles/AddGroups` also asks the question
+// per option across a live search, which is unbounded and so not a good fit
+// for a request per keystroke.
+function getActiveTagsFromGroups(groups: GroupWithTags[]) {
   return Array.from(
     groups.reduce((allTags, curr) => {
       if (curr.active_group_tags) {
@@ -93,7 +104,7 @@ function checkBooleanTag(tags: TagSummary[] | undefined, targetTag: string) {
   }, false);
 }
 
-export function minTagTime(tags: TagSummary[], owner: boolean) {
+function minTagTime(tags: TagSummary[], owner: boolean) {
   if (owner) {
     const timeLimited = tags.filter(
       (tag: TagSummary) => tag.enabled && tag.constraints && Object.keys(tag.constraints).includes('owner_time_limit'),
@@ -119,7 +130,7 @@ export function minTagTimeGroups(groups: GroupWithTags[], owner: boolean) {
   return minTagTime(getActiveTagsFromGroups(groups), owner);
 }
 
-export function requiredReason(tags: TagSummary[] | undefined, owner: boolean) {
+function requiredReason(tags: TagSummary[] | undefined, owner: boolean) {
   if (!tags) return false;
 
   return owner ? checkBooleanTag(tags, 'require_owner_reason') : checkBooleanTag(tags, 'require_member_reason');

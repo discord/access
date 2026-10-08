@@ -2,7 +2,7 @@ from typing import Optional
 
 import logging
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from api.context import get_request_context
 
 from api.exceptions import ConflictError
@@ -86,7 +86,10 @@ class RejectGroupRequest:
                                     AppGroup.deleted_at.is_(None),
                                     OktaUserGroupMember.user_id == rejecter_id,
                                     OktaUserGroupMember.is_owner.is_(True),
-                                    OktaUserGroupMember.ended_at.is_(None),
+                                    or_(
+                                        OktaUserGroupMember.ended_at.is_(None),
+                                        OktaUserGroupMember.ended_at > func.now(),
+                                    ),
                                 )
                             )
                         ).first()

@@ -48,7 +48,6 @@ jobs:
             us-east1-docker.pkg.dev/discord-access-prd/access/access:latest
           build-args: |
             SENTRY_RELEASE=${{ github.sha }}
-            PUSH_SENTRY_RELEASE=true
             INSTALL_GOOGLE_GROUP_LIFECYCLE_PLUGIN=true
           secrets: |
             "SENTRY_ORG=${{ secrets.SENTRY_ORG }}"
