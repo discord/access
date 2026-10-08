@@ -39,8 +39,6 @@ import {
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin} from '../../authorization';
 import ChangeTitle from '../../tab-title';
-import {MEMBER_TIME_LIMIT, OWNER_TIME_LIMIT, constraintLabel} from '../../constraintCopy';
-import {timeLimitLabel} from '../../constraints';
 import AddApps from './AddApps';
 import AddGroups from './AddGroups';
 import CreateUpdateTag from './CreateUpdate';
