@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any, cast, Protocol
 
+import pytest
 from faker import Faker
 from httpx import AsyncClient
 from okta.models import Group
@@ -22,7 +23,7 @@ from api.models import (
     Tag,
 )
 from api.operations import CreateGroupRequest, ApproveGroupRequest, RejectGroupRequest
-from api.plugins import get_notification_hook
+from api.plugins import ConditionalAccessResponse, get_notification_hook
 from api.services import okta
 from tests.factories import (
     AppFactory,
@@ -1373,6 +1374,200 @@ async def test_app_owner_auto_approves_own_app_group_request(
     ).all()
     assert len(ownerships) == 1
     assert ownerships[0].created_reason == f"Group request approved: {group_request.request_reason}"
+
+
+@pytest.mark.parametrize(
+    ("group_type", "group_name", "group_class"),
+    [("okta_group", "Plugin Approved Group", OktaGroup), ("role_group", "Role-Plugin-Approved", RoleGroup)],
+)
+async def test_conditional_access_plugin_approves_group_request(
+    app: FastAPI,
+    db: Db,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+    group_type: str,
+    group_name: str,
+    group_class: type[OktaGroup],
+) -> None:
+    db.session.add(user)
+    await db.session.commit()
+
+    mocker.patch.object(
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
+    )
+    mocker.patch.object(okta, "add_owner_to_group")
+    notification_hook = get_notification_hook()
+    created_spy = mocker.patch.object(notification_hook, "access_group_request_created")
+    completed_spy = mocker.patch.object(notification_hook, "access_group_request_completed")
+    conditional_access_spy = mocker.patch(
+        "api.operations.create_group_request.evaluate_conditional_access",
+        return_value=[ConditionalAccessResponse(approved=True, reason="Auto-Approved")],
+    )
+
+    group_request = await CreateGroupRequest(
+        requester_user=user,
+        requested_group_name=group_name,
+        requested_group_description="Plugin approved",
+        requested_group_type=group_type,
+        request_reason="Need this group",
+    ).execute()
+
+    assert group_request is not None
+    assert conditional_access_spy.call_count == 1
+    await db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.APPROVED
+    assert group_request.resolved_at is not None
+    assert group_request.resolver_user_id is None
+    assert group_request.resolution_reason == "Auto-Approved"
+    assert group_request.approved_group_id is not None
+    assert created_spy.call_count == 0
+    assert completed_spy.call_count == 0
+
+    created_group = await db.session.get(OktaGroup, group_request.approved_group_id)
+    assert type(created_group) is group_class
+    assert created_group.name == group_name
+
+    ownerships = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == created_group.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+            .where(OktaUserGroupMember.is_owner.is_(True))
+        )
+    ).all()
+    assert len(ownerships) == 1
+
+
+@pytest.mark.parametrize(
+    ("requested_days", "plugin_days", "expected_days"),
+    [(None, 7, 7), (3, 7, 3), (7, 3, 3)],
+)
+async def test_conditional_access_plugin_ending_at_caps_ownership(
+    app: FastAPI,
+    db: Db,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+    requested_days: int | None,
+    plugin_days: int,
+    expected_days: int,
+) -> None:
+    db.session.add(user)
+    await db.session.commit()
+
+    mocker.patch.object(
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
+    )
+    mocker.patch.object(okta, "add_owner_to_group")
+    now = datetime.now(timezone.utc)
+    mocker.patch(
+        "api.operations.create_group_request.evaluate_conditional_access",
+        return_value=[
+            ConditionalAccessResponse(
+                approved=True, reason="Auto-Approved", ending_at=now + timedelta(days=plugin_days)
+            )
+        ],
+    )
+
+    group_request = await CreateGroupRequest(
+        requester_user=user,
+        requested_group_name="Plugin Capped Group",
+        requested_group_description="Plugin approved",
+        requested_group_type="okta_group",
+        requested_ownership_ending_at=now + timedelta(days=requested_days) if requested_days is not None else None,
+        request_reason="Need this group",
+    ).execute()
+
+    assert group_request is not None
+    await db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.APPROVED
+
+    ownership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == group_request.approved_group_id)
+            .where(OktaUserGroupMember.user_id == user.id)
+            .where(OktaUserGroupMember.is_owner.is_(True))
+        )
+    ).one()
+    assert ownership.ended_at is not None
+    stored_time = ownership.ended_at.replace(tzinfo=timezone.utc)
+    assert abs((stored_time - (now + timedelta(days=expected_days))).total_seconds()) < 5
+
+
+async def test_conditional_access_plugin_past_ending_at_routes_to_reviewers(
+    app: FastAPI,
+    db: Db,
+    mocker: MockerFixture,
+    user: OktaUser,
+) -> None:
+    db.session.add(user)
+    await db.session.commit()
+
+    create_group_spy = mocker.patch.object(okta, "create_group")
+    notification_hook = get_notification_hook()
+    created_spy = mocker.patch.object(notification_hook, "access_group_request_created")
+    mocker.patch(
+        "api.operations.create_group_request.evaluate_conditional_access",
+        return_value=[
+            ConditionalAccessResponse(
+                approved=True, reason="Auto-Approved", ending_at=datetime.now(timezone.utc) - timedelta(days=1)
+            )
+        ],
+    )
+
+    group_request = await CreateGroupRequest(
+        requester_user=user,
+        requested_group_name="Plugin Expired Group",
+        requested_group_description="Plugin approved into a closed window",
+        requested_group_type="okta_group",
+        request_reason="Need this group",
+    ).execute()
+
+    assert group_request is not None
+    await db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.PENDING
+    assert create_group_spy.call_count == 0
+    assert created_spy.call_count == 1
+
+
+async def test_conditional_access_plugin_approval_of_taken_name_routes_to_reviewers(
+    app: FastAPI,
+    db: Db,
+    mocker: MockerFixture,
+    user: OktaUser,
+) -> None:
+    db.session.add(user)
+    await OktaGroupFactory.create_async(name="Already Taken")
+    await db.session.commit()
+
+    create_group_spy = mocker.patch.object(okta, "create_group")
+    notification_hook = get_notification_hook()
+    created_spy = mocker.patch.object(notification_hook, "access_group_request_created")
+    mocker.patch(
+        "api.operations.create_group_request.evaluate_conditional_access",
+        return_value=[ConditionalAccessResponse(approved=True, reason="Auto-Approved")],
+    )
+
+    group_request = await CreateGroupRequest(
+        requester_user=user,
+        requested_group_name="Already Taken",
+        requested_group_description="Collides with a live group",
+        requested_group_type="okta_group",
+        request_reason="Need this group",
+    ).execute()
+
+    assert group_request is not None
+    await db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.PENDING
+    assert group_request.approved_group_id is None
+    assert create_group_spy.call_count == 0
+    assert created_spy.call_count == 1
 
 
 async def test_app_owner_auto_approves_own_app_group_request_tagged(

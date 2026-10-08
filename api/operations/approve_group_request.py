@@ -41,6 +41,7 @@ class ApproveGroupRequest:
         group_request: GroupRequest | str,
         approver_user: Optional[OktaUser | str] = None,
         approval_reason: str = "",
+        ending_at: Optional[datetime] = None,
         notify: bool = True,
         bypass_self_approval: bool = False,
     ):
@@ -50,6 +51,7 @@ class ApproveGroupRequest:
         )
 
         self.approval_reason = approval_reason
+        self.ending_at = ending_at
         self.notify = notify
         self.bypass_self_approval = bypass_self_approval
 
@@ -135,6 +137,17 @@ class ApproveGroupRequest:
             if group_request.resolved_ownership_ending_at
             else group_request.requested_ownership_ending_at
         )
+        if resolved_ownership_ending_at is not None:
+            resolved_ownership_ending_at = _as_utc(resolved_ownership_ending_at)
+        # `ending_at` (a conditional-access plugin's response) caps the ownership
+        # window and never extends it.
+        if self.ending_at is not None:
+            plugin_ending_at = _as_utc(self.ending_at)
+            resolved_ownership_ending_at = (
+                plugin_ending_at
+                if resolved_ownership_ending_at is None
+                else min(resolved_ownership_ending_at, plugin_ending_at)
+            )
         # Refuse to approve into an ownership window that has already closed.
         # Nothing downstream clamps it: effective_ended_at only ever moves the date
         # earlier, so a past value reaches ModifyGroupUsers and writes an ownership
@@ -143,31 +156,28 @@ class ApproveGroupRequest:
         # silently route to the app owner or an Access admin instead of the person
         # who asked for it.
         #
-        # This is reachable three ways, which is why the guard lives here rather
+        # This is reachable four ways, which is why the guard lives here rather
         # than in the router: any client that omits resolved_ownership_ending_at
         # (the field is optional and only assigned when present), an approver
         # selecting "Indefinite" in the UI (which sends nothing, so the stale
-        # requested value survives), or an approver leaving the custom date
-        # prefilled with the original — already past — date. Failing loudly makes
-        # the approver name a window they mean, which is the only safe default: the
-        # alternatives silently grant either nothing or more than was asked.
-        if resolved_ownership_ending_at is not None:
-            ending_at = (
-                resolved_ownership_ending_at.replace(tzinfo=UTC)
-                if resolved_ownership_ending_at.tzinfo is None
-                else resolved_ownership_ending_at
+        # requested value survives), an approver leaving the custom date
+        # prefilled with the original — already past — date, or a conditional-access
+        # plugin returning a past `ending_at`. Failing loudly makes the approver name
+        # a window they mean, which is the only safe default: the alternatives
+        # silently grant either nothing or more than was asked.
+        if resolved_ownership_ending_at is not None and resolved_ownership_ending_at <= datetime.now(UTC):
+            raise InvalidRequestError(
+                "The ownership window for this request has already passed. Set an ownership end date when approving it."
             )
-            if ending_at <= datetime.now(UTC):
-                raise InvalidRequestError(
-                    "The ownership window for this request has already passed. "
-                    "Set an ownership end date when approving it."
-                )
 
-        # authorization
+        # authorization: no approver means a conditional-access plugin approved the
+        # request (see `ConditionalAccessPluginSpec.group_request_created`), and that
+        # operator-installed plugin stands in for the approval tiers below. The resolve
+        # route always passes the calling user, so a person never reaches this path.
         access_owner_ids = {u.id for u in await get_access_owners()}
-        is_admin = approver_id in access_owner_ids
+        may_approve_any = approver_id is None or approver_id in access_owner_ids
 
-        if not is_admin:
+        if not may_approve_any:
             type_changed = resolved_type != group_request.requested_group_type
             app_changed = resolved_app_id != group_request.requested_app_id
             if type_changed or app_changed:
@@ -175,7 +185,7 @@ class ApproveGroupRequest:
 
         if resolved_app_id is not None:
             # App group request: admins OR owners of that specific app can approve
-            if not is_admin:
+            if not may_approve_any:
                 is_app_owner = (
                     await db.session.scalars(
                         select(OktaUserGroupMember)
@@ -198,7 +208,7 @@ class ApproveGroupRequest:
                     return group_request
         else:
             # okta_group / role_group request: only admins can approve
-            if not is_admin:
+            if not may_approve_any:
                 return group_request
 
         # Validation
@@ -364,3 +374,8 @@ class ApproveGroupRequest:
             )
 
         return group_request
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Return `value` as an aware UTC datetime, reading a naive one as UTC."""
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
