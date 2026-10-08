@@ -6,6 +6,8 @@
     `settings.CURRENT_OKTA_USER_EMAIL`) and look up the user by email.
   - Cloudflare Access JWT: verify the JWT and resolve to a user by email
     (human) or `common_name` (service token).
+  - OIDC bearer token (when `OIDC_API_AUDIENCE` is set): verify the
+    `Authorization: Bearer` JWT and resolve its `email` claim.
   - OIDC session: read `request.session["userinfo"]["email"]`.
 
 Tests typically override these via `app.dependency_overrides`.
@@ -23,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
 from api.auth.cloudflare import extract_token, verify_cloudflare_token
+from api.auth.oidc import verify_bearer_token
 from api.config import settings
 from api.database import DbSession
 from api.models import OktaUser
@@ -92,12 +95,20 @@ async def get_current_user_id(request: Request, db: DbSession) -> str:
         raise HTTPException(status_code=403, detail="Invalid Cloudflare authorization token")
 
     if settings.OIDC_CLIENT_SECRETS:
-        userinfo = request.session.get("userinfo") if hasattr(request, "session") else None
-        if not userinfo or "email" not in userinfo:
-            # Browser flow: the SPA should follow the 307 to the OIDC login
-            # endpoint, which kicks off the authorization-code redirect.
-            raise OIDCRedirectRequired(next_path=request.url.path)
-        user = await _lookup_user_by_email(db, userinfo["email"])
+        scheme, _, bearer = request.headers.get("authorization", "").partition(" ")
+        if settings.OIDC_API_AUDIENCE and scheme.lower() == "bearer" and bearer.strip():
+            # Programmatic client: a bad token is a 403, never a login redirect.
+            email = (await verify_bearer_token(bearer.strip())).get("email")
+            if not email:
+                raise HTTPException(status_code=403, detail="OIDC bearer token has no email claim")
+        else:
+            userinfo = request.session.get("userinfo") if hasattr(request, "session") else None
+            if not userinfo or "email" not in userinfo:
+                # Browser flow: the SPA should follow the 307 to the OIDC login
+                # endpoint, which kicks off the authorization-code redirect.
+                raise OIDCRedirectRequired(next_path=request.url.path)
+            email = userinfo["email"]
+        user = await _lookup_user_by_email(db, email)
         request.state.current_user_id = user.id
         if settings.FASTAPI_SENTRY_DSN:
             set_user({"id": user.id})
