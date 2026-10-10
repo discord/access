@@ -657,7 +657,9 @@ class AppGroup(OktaGroup):
     __tablename__ = "app_group"
     id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_group.id"), primary_key=True)
 
-    app_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("app.id"), nullable=False)
+    # Indexed for the lookups of an app's groups and its owners group, which
+    # Postgres would otherwise seq-scan (it does not index FK columns).
+    app_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("app.id"), nullable=False, index=True)
     # Is this group the app owner group and can administer the app and other app groups?
     # Membership to an app onwer group implicitly grants group owner permissions on the
     # group to administer and manage membership of the app owner group

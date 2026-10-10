@@ -1048,6 +1048,27 @@ export type ProblemDetailError = {
   } | null;
 };
 
+/**
+ * A request's eligible reviewers at one owner level.
+ */
+export type RequestReviewerLevel = {
+  owner_level: 'group_owners' | 'app_owners' | 'access_admins';
+  reviewers: OktaUserSummary[];
+};
+
+/**
+ * A request's eligible reviewers by owner level.
+ *
+ * `reviewers_by_level` lists the levels that have an eligible reviewer,
+ * nearest first, with each user at their nearest level. The first level is
+ * the assigned one: its reviewers have the request in "Assigned to Me" and
+ * were notified. The rest show a requester who to contact if they need to
+ * escalate. An empty list means no one is eligible to review the request.
+ */
+export type RequestReviewers = {
+  reviewers_by_level: RequestReviewerLevel[];
+};
+
 export type ResolveAccessRequestBody = {
   approved: boolean;
   /**

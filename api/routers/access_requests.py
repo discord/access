@@ -15,23 +15,24 @@ from api.database import DbSession
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
-    App,
     AppGroup,
     OktaGroup,
     OktaUser,
-    OktaUserGroupMember,
     RoleGroup,
 )
+from api.models.request_reviewers import is_assigned_reviewer
 from api.operations import ApproveAccessRequest, CreateAccessRequest, RejectAccessRequest
 from fastapi_pagination.ext.sqlalchemy import apaginate
 
 from api.pagination import Page, validated
 from api.routers._eager import group_tag_map_options, role_group_map_options
 from api.routers._fan_out import defer_fan_out
+from api.routers._reviewers import request_reviewers_response
 from api.schemas import (
     AccessRequestDetail,
     AccessRequestSummary,
     CreateAccessRequestBody,
+    RequestReviewers,
     ResolveAccessRequestBody,
     SearchAccessRequestQuery,
 )
@@ -129,6 +130,7 @@ async def list_access_requests(
         )
 
     if q_args.assignee_user_id:
+        # Requests whose assigned reviewers include the assignee.
         assignee_user_id = current_user_id if q_args.assignee_user_id == "@me" else q_args.assignee_user_id
         assignee_user = (
             await db.scalars(
@@ -136,33 +138,7 @@ async def list_access_requests(
             )
         ).first()
         if assignee_user is not None:
-            groups_owned_subquery = (
-                select(OktaGroup.id)
-                .options(selectinload(OktaGroup.active_user_ownerships))
-                .join(OktaGroup.active_user_ownerships)
-                .where(OktaGroup.deleted_at.is_(None))
-                .where(OktaUserGroupMember.user_id == assignee_user.id)
-            )
-            owner_app_group_alias = aliased(AppGroup)
-            app_groups_owned_subquery = (
-                select(AppGroup.id)
-                .options(
-                    joinedload(AppGroup.app)
-                    .joinedload(App.active_owner_app_groups.of_type(owner_app_group_alias))
-                    .selectinload(owner_app_group_alias.active_user_ownerships)
-                )
-                .join(AppGroup.app)
-                .join(App.active_owner_app_groups.of_type(owner_app_group_alias))
-                .join(owner_app_group_alias.active_user_ownerships)
-                .where(AppGroup.deleted_at.is_(None))
-                .where(OktaUserGroupMember.user_id == assignee_user.id)
-            )
-            stmt = stmt.join(AccessRequest.requested_group).where(
-                or_(
-                    OktaGroup.id.in_(groups_owned_subquery),
-                    OktaGroup.id.in_(app_groups_owned_subquery),
-                )
-            )
+            stmt = stmt.where(is_assigned_reviewer(AccessRequest, assignee_user.id))
         else:
             stmt = stmt.where(false())
 
@@ -222,6 +198,17 @@ async def get_access_request(
     if ar is None:
         raise HTTPException(404, "Not Found")
     return AccessRequestDetail.model_validate(ar, from_attributes=True)
+
+
+@router.get("/{access_request_id}/reviewers", name="access_request_reviewers")
+async def get_access_request_reviewers(
+    access_request_id: str, db: DbSession, current_user_id: CurrentUserId
+) -> RequestReviewers:
+    """Eligible reviewers of an access request by owner level, nearest first; the first level is assigned."""
+    request = await db.get(AccessRequest, access_request_id)
+    if request is None:
+        raise HTTPException(404, "Not Found")
+    return await request_reviewers_response(request)
 
 
 @router.post("", name="access_requests_create", status_code=201)

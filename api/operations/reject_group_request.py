@@ -8,7 +8,7 @@ from api.context import get_request_context
 from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, GroupRequest, OktaUser, OktaUserGroupMember
-from api.models.access_request import get_all_possible_request_approvers
+from api.models.request_reviewers import get_assigned_reviewers
 from api.models.app_group import get_access_owners
 from api.operations._fan_out import defer_notification
 from api.plugins import NotificationHook
@@ -127,7 +127,7 @@ class RejectGroupRequest:
         if self.notify:
             requester = await db.session.get(OktaUser, group_request.requester_user_id)
 
-            approvers = await get_all_possible_request_approvers(group_request)
+            approvers = await get_assigned_reviewers(group_request)
 
             await defer_notification(
                 db.session,

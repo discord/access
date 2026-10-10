@@ -6,6 +6,7 @@ import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {AppDetail, GroupRequestDetail, OktaUserDetail} from '../../api/apiSchemas';
 
 const resolveMutate = vi.fn();
+const reviewersQuery = vi.fn((_variables: unknown, _options: {enabled: boolean}) => ({data: undefined}));
 
 const APP = {id: 'zendesk-sandbox-0000', name: 'HammerAndChiselZendeskSandbox'} as unknown as AppDetail;
 
@@ -88,6 +89,7 @@ vi.mock('../../api/apiComponents', () => ({
   }),
   useGroupRequestById: () => ({data: PENDING_APP_GROUP_REQUEST, isError: false, isLoading: false}),
   useGroupRequestByIdPut: () => ({mutate: resolveMutate}),
+  useGroupRequestReviewers: (variables: unknown, options: {enabled: boolean}) => reviewersQuery(variables, options),
   useAppById: () => ({data: APP, isLoading: false}),
   useApps: () => ({data: {items: appSearchResults}}),
   useTags: () => ({data: {items: []}}),
@@ -106,6 +108,7 @@ const renderPage = () =>
 
 beforeEach(() => {
   resolveMutate.mockClear();
+  reviewersQuery.mockClear();
   ownerTimeLimit = null;
   appSearchResults = [APP];
 });
@@ -139,6 +142,17 @@ describe('an app owner approving an app group request', () => {
 
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
     expect(typeSelect).toHaveTextContent('App Group');
+  });
+});
+
+describe('the reviewers panel for an app owner who can approve the request', () => {
+  // Approvers get the resolve form instead; the panel is for viewers who cannot resolve it.
+  it('does not fetch the reviewers', async () => {
+    renderPage();
+
+    await screen.findByRole('button', {name: /Approve/});
+    expect(reviewersQuery).toHaveBeenCalled();
+    expect(reviewersQuery.mock.calls.every(([, options]) => options.enabled === false)).toBe(true);
   });
 });
 
