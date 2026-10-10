@@ -444,6 +444,40 @@ SomeOperation(...).execute()` returns only once its fan-out has finished. A repa
 run more than once belongs in `api/integrity.py` behind a CLI command with a `--dry-run` flag
 (see `fix-unmanaged-groups`), not in shell history.
 
+### CLI commands
+
+Installing the package (`make dev`, or the container image) puts an `access` command on the path.
+`access <command> --help` prints the full option list for any of them.
+
+**Setup**, run once when standing up a deployment:
+
+| Command | What it does |
+|---|---|
+| `access init <admin email>` | Import users, groups, and memberships from Okta, then create the built-in Access app owned by that user. The other two below are its halves, for re-running one without the other. |
+| `access import-from-okta` | Import users, groups, and memberships from Okta. Skips each of the three if that table is already populated. |
+| `access init-builtin-apps <admin email>` | Create the built-in Access app and its owner group. No-ops if they already exist. |
+
+**Scheduled jobs**, wired up as cronjobs (see [examples/kubernetes](https://github.com/discord/access/tree/main/examples/kubernetes)):
+
+| Command | What it does |
+|---|---|
+| `access sync` | Reconcile users, groups, and memberships with Okta, and expire requests that have sat too long. Okta is the source of truth by default; `--sync-groups-authoritatively` and `--sync-group-memberships-authoritatively` reverse that and make Access push its state to Okta instead, so reach for them deliberately. `--group-fetch-concurrency` bounds how many groups are fetched from Okta at once. |
+| `access notify` | Send expiring-access notifications to the users losing access. `--owner` notifies group owners instead, and `--role-owner` notifies role owners about expiring role-to-group attachments; run all three to cover every audience. |
+| `access sync-app-groups` | Invoke the periodic `sync_group` hook for every group of every app with an app-group-lifecycle plugin configured. Each group is its own unit of work, so one failure cannot strand the rest; the command still exits non-zero if any group failed. |
+
+**Repair and cleanup**, run as needed. Each takes `--dry-run` to report without changing anything,
+except `prune-redundant-direct-access`, which reports by default and needs `--apply` to commit:
+
+| Command | What it does |
+|---|---|
+| `access fix-unmanaged-groups` | Re-apply unmanaged status to every group Access has marked unmanaged, which ends the memberships and role associations Access no longer owns and rejects the requests against them. |
+| `access fix-role-memberships` | Reconcile each role's memberships against the groups it grants, adding the group memberships a role implies and ending the ones it no longer does. |
+| `access cap-role-memberships` | Shorten role memberships that outlast the time limit their role's associated groups impose. The grant-time path bounds a membership as it is granted, so this covers the ones granted before a tag's limit applied. Safe to re-run; a membership already under its limit is skipped. |
+| `access prune-redundant-direct-access` | Remove a user's direct grant to a group when a role they hold already grants the same access; the duplicate obscures why they have access and outlives their role membership. By default only grants ending no later than the role coverage are removed, so nobody loses access sooner than they otherwise would; `--allow-shortening` lifts that. Okta group membership is untouched, since the role-based grant survives. |
+
+`access shell` is also available for one-off inspection and repairs that have no command of their
+own; see [Interactive shell](#interactive-shell) above.
+
 ### Kubernetes Deployment and CronJobs
 
 As Access is a web application packaged with Docker, it can easily be deployed to a Kubernetes cluster. We've included example Kubernetes yaml objects you can use to deploy Access in the [examples/kubernetes](https://github.com/discord/access/tree/main/examples/kubernetes) directory.
