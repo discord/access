@@ -8,6 +8,7 @@ import logging
 from api.context import get_request_context
 from sqlalchemy import select
 
+from api.exceptions import InvalidRequestError
 from api.extensions import db
 from api.models import (
     AccessRequestStatus,
@@ -25,6 +26,8 @@ from api.operations.reject_group_request import RejectGroupRequest
 from api.operations._fan_out import defer_notification
 from api.plugins import ConditionalAccessHook, NotificationHook, evaluate_conditional_access
 from api.schemas import AuditLogSchema, EventType
+
+logger = logging.getLogger(__name__)
 
 
 class CreateGroupRequest:
@@ -196,11 +199,23 @@ class CreateGroupRequest:
         for response in conditional_access_responses:
             if response is not None:
                 if response.approved:
-                    await ApproveGroupRequest(
-                        group_request=group_request,
-                        approval_reason=response.reason,
-                        notify=False,
-                    ).execute()
+                    try:
+                        await ApproveGroupRequest(
+                            group_request=group_request,
+                            approval_reason=response.reason,
+                            ending_at=response.ending_at,
+                            notify=False,
+                        ).execute()
+                    except InvalidRequestError as e:
+                        logger.warning(
+                            "Conditional access approval of group request %s failed: %s", group_request.id, e
+                        )
+                    # Approval leaves the request pending when the group can't be
+                    # created as requested (e.g. its name is already taken, or the
+                    # plugin's ending_at has passed); route it to reviewers like any
+                    # other pending request.
+                    if group_request.status == AccessRequestStatus.PENDING:
+                        break
                 else:
                     await RejectGroupRequest(
                         group_request=group_request,
