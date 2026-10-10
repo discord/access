@@ -223,6 +223,34 @@ async def post_group(
     return _group_adapter.validate_python(refreshed, from_attributes=True)
 
 
+def _owner_group_plugin_config_changing(group: AppGroup, new_plugin_data: dict[str, Any]) -> bool:
+    """Whether a plugin_data patch asks to change an owner group's plugin configuration.
+
+    `plugin_data` is a patch: ModifyGroupPluginData keeps the top-level plugin entries and
+        the per-plugin sections a patch omits, and the edit form submits configuration only.
+        Comparing the raw patch against the stored document would therefore report a change on
+        every edit once a plugin has written status the submitter never sends back. Only the
+        sections a patch actually names are compared, so a status a patch omits is irrelevant
+        while an entry naming something that differs -- including one in an unrecognised shape
+        -- still counts, rather than being accepted and then quietly dropped.
+
+        Args:
+            group: The owner group being edited.
+            new_plugin_data: The submitted plugin_data patch.
+
+        Returns:
+            True if the patch asks for a different configuration than the one stored.
+    """
+
+    def asks_for_change(patch_entry: Any, stored_entry: Any) -> bool:
+        if not isinstance(patch_entry, dict) or not isinstance(stored_entry, dict):
+            return patch_entry != stored_entry
+        return any(stored_entry.get(section) != value for section, value in patch_entry.items())
+
+    stored = group.plugin_data or {}
+    return any(asks_for_change(entry, stored.get(plugin_id)) for plugin_id, entry in new_plugin_data.items())
+
+
 @router.put("/{group_id}", name="group_by_id_put")
 async def put_group(
     group_id: str,
@@ -242,10 +270,16 @@ async def put_group(
     if group is None:
         raise HTTPException(404, "Not Found")
 
-    # Capture the pre-update name/description so the single, consolidated group_updated fire
-    # (below) can report them.
+    # Capture the pre-update name/description/app_id so the single, consolidated
+    # group_updated fire (below) can report them. The rebind-authorization block
+    # further down only mutates `group.app_id` in memory for non-owner AppGroups;
+    # the owner-group guard still compares against this captured value rather
+    # than the live attribute as defence in depth, so a future edit that widens
+    # the rebind block's condition can't silently reach an owner group's app_id
+    # before the guard has a chance to reject the change.
     old_name = group.name
     old_description = group.description or ""
+    original_app_id = getattr(group, "app_id", None)
     # Length + REQUIRE_DESCRIPTIONS-when-set are enforced by the schema; this
     # just normalises a `None` (only possible when the client explicitly sent
     # `null`) to an empty string for ModifyGroupDetails.
@@ -298,9 +332,12 @@ async def put_group(
     # Prevent rebinding an AppGroup to a different app without owning the
     # target app. Access admins can always rebind. Apply the rebind here when
     # the group type isn't also changing — type-change rebinds are wired into
-    # ModifyGroupType below.
+    # ModifyGroupType below. Owner groups are structural (membership confers
+    # app-owner permissions), so they're excluded here and rejected outright
+    # by the owner-group guard further down instead of being rebound.
     if (
         type(group) is AppGroup
+        and not group.is_owner
         and isinstance(body, _AppGroupUpdateBody)
         and "app_id" in fields_set
         and body.app_id != group.app_id
@@ -326,8 +363,28 @@ async def put_group(
     tags_to_add = body.tags_to_add or []
     tags_to_remove = body.tags_to_remove or []
 
-    # App owner groups: only tag changes allowed
+    # App owner groups: only tag and description changes are allowed. The description is
+    # ordinary free text, seeded with a default at app creation and editable thereafter like
+    # any other group's. The group's name, type, and app binding are structural — membership
+    # in an owner group confers app-owner permissions — so those stay locked. Plugin
+    # configuration is rejected explicitly rather than silently dropped: owner groups do
+    # participate in lifecycle plugins, so a discarded `plugin_data` write would be
+    # meaningful config loss, not a cosmetic no-op.
+    #
+    # `type` is the discriminator and is present in `fields_set` on every request, so the
+    # structural fields are compared by value rather than by presence.
     if type(group) is AppGroup and group.is_owner:
+        renaming = "name" in fields_set and body.name is not None and body.name != group.name
+        retyping = body.type != group.type
+        rebinding = isinstance(body, _AppGroupUpdateBody) and "app_id" in fields_set and body.app_id != original_app_id
+        if renaming or retyping or rebinding:
+            raise HTTPException(400, "Only tags and the description can be modified for application owner groups")
+        if new_plugin_data is not None and _owner_group_plugin_config_changing(group, new_plugin_data):
+            raise HTTPException(400, "Plugin configuration cannot be modified for application owner groups")
+
+        if description is not None:
+            await ModifyGroupDetails(group=group, description=description, current_user_id=current_user_id).execute()
+
         if len(tags_to_add) > 0 or len(tags_to_remove) > 0:
             await ModifyGroupTags(
                 group=group,
@@ -335,9 +392,9 @@ async def put_group(
                 tags_to_remove=tags_to_remove,
                 current_user_id=current_user_id,
             ).execute()
-            refreshed = await _load_group_with_options(db, group.id)
-            return _group_adapter.validate_python(refreshed, from_attributes=True)
-        raise HTTPException(400, "Only tags can be modifed for application owner groups")
+
+        refreshed = await _load_group_with_options(db, group.id)
+        return _group_adapter.validate_python(refreshed, from_attributes=True)
 
     # Block renaming to a reserved prefix unless the final group type matches.
     # Computed using the target type since a legitimate
