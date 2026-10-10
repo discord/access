@@ -129,9 +129,9 @@ class AppGroupLifecyclePluginConfigProperty:
     # examples use ``{"patterns": [{"regex", "message"}]}``, enforced client-side by the config
     # form, and ``{"allowed_values": [...]}``), so it is intentionally not strictly typed.
     validation: dict[str, Any] | None = None
-    # When True, the host rejects edits to this field on update (group config only);
-    # the value may be set freely at create time. Enforced in
-    # validate_app_group_lifecycle_plugin_group_config.
+    # When True, the host rejects edits to this field once it holds a value (group config
+    # only); until then -- at create, or on a group that predates the plugin -- it may be set
+    # freely. Enforced in validate_app_group_lifecycle_plugin_group_config.
     immutable: bool = False
     # Optional static text shown inline after a text field's value (an input suffix /
     # end adornment), e.g. an email domain like "@example.com" appended to a local-part
@@ -1557,6 +1557,10 @@ def validate_app_group_lifecycle_plugin_group_config(
         )
         for name, prop in properties.items():
             if not prop.immutable:
+                continue
+            # A field locks only once it holds a value. One never set -- e.g. on a group that
+            # predates the plugin -- is still open, and is validated as it would be at create.
+            if old_configuration.get(name) in (None, ""):
                 continue
             # Only treat an immutable field as edited when it's actually present in the
             # (possibly partial) patch: an omission isn't a change, while an explicit value
