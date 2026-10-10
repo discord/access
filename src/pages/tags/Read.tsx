@@ -39,8 +39,6 @@ import {
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin} from '../../authorization';
 import ChangeTitle from '../../tab-title';
-import {MEMBER_TIME_LIMIT, OWNER_TIME_LIMIT, constraintLabel} from '../../constraintCopy';
-import {timeLimitLabel} from '../../constraints';
 import AddApps from './AddApps';
 import AddGroups from './AddGroups';
 import CreateUpdateTag from './CreateUpdate';
@@ -49,7 +47,8 @@ import Loading from '../../components/Loading';
 import DeleteTag from './Delete';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
 import MarkdownDescription from '../../components/MarkdownDescription';
-import PropagationNoteView from './PropagationNoteView';
+import TagConstraintList from './TagConstraintList';
+import {NO_CONSTRAINTS_NOTE, SCOPE_LABELS, byConstraintOrder, isConstraintInForce} from '../../constraintCopy';
 
 export default function ReadTag() {
   const currentUser = useCurrentUser();
@@ -117,6 +116,21 @@ export default function ReadTag() {
     });
   };
 
+  // `?? true`, not `Boolean(...)`: the field is optional in the generated type
+  // and the server default is `true`, so coercing `undefined` would describe the
+  // opposite of what an older tag actually does.
+  const propagateToRoles = tag.propagate_to_roles ?? true;
+
+  // Only constraints actually in force. The tag form writes all four boolean
+  // keys on every save, so a typical tag stores several switched off; listing
+  // those as rows reading "No" pads the table with non-constraints. Filtered on
+  // `!== false`, the same test `_constraint_entry` uses in `api/models/tag.py`:
+  // only a flag can be switched off, and a falsy *number* is the tightest
+  // possible limit rather than the absence of one.
+  const constraintsInForce = Object.keys(tag.constraints ?? {})
+    .filter((key) => isConstraintInForce(tag.constraints![key]))
+    .sort(byConstraintOrder);
+
   const hasActions = tag != null && tag.deleted_at == null && isAccessAdmin(currentUser);
   return (
     <React.Fragment>
@@ -165,72 +179,33 @@ export default function ReadTag() {
             </Paper>
           </Grid>
           <Grid item xs={12}>
-            <TableContainer component={Paper}>
-              <Table sx={{minWidth: 650}} size="small" aria-label="apps with tag">
-                <TableHead>
-                  <TableRow>
-                    <TableCell colSpan={3}>
-                      <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="text.accent">
-                          Tag Constraints
-                        </Typography>
-                      </Stack>
-                      {/* `?? true`, not `Boolean(...)`: the field is optional in the
-                          generated type, and the server default is `true`, so
-                          coercing `undefined` with `Boolean` would show the
-                          opposite of what an older tag actually does. */}
-                      <PropagationNoteView propagateToRoles={tag.propagate_to_roles ?? true} />
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Value</TableCell>
-                    <TableCell colSpan={2}>
-                      <Grid container>
-                        <Grid item xs={12}>
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              justifyContent: 'flex-end',
-                              alignItems: 'right',
-                            }}>
-                            <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                            Total: {tag.constraints ? Object.keys(tag.constraints).length : 0}
-                          </Box>
-                        </Grid>
-                      </Grid>
-                    </TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {tag.constraints && Object.keys(tag.constraints).length > 0 ? (
-                    Object.keys(tag.constraints).map((key: string) => (
-                      <TableRow key={'constraint' + key}>
-                        <TableCell>{constraintLabel(key)}</TableCell>
-                        <TableCell colSpan={2}>
-                          {
-                            // `timeLimitLabel` rather than a bare division: the raw
-                            // quotient prints "0.041666666666666664 days" for an
-                            // hour-long limit, and the panel formats the same value
-                            // with it.
-                            key == MEMBER_TIME_LIMIT || key == OWNER_TIME_LIMIT
-                              ? timeLimitLabel(tag.constraints![key])
-                              : tag.constraints![key]
-                                ? 'Yes'
-                                : 'No' // Display Yes and No not booleans
-                          }
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <EmptyListEntry cellProps={{colSpan: 3}} />
-                  )}
-                </TableBody>
-                <TableFooter>
-                  <TableRow />
-                </TableFooter>
-              </Table>
-            </TableContainer>
+            <Paper sx={{p: 2}}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="h6" color="text.accent">
+                  Constraints
+                </Typography>
+                {constraintsInForce.length > 0 && (
+                  <Chip
+                    size="small"
+                    label={'Scope: ' + (propagateToRoles ? SCOPE_LABELS.roles : SCOPE_LABELS.groupsOnly)}
+                    color={propagateToRoles ? 'primary' : 'default'}
+                  />
+                )}
+              </Stack>
+              {constraintsInForce.length === 0 ? (
+                // A tag that constrains nothing gets the sentence alone. A list whose
+                // only entry explains that it has no entries is worse than no list.
+                <Typography variant="body2" sx={{marginTop: '4px'}}>
+                  {NO_CONSTRAINTS_NOTE}
+                </Typography>
+              ) : (
+                <TagConstraintList
+                  constraintKeys={constraintsInForce}
+                  constraints={tag.constraints!}
+                  propagateToRoles={propagateToRoles}
+                />
+              )}
+            </Paper>
           </Grid>
           <Grid item xs={12}>
             <TableContainer component={Paper}>

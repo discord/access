@@ -30,7 +30,7 @@ vi.mock('./api/apiComponents', () => ({
 import {useConstraintsForGroups, useConstraintsForTags} from './constraints';
 
 function entry(constraint: string, value: number | boolean): EffectiveConstraintDetail {
-  return {constraint, name: constraint, value, sources: []};
+  return {constraint, value, sources: []};
 }
 
 function Probe({ids, tags = false}: {ids: string[]; tags?: boolean}) {
