@@ -16,6 +16,7 @@ from typing import Any, AsyncGenerator, Generator
 
 import httpx
 import itsdangerous
+import jwt
 import pytest
 from fastapi import FastAPI
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -698,3 +699,74 @@ async def test_create_app_adds_trusted_host_middleware_when_set(
 ) -> None:
     app = _build_app_with(monkeypatch, env="staging", oidc=True, cf=False, allowed_hosts="access.example.com")
     assert _has_trusted_host_middleware(app)
+
+
+# ---------------------------------------------------------------------------
+# Bearer tokens on the REST API (OIDC_API_AUDIENCE)
+# ---------------------------------------------------------------------------
+
+BEARER_ISSUER = "https://idp.test"
+BEARER_AUDIENCE = "access-api"
+BEARER_JWKS_URI = "https://idp.test/keys"
+
+
+@pytest.fixture
+def bearer_signing_key(monkeypatch: pytest.MonkeyPatch, oidc_mock: SimpleNamespace) -> Any:
+    """Configure bearer auth and return the RSA key the stub IdP signs with."""
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(key.public_key()))
+    jwk.update(kid="test-kid", alg="RS256")
+    signing_key = jwt.PyJWK.from_dict(jwk)
+
+    async def load_server_metadata() -> dict[str, Any]:
+        return {"issuer": BEARER_ISSUER, "jwks_uri": BEARER_JWKS_URI}
+
+    monkeypatch.setattr(oidc_mock, "load_server_metadata", load_server_metadata)
+    monkeypatch.setitem(
+        oidc_module._jwks_clients,
+        BEARER_JWKS_URI,
+        SimpleNamespace(get_signing_key_from_jwt=lambda _token: signing_key),
+    )
+    monkeypatch.setattr(settings, "OIDC_API_AUDIENCE", BEARER_AUDIENCE)
+    return key
+
+
+def _bearer(key: Any, **overrides: Any) -> dict[str, str]:
+    claims = {"iss": BEARER_ISSUER, "aud": BEARER_AUDIENCE, "exp": 2**31, "email": TEST_OIDC_USER_EMAIL}
+    claims.update(overrides)
+    token = jwt.encode(claims, key, algorithm="RS256", headers={"kid": "test-kid"})
+    return {"Authorization": f"Bearer {token}"}
+
+
+async def test_bearer_token_authenticates_api_request(oidc_client: httpx.AsyncClient, bearer_signing_key: Any) -> None:
+    response = await oidc_client.get("/api/users", headers=_bearer(bearer_signing_key))
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [{"aud": "some-other-api"}, {"iss": "https://evil.test"}, {"exp": 1}, {"email": None}],
+)
+async def test_bearer_token_rejected_on_bad_claims(
+    oidc_client: httpx.AsyncClient, bearer_signing_key: Any, overrides: dict[str, Any]
+) -> None:
+    response = await oidc_client.get("/api/users", headers=_bearer(bearer_signing_key, **overrides))
+    assert response.status_code == 403
+
+
+async def test_bearer_token_rejected_when_signed_by_other_key(
+    oidc_client: httpx.AsyncClient, bearer_signing_key: Any
+) -> None:
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    other = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    response = await oidc_client.get("/api/users", headers=_bearer(other))
+    assert response.status_code == 403
+
+
+async def test_bearer_token_ignored_without_api_audience(oidc_client: httpx.AsyncClient) -> None:
+    response = await oidc_client.get("/api/users", headers={"Authorization": "Bearer anything"})
+    assert response.status_code == 307
+    assert response.headers["location"].startswith("/oidc/login")

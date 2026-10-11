@@ -9,16 +9,20 @@ Endpoints:
   - `GET  /oidc/logout`    — clears the session
 
 The auth dependency in `api.auth.dependencies.get_current_user_id` consults
-`request.session["userinfo"]["email"]` when OIDC is configured.
+`request.session["userinfo"]["email"]` when OIDC is configured, or verifies an
+`Authorization: Bearer` token via `verify_bearer_token` when
+`OIDC_API_AUDIENCE` is set.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any, Optional
 from urllib.parse import urlparse
 
+import jwt
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -60,6 +64,50 @@ def register_oidc(app: FastAPI) -> None:
     if "oidc" not in oauth._clients:
         oauth.register(name="oidc", **_client_kwargs())
     app.include_router(_router)
+
+
+# PyJWKClient caches the IdP's signing keys itself; keep one per jwks_uri.
+_jwks_clients: dict[str, jwt.PyJWKClient] = {}
+
+
+async def verify_bearer_token(token: str) -> dict[str, Any]:
+    """Verify an OIDC bearer token presented to the REST API.
+
+    Checks the signature against the IdP's JWKS (discovered through the same
+    server metadata the login flow uses), plus `iss`, `exp`, `nbf`, and `aud`
+    against `settings.OIDC_API_AUDIENCE`.
+
+    Args:
+        token: The raw JWT from the `Authorization: Bearer` header.
+
+    Returns:
+        The verified token claims.
+
+    Raises:
+        HTTPException: 403 if the token fails verification.
+    """
+    metadata = await oauth.oidc.load_server_metadata()
+    jwks_uri, issuer = metadata.get("jwks_uri"), metadata.get("issuer")
+    if not jwks_uri or not issuer:
+        logger.error("OIDC server metadata is missing jwks_uri or issuer; rejecting bearer token")
+        raise HTTPException(status_code=403, detail="Invalid OIDC bearer token")
+    if jwks_uri not in _jwks_clients:
+        _jwks_clients[jwks_uri] = jwt.PyJWKClient(jwks_uri)
+    try:
+        # The JWKS fetch is blocking network I/O; keep it off the event loop.
+        signing_key = await asyncio.to_thread(_jwks_clients[jwks_uri].get_signing_key_from_jwt, token)
+        return jwt.decode(
+            token,
+            key=signing_key.key,
+            # Pin to the key's own algorithm so the token header can't pick a
+            # weaker one (e.g. HS256 keyed with the public key).
+            algorithms=[signing_key.algorithm_name],
+            audience=settings.OIDC_API_AUDIENCE,
+            issuer=issuer,
+            leeway=settings.OIDC_CLOCK_SKEW,
+        )
+    except jwt.PyJWTError as e:
+        raise HTTPException(status_code=403, detail="Invalid OIDC bearer token") from e
 
 
 _router = APIRouter(prefix="/oidc", tags=["oidc"])

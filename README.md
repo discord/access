@@ -197,6 +197,22 @@ OIDC_OVERWRITE_REDIRECT_URI=https://<YOUR_ACCESS_DEPLOYMENT_DOMAIN_NAME>/oidc/au
 ALLOWED_HOSTS=<YOUR_ACCESS_DEPLOYMENT_DOMAIN_NAME>
 ```
 
+##### Programmatic API access with OIDC bearer tokens
+
+Scripts and services that can't run the browser login flow can call the REST API with an OIDC
+access token in an `Authorization: Bearer <token>` header. This is off by default; enable it by
+setting the audience your IdP issues API tokens for:
+```
+OIDC_API_AUDIENCE=<YOUR_ACCESS_API_AUDIENCE>
+```
+
+Access verifies the token's signature against your IdP's JWKS (found through the same discovery
+document the login flow uses) along with its `iss`, `exp`, and `aud` claims, then resolves the
+token's `email` claim to an Access user. The caller acts as that user with exactly the
+permissions they have in the UI. Use an audience dedicated to the Access API (for example an
+Okta custom authorization server audience) rather than the web app's client ID, and make sure the
+access token carries an `email` claim. A bearer token that fails verification gets a `403`.
+
 #### Cloudflare Access
 
 To use Cloudflare Access authentication, set up a
@@ -262,6 +278,7 @@ The `.env.production` file is where you configure the application.
 - `ENABLE_MCP`: **[OPTIONAL]** Set to `true` to mount the embedded Model Context Protocol server at `/mcp`. Off by default. See [MCP Server (optional)](#mcp-server-optional) below.
 - `MCP_FALLBACK_SCOPES`: **[OPTIONAL]** Comma-separated scopes granted to MCP tokens that carry no `scope` claim. Defaults to `read_all,create_requests` (read + filing requests). Set to `read_all` for read-only MCP sessions, or `""` to fail closed. Only relevant when `ENABLE_MCP=true`.
 - `OIDC_MCP_AUDIENCE`: **[REQUIRED when `ENABLE_MCP=true` and `OIDC_SERVER_METADATA_URL` is set]** The OAuth audience to validate against the `aud` claim on incoming MCP bearer tokens. Typically the OAuth client identifier of the MCP application registered with your IdP, e.g. `access-mcp`.
+- `OIDC_API_AUDIENCE`: **[OPTIONAL]** Enables OIDC bearer-token authentication on the REST API and sets the `aud` claim those tokens must carry. Unset disables it. See [Programmatic API access with OIDC bearer tokens](#programmatic-api-access-with-oidc-bearer-tokens).
 - `MCP_RESOURCE_URL`: **[OPTIONAL]** Canonical public URL of the MCP resource (e.g. `https://access.example.com/mcp`), published in the RFC 9728 metadata document and the 401 `resource_metadata` pointer. Derived from the request when unset; set it explicitly behind a proxy that rewrites Host. Only relevant when `ENABLE_MCP=true`.
 
 **Check out `.env.psql.example` or `.env.production.example` for an example configuration file structure**.
@@ -529,7 +546,7 @@ Both providers do **credential verification** only. Access is a *resource server
 
 **Cloudflare Access.** Activates when `CLOUDFLARE_TEAM_DOMAIN` is set. Reads the CF-issued JWT from `Cf-Access-Jwt-Assertion`, `Cf-Access-Token`, or `Authorization: Bearer`, verifies it via `verify_cloudflare_token`, and resolves the `email` claim to an `OktaUser`. CF deployments using [Managed OAuth for Access](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/mcp-servers/) need no extra wiring — enable Managed OAuth on the Access application in the CF dashboard and any MCP-compliant client connects with just the `/mcp` URL.
 
-**OIDC.** Activates when `OIDC_SERVER_METADATA_URL` is set. Reads an OIDC bearer token from `Authorization: Bearer`, fetches the IdP's JWKS via the discovery document, and verifies signature, `iss`, `exp`, and `aud` against `OIDC_MCP_AUDIENCE`. `OIDC_MCP_AUDIENCE` is **required** when OIDC is enabled — skipping audience validation would let a token issued for another resource server authenticate to Access MCP. The MCP OIDC integration is intentionally different from the REST OIDC integration: REST uses a browser session-cookie flow (`api/auth/oidc.py`), MCP uses bearer-token verification (`api/mcp/auth/oidc.py`), because MCP clients aren't browsers and the MCP OAuth spec uses bearer tokens.
+**OIDC.** Activates when `OIDC_SERVER_METADATA_URL` is set. Reads an OIDC bearer token from `Authorization: Bearer`, fetches the IdP's JWKS via the discovery document, and verifies signature, `iss`, `exp`, and `aud` against `OIDC_MCP_AUDIENCE`. `OIDC_MCP_AUDIENCE` is **required** when OIDC is enabled — skipping audience validation would let a token issued for another resource server authenticate to Access MCP. The MCP OIDC integration is intentionally different from the REST OIDC integration: REST uses a browser session-cookie flow (`api/auth/oidc.py`, plus opt-in bearer tokens validated against `OIDC_API_AUDIENCE`), MCP uses bearer-token verification (`api/mcp/auth/oidc.py`), because MCP clients aren't browsers and the MCP OAuth spec uses bearer tokens.
 
 For local development there's also a dev provider that activates when `ENV` is `development` or `test`. It resolves `CURRENT_OKTA_USER_EMAIL` to an `OktaUser` and grants the full v1 scope set, so you can exercise tools locally without faking a token.
 
