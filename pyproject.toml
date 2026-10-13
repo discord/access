@@ -1,7 +1,7 @@
 [build-system]
 # Use the setuptools backend so the wheel picks up api/config/migrations via
 # package discovery and bundles config/*.json (see [tool.setuptools] below).
-requires = ["setuptools>=77"]
+requires = ["setuptools>=83.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
