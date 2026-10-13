@@ -71,6 +71,16 @@ COPY alembic.ini ./
 
 RUN uv sync --frozen --no-dev
 
+# Constrain every later `uv pip install` (the plugin installs below, and any in an
+# image built FROM this one) to the exact versions in uv.lock. `uv pip install`
+# does not honor the app's own requirements, so without this a plugin that asks
+# for a different version of a locked package silently replaces it in the venv.
+# With it, that plugin fails the build instead. Packages not in the lock (a
+# plugin's own dependencies) resolve freely. Unhashed, since plugin packages
+# carry no hashes; the app's own installs above are already hash-checked.
+RUN uv export --frozen --no-dev --no-hashes --no-emit-project --no-header -q -o /app/constraints.txt
+ENV UV_CONSTRAINT=/app/constraints.txt
+
 # --- Optional example plugins -------------------------------------------------
 # The example plugins under examples/plugins/ are opt-in. Each installs into the
 # app venv only when its build arg is set to "true" (default "false"), so the
@@ -81,7 +91,8 @@ RUN uv sync --frozen --no-dev
 # it. A plugin's requirements.txt is installed first when present (no example
 # ships one, but your own plugin may keep runtime deps there rather than in its
 # project metadata). See examples/plugins/README.md for the full list and for
-# how to bake in your own plugin.
+# how to bake in your own plugin. These installs are constrained to uv.lock via
+# UV_CONSTRAINT above.
 ARG INSTALL_AUDIT_LOGGER_PLUGIN="false"
 ARG INSTALL_CONDITIONAL_ACCESS_PLUGIN="false"
 ARG INSTALL_DATADOG_METRICS_PLUGIN="false"

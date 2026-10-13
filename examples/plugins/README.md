@@ -78,14 +78,14 @@ A plugin is an ordinary Python distribution with three parts:
    take `hookimpl` from `api.plugins.app_group_lifecycle` and the ORM classes
    they annotate hook arguments with from `api.models`, so both arrive with the
    app and neither is imported here. A dep declared without a matching import
-   goes stale silently and, per the pinning rule below, can re-resolve a package
-   the app is using.
+   goes stale silently and, per the pinning rule below, can fail the install by
+   conflicting with a package the app is using.
 
    Pin deps the app does not itself ship (`slack-sdk`, `datadog`), but keep deps
    the app supplies (`click`, `SQLAlchemy`) on a compatible range. Plugins are
-   installed *into* the app's venv, so an exact pin that disagrees with
-   [`pyproject.toml`](../../pyproject.toml) silently re-resolves that package for
-   the running app.
+   installed *into* the app's venv under constraints exported from
+   [`uv.lock`](../../uv.lock) (see [Installing into a built image](#installing-into-a-built-image)),
+   so a pin that disagrees with the locked version fails the install.
 
 The quickest start is to copy the example closest to your use case, change the
 distribution name, top-level module name, entry-point name, and hook bodies, and
@@ -113,6 +113,17 @@ its `requirements.txt`, if it has one) into the app's `uv` virtualenv at
 venv has no `pip`, and plain `pip` installs into the base image's system
 interpreter, where the running app never looks — the classic
 "Registered 0 plugins" symptom.
+
+The image sets `UV_CONSTRAINT=/app/constraints.txt`, a constraints file exported
+from `uv.lock`, so every `uv pip install` (in this build or in an image built
+`FROM` it) must keep the app's locked dependency versions. `uv pip install`
+does not check the app's own requirements, so without the constraint a plugin
+that asks for a different version of a locked package (say `pluggy==1.5.0`)
+would silently replace it. With it, the install fails with an "unsatisfiable"
+error naming the package. Fix that by loosening the plugin's requirement to a
+range that includes the locked version. A plugin's own dependencies that Access
+doesn't use are unaffected. To deliberately override a locked version, unset
+`UV_CONSTRAINT` for that `RUN` and take on keeping the app working with it.
 
 The `Build Docker Image` CI check
 ([docker-build.yml](../../.github/workflows/docker-build.yml)) builds the image
