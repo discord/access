@@ -84,9 +84,13 @@ dev:
 # Install any plugins named in PLUGINS into the venv after `uv sync` (which
 # would otherwise prune them). Editable, so local edits to the plugin are picked
 # up on reload. A plugin's requirements.txt is installed first when present.
+# Installs are constrained to uv.lock (as in the Dockerfile), so a plugin that
+# conflicts with a locked version fails here rather than replacing it.
 .PHONY: install-plugins
 install-plugins: dev
-	@for p in $(PLUGINS); do \
+	@uv export --frozen --no-hashes --no-emit-project --no-emit-local --no-header -q -o .venv/constraints.txt
+	@export UV_CONSTRAINT=.venv/constraints.txt; \
+	for p in $(PLUGINS); do \
 		if [ ! -d "examples/plugins/$$p" ]; then \
 			echo "No such example plugin: examples/plugins/$$p"; exit 1; \
 		fi; \

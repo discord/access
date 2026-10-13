@@ -47,6 +47,14 @@ jobs:
         # Fail if uv.lock drifts from pyproject.toml or the environment
         # drifts from uv.lock (e.g. a dependency edit without `uv lock`).
         run: uv sync --locked --check
+      - name: Constrain plugin installs to uv.lock
+        # Mirrors the Dockerfile's UV_CONSTRAINT, so the example plugin installs
+        # below fail on a conflict with a locked version instead of replacing it.
+        # --no-emit-local drops the editable dev-group audit logger, which a
+        # constraints file can't carry.
+        run: |
+          uv export --frozen --no-hashes --no-emit-project --no-emit-local --no-header -q -o "$RUNNER_TEMP/constraints.txt"
+          echo "UV_CONSTRAINT=$RUNNER_TEMP/constraints.txt" >> "$GITHUB_ENV"
       # No path argument, so this picks up both roots in `testpaths`: the api suite
       # under tests/ and the example plugins' own tests. The plugin tests stub their
       # third-party SDKs, so they need no plugin installed and no extra dependency.
@@ -106,39 +114,40 @@ jobs:
           else
             echo "App group lifecycle audit logger plugin directory not found; skipping installation"
           fi
-      - name: Check the plugin installs did not re-resolve the app's pinned deps
+      - name: Check the plugin installs did not re-resolve the app's locked deps
         # The steps above install example plugins on top of the venv `uv sync --locked`
         # built, mirroring the Dockerfile's install_plugin helper and `make
-        # install-plugins`. A plugin requirement that excludes one of the app's pins
-        # silently re-resolves it *after* the sync, so `uv sync --locked --check` above
-        # cannot see it (e.g. a plugin pinning pluggy==1.5.0 downgrading the locked
-        # 1.6.0, which would then ship in any image built with that INSTALL_* arg).
+        # install-plugins`. `uv pip install` ignores the app's own requirements, so a
+        # plugin requirement that excludes a locked version silently re-resolves it
+        # *after* the sync, where `uv sync --locked --check` above cannot see it (e.g. a
+        # plugin pinning pluggy==1.5.0 downgrading the locked 1.6.0). UV_CONSTRAINT
+        # should make such an install fail outright; this is the backstop that proves
+        # it did. It compares against uv.lock rather than pyproject.toml, whose
+        # specifiers are ranges, and so covers transitive dependencies too.
         # --no-sync so this inspects the post-plugin-install venv rather than resyncing it.
         run: |
           uv run --no-sync python - <<'PY'
           import sys, tomllib
-          from importlib.metadata import version, PackageNotFoundError
-          from packaging.requirements import Requirement
+          from importlib.metadata import distributions
           from packaging.utils import canonicalize_name
 
-          deps = tomllib.loads(open("pyproject.toml").read())["project"]["dependencies"]
-          drift = []
-          for raw in deps:
-              req = Requirement(raw)
-              specs = list(req.specifier)
-              if len(specs) != 1 or specs[0].operator != "==":
-                  continue
-              try:
-                  installed = version(canonicalize_name(req.name))
-              except PackageNotFoundError:
-                  continue
-              if installed != specs[0].version:
-                  drift.append(f"  {req.name}: pyproject pins {specs[0].version}, venv has {installed}")
+          # Editable and virtual sources (the project itself, the dev-group audit
+          # logger) are reinstalled from a path by the steps above, so skip them.
+          locked = {}
+          for pkg in tomllib.loads(open("uv.lock").read())["package"]:
+              if "version" in pkg and not {"editable", "virtual"} & pkg["source"].keys():
+                  locked.setdefault(canonicalize_name(pkg["name"]), set()).add(pkg["version"])
+          drift = sorted(
+              f"  {name}: uv.lock has {', '.join(sorted(locked[name]))}, venv has {dist.version}"
+              for dist in distributions()
+              if (name := canonicalize_name(dist.metadata["Name"])) in locked
+              and dist.version not in locked[name]
+          )
           if drift:
               sys.exit(
-                  "Example plugin installs re-resolved app dependencies:\n"
+                  "Example plugin installs re-resolved locked dependencies:\n"
                   + "\n".join(drift)
                   + "\nLoosen the offending plugin's dependencies to a compatible range."
               )
-          print("OK: installed versions match every exact pin in pyproject.toml")
+          print(f"OK: installed versions match uv.lock for all {len(locked)} locked packages")
           PY
