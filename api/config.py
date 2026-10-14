@@ -174,6 +174,12 @@ class Settings(BaseSettings):
     # token-confusion attack). Typically the OAuth client identifier for
     # the MCP application registered with the IdP, e.g. ``access-mcp``.
     OIDC_MCP_AUDIENCE: Optional[str] = None
+    # Required `aud` claim for OIDC bearer tokens presented to the REST API
+    # (`Authorization: Bearer <jwt>`), for programmatic clients that can't run
+    # the browser session flow. Unset disables bearer auth on the REST API.
+    # Use an audience dedicated to Access's API rather than the web client id,
+    # so a token issued for another resource server can't authenticate here.
+    OIDC_API_AUDIENCE: Optional[str] = None
 
     # Session
     SECRET_KEY: Optional[str] = Field(default_factory=_read_secret_key)
