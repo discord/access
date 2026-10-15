@@ -131,10 +131,21 @@ function ScopeChoice() {
         name="propagateToRoles"
         helperText={conflict ?? undefined}
         options={[
-          {id: SCOPE_ROLES, label: `${SCOPE_LABELS.roles}: ${SCOPE_SUMMARIES.roles}`},
+          {
+            id: SCOPE_ROLES,
+            label: (
+              <>
+                <strong>{SCOPE_LABELS.roles}</strong>: {SCOPE_SUMMARIES.roles}
+              </>
+            ),
+          },
           {
             id: SCOPE_GROUPS_ONLY,
-            label: `${SCOPE_LABELS.groupsOnly}: ${SCOPE_SUMMARIES.groupsOnly}`,
+            label: (
+              <>
+                <strong>{SCOPE_LABELS.groupsOnly}</strong>: {SCOPE_SUMMARIES.groupsOnly}
+              </>
+            ),
             disabled: conflict !== null,
           },
         ]}
