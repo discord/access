@@ -1,5 +1,5 @@
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {render, screen, waitFor} from '@testing-library/react';
+import {render, screen, waitFor, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 
@@ -8,6 +8,7 @@ import {ACCESS_APP_RESERVED_NAME} from '../../authorization';
 
 const resolveMutate = vi.fn();
 
+const APP_NAME = 'HammerAndChiselZendeskSandbox';
 const APP_TAG = {id: 'sox-tag-00000000000', name: 'SOX'};
 
 // The app carries a tag of its own. `CreateGroup` copies it onto every group
@@ -15,9 +16,12 @@ const APP_TAG = {id: 'sox-tag-00000000000', name: 'SOX'};
 // picks it.
 const APP = {
   id: 'zendesk-sandbox-0000',
-  name: 'HammerAndChiselZendeskSandbox',
+  name: APP_NAME,
   active_app_tags: [{active_tag: APP_TAG}],
 } as unknown as AppDetail;
+
+// How the Tags field spells an inherited tag.
+const INHERITED_CHIP = `${APP_TAG.name} (${APP_NAME})`;
 
 // A tag the request names. The tag *list* mock below returns nothing, so this
 // can only be resolved by asking for it by id.
@@ -221,11 +225,20 @@ describe('tags an app group inherits from its app', () => {
     await waitFor(() => expect(lastConstraintQuery()).toContain(APP_TAG.id));
   });
 
-  it('shows them as belonging to the app rather than as a choice', async () => {
+  it('lists them in the Tags field, naming the app they come from', async () => {
     renderPage();
 
-    expect(await screen.findByText(`Also inherited from ${APP.name}:`)).toBeInTheDocument();
-    expect(screen.getByText(APP_TAG.name)).toBeInTheDocument();
+    expect(await screen.findByText(INHERITED_CHIP)).toBeInTheDocument();
+  });
+
+  // They sit among the approver's own chips, so the only thing marking them as
+  // the app's is that they cannot be taken off.
+  it('gives them no delete control', async () => {
+    renderPage();
+
+    const chip = (await screen.findByText(INHERITED_CHIP)).closest('.MuiChip-root');
+    expect(chip).not.toBeNull();
+    expect(within(chip as HTMLElement).queryByTestId('CancelIcon')).toBeNull();
   });
 
   it('leaves them out of the resolved tags, which the app supplies on its own', async () => {
@@ -256,6 +269,6 @@ describe('tags an app group inherits from its app', () => {
     await userEvent.click(await screen.findByRole('option', {name: 'Group'}));
 
     await waitFor(() => expect(lastConstraintQuery()).not.toContain(APP_TAG.id));
-    expect(screen.queryByText(`Also inherited from ${APP.name}:`)).not.toBeInTheDocument();
+    expect(screen.queryByText(INHERITED_CHIP)).not.toBeInTheDocument();
   });
 });

@@ -13,7 +13,6 @@ import TimelineItem from '@mui/lab/TimelineItem';
 import TimelineOppositeContent, {timelineOppositeContentClasses} from '@mui/lab/TimelineOppositeContent';
 import TimelineSeparator from '@mui/lab/TimelineSeparator';
 import Alert from '@mui/material/Alert';
-import Autocomplete from '@mui/material/Autocomplete';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -26,7 +25,6 @@ import Grid from '@mui/material/Grid';
 import Link from '@mui/material/Link';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import {AutocompleteElement, FormContainer, SelectElement, TextFieldElement, useFormContext} from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
@@ -56,10 +54,8 @@ import {
   GroupRequestDetail,
   OktaUserGroupMemberDetail,
   ResolveGroupRequestBody,
-  AppTagMapDetail,
   TagDetail,
   TagListItem,
-  TagSummary,
 } from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
@@ -72,6 +68,7 @@ import Loading from '../../components/Loading';
 import accessConfig from '../../config/accessConfig';
 import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
 import PluginConfigDisplay from './PluginConfigDisplay';
+import TagsField, {inheritedAppTags} from './TagsField';
 import ChangeTitle from '../../tab-title';
 import NotFound from '../NotFound';
 
@@ -279,18 +276,18 @@ export default function ReadGroupRequest() {
     {enabled: resolvedAppId != null && groupType === 'app_group'},
   );
 
-  // The tags `CreateGroup` will copy from the app onto the new group. Only an
-  // app group inherits them, so a type the approver has switched away from
-  // `app_group` contributes none. Tags already chosen directly are left out:
-  // the Tags field is showing them, and the constraint reader deduplicates.
-  const inheritedAppTags = React.useMemo<TagSummary[]>(() => {
-    if (groupType !== 'app_group') return [];
-    const chosen = new Set(selectedTags.map((tag) => tag.id));
-    const appTagMaps: AppTagMapDetail[] = resolvedAppData?.active_app_tags ?? [];
-    return appTagMaps
-      .map((mapping) => mapping.active_tag)
-      .filter((tag): tag is TagSummary => tag != null && !chosen.has(tag.id));
-  }, [groupType, resolvedAppData, selectedTags]);
+  // Only an app group inherits an app's tags, so a type the approver has
+  // switched away from `app_group` contributes none.
+  const inheritedTags = React.useMemo(
+    () =>
+      groupType === 'app_group'
+        ? inheritedAppTags(
+            resolvedAppData,
+            selectedTags.map((tag) => tag.id),
+          )
+        : null,
+    [groupType, resolvedAppData, selectedTags],
+  );
 
   // The group being tagged does not exist yet, so there is no id to resolve
   // constraints against — only the tags it will be created with. That is what
@@ -303,7 +300,7 @@ export default function ReadGroupRequest() {
   // `ApproveGroupRequest` then quietly shortens.
   const tagConstraints = useConstraintsForTags([
     ...selectedTags.map((tag) => tag.id),
-    ...inheritedAppTags.map((tag) => tag.id),
+    ...(inheritedTags?.tags ?? []).map((tag) => tag.id),
   ]);
   const ownershipTimeLimit = tagConstraints.timeLimit(true);
 
@@ -980,39 +977,13 @@ export default function ReadGroupRequest() {
                                   </Grid>
                                   <Grid item xs={6}>
                                     <FormControl margin="normal" fullWidth>
-                                      <Autocomplete
-                                        multiple
+                                      <TagsField
                                         options={tagSearchOptions}
-                                        value={selectedTags}
-                                        getOptionLabel={(option: TagListItem) => option.name}
-                                        onInputChange={(_event, newInputValue) => setTagSearchInput(newInputValue)}
-                                        onChange={(_event, newValue) => setSelectedTags(newValue)}
-                                        renderTags={(value: TagListItem[], getTagProps) =>
-                                          value.map((option: TagListItem, index: number) => (
-                                            <Chip variant="outlined" label={option.name} {...getTagProps({index})} />
-                                          ))
-                                        }
-                                        renderInput={(params) => (
-                                          <TextField {...params} label="Tags" placeholder="Tags" />
-                                        )}
+                                        selected={selectedTags}
+                                        inherited={inheritedTags}
+                                        onSelectedChange={setSelectedTags}
+                                        onSearchChange={setTagSearchInput}
                                       />
-                                      {/* Shown outside the Tags field because these are not
-                                          the approver's to choose or remove, and because only
-                                          the chosen ones are submitted: the group picks these
-                                          up from the app, and submitting them here would
-                                          write a second, direct tag that outlives the app's. */}
-                                      {inheritedAppTags.length > 0 && (
-                                        <Box sx={{marginTop: '8px'}}>
-                                          <Typography variant="caption" color="text.secondary">
-                                            Also inherited from {appName}:
-                                          </Typography>
-                                          <Box sx={{display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px'}}>
-                                            {inheritedAppTags.map((tag) => (
-                                              <Chip key={tag.id} size="small" variant="outlined" label={tag.name} />
-                                            ))}
-                                          </Box>
-                                        </Box>
-                                      )}
                                     </FormControl>
                                   </Grid>
                                 </Grid>

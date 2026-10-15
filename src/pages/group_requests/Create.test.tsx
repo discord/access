@@ -1,18 +1,22 @@
-import {render, screen, waitFor} from '@testing-library/react';
+import {render, screen, waitFor, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 
 import {AppDetail, OktaUserDetail} from '../../api/apiSchemas';
 
+const APP_NAME = 'HammerAndChiselZendeskSandbox';
 const APP_TAG = {id: 'sox-tag-00000000000', name: 'SOX', constraints: {owner_time_limit: 7776000}};
 
 // The app carries a tag of its own, which `CreateGroup` copies onto every group
 // created under it whether or not the requester picks it.
 const APP = {
   id: 'zendesk-sandbox-0000',
-  name: 'HammerAndChiselZendeskSandbox',
+  name: APP_NAME,
   active_app_tags: [{active_tag: APP_TAG}],
 } as unknown as AppDetail;
+
+// How the Tags field spells an inherited tag.
+const INHERITED_CHIP = `${APP_TAG.name} (${APP_NAME})`;
 
 const USER = {id: 'user-000000000000', email: 'dana@example.com'} as unknown as OktaUserDetail;
 
@@ -73,10 +77,18 @@ describe('tags a requested app group would inherit', () => {
     await waitFor(() => expect(lastConstraintQuery()).toContain(APP_TAG.id));
   });
 
-  it('shows them as belonging to the app rather than as a choice', async () => {
+  it('lists them in the Tags field, naming the app they come from', async () => {
     await openDialogAndPickApp();
-    expect(await screen.findByText(`Also inherited from ${APP.name}:`)).toBeInTheDocument();
-    expect(screen.getByText(APP_TAG.name)).toBeInTheDocument();
+    expect(await screen.findByText(INHERITED_CHIP)).toBeInTheDocument();
+  });
+
+  // They sit among the requester's own chips, so the only thing marking them as
+  // the app's is that they cannot be taken off.
+  it('gives them no delete control', async () => {
+    await openDialogAndPickApp();
+    const chip = (await screen.findByText(INHERITED_CHIP)).closest('.MuiChip-root');
+    expect(chip).not.toBeNull();
+    expect(within(chip as HTMLElement).queryByTestId('CancelIcon')).toBeNull();
   });
 
   it('stops offering a duration the inherited limit forbids', async () => {

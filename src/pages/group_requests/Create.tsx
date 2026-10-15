@@ -3,10 +3,8 @@ import dayjs, {Dayjs} from 'dayjs';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import {useNavigate} from 'react-router-dom';
 import Alert from '@mui/material/Alert';
-import Autocomplete from '@mui/material/Autocomplete';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
@@ -15,7 +13,6 @@ import DialogTitle from '@mui/material/DialogTitle';
 import FormControl from '@mui/material/FormControl';
 import Grid from '@mui/material/Grid';
 import GroupRequestIcon from '@mui/icons-material/GroupAdd';
-import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
@@ -33,16 +30,15 @@ import {
 } from '../../api/apiComponents';
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
+import TagsField, {inheritedAppTags} from './TagsField';
 import {
   AppDetail,
   AppGroupDetail,
   AppSummary,
-  AppTagMapDetail,
   OktaUserDetail,
   GroupDetail,
   GroupRequestDetail,
-  TagDetail,
-  TagSummary,
+  TagListItem,
 } from '../../api/apiSchemas';
 import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
@@ -173,7 +169,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const [appSearchInput, setAppSearchInput] = React.useState('');
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [nameInput, setNameInput] = React.useState('');
-  const [selectedTags, setSelectedTags] = React.useState<Array<TagDetail>>([]);
+  const [selectedTags, setSelectedTags] = React.useState<Array<TagListItem>>([]);
   const [ownershipUntil, setOwnershipUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
@@ -226,24 +222,22 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   );
   const requestPluginId = pluginIdForApp(effectiveAppDetail);
 
-  // The tags `CreateGroup` will copy from the app onto the group, on top of the
-  // ones chosen here. `effectiveAppId` already covers both ways a request lands
-  // under an app, so a name typed with an "App-...-" prefix inherits them too.
-  // Tags chosen directly are left out: the Tags field is showing them, and the
-  // constraint reader deduplicates.
-  const inheritedAppTags = React.useMemo<TagSummary[]>(() => {
-    const chosen = new Set(selectedTags.map((tag) => tag.id));
-    const appTagMaps: AppTagMapDetail[] = effectiveAppDetail?.active_app_tags ?? [];
-    return appTagMaps
-      .map((mapping) => mapping.active_tag)
-      .filter((tag): tag is TagSummary => tag != null && !chosen.has(tag.id));
-  }, [effectiveAppDetail, selectedTags]);
+  // `effectiveAppId` already covers both ways a request lands under an app, so a
+  // name typed with an "App-...-" prefix inherits that app's tags too.
+  const inheritedTags = React.useMemo(
+    () =>
+      inheritedAppTags(
+        effectiveAppDetail,
+        selectedTags.map((tag) => tag.id),
+      ),
+    [effectiveAppDetail, selectedTags],
+  );
 
   // The group does not exist yet, so its constraints come from the tags it
   // would be created with rather than from an id.
   const constraints = useConstraintsForTags([
     ...selectedTags.map((tag) => tag.id),
-    ...inheritedAppTags.map((tag) => tag.id),
+    ...(inheritedTags?.tags ?? []).map((tag) => tag.id),
   ]);
   const ownershipTimeLimit = constraints.timeLimit(true);
 
@@ -419,34 +413,13 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
           />
         </FormControl>
         <FormControl margin="normal" fullWidth>
-          <Autocomplete
-            multiple
+          <TagsField
             options={tagSearchOptions}
-            value={selectedTags}
-            getOptionLabel={(option) => option.name}
-            onInputChange={(_event, newVal) => setTagSearchInput(newVal)}
-            onChange={(_event, newVal) => setSelectedTags(newVal)}
-            renderTags={(value: TagDetail[], getTagProps) =>
-              value.map((option: TagDetail, index: number) => (
-                <Chip variant="outlined" label={option.name} {...getTagProps({index})} />
-              ))
-            }
-            renderInput={(params) => <TextField {...params} label="Tags" placeholder="Tags" />}
+            selected={selectedTags}
+            inherited={inheritedTags}
+            onSelectedChange={setSelectedTags}
+            onSearchChange={setTagSearchInput}
           />
-          {/* Shown outside the Tags field because these are not the requester's
-              to choose or remove: the group picks them up from its app. */}
-          {inheritedAppTags.length > 0 && (
-            <Box sx={{marginTop: '8px'}}>
-              <Typography variant="caption" color="text.secondary">
-                Also inherited from {effectiveAppDetail?.name}:
-              </Typography>
-              <Box sx={{display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px'}}>
-                {inheritedAppTags.map((tag) => (
-                  <Chip key={tag.id} size="small" variant="outlined" label={tag.name} />
-                ))}
-              </Box>
-            </Box>
-          )}
         </FormControl>
         <FormControl margin="normal" fullWidth>
           {ownershipTimeLimit != null && (
