@@ -53,7 +53,17 @@ class ConditionalAccessPluginSpec:
         requester: OktaUser,
         app: Optional[App] = None,
     ) -> Optional[ConditionalAccessResponse]:
-        """Automatically approve, deny, or continue the group request."""
+        """Automatically approve, deny, or continue the group request.
+
+        An approval creates the requested group and makes the requester its owner.
+        It is recorded with no resolver. When the group can't be created as
+        requested (for example, its name is already taken), the request stays
+        pending and goes to its reviewers. The response's ``ending_at`` caps the
+        requester's ownership: it can shorten the end date the request asked for
+        but never extend it, and the new group's tag limits still apply. An
+        ``ending_at`` that has already passed leaves the request pending for its
+        reviewers.
+        """
 
 
 async def evaluate_conditional_access(
