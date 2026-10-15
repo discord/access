@@ -1069,15 +1069,23 @@ class GroupRequest(Base):
 
 
 class TagConstraint:
+    """How one tag constraint is validated and combined across tags.
+
+    The words for a constraint live in the frontend (`src/constraintCopy.ts`),
+    which composes them from the tag's scope and value; the key in
+    `Tag.CONSTRAINTS` is the stable identifier both sides share.
+
+    Args:
+        validator: Whether a stored value is a legal setting for this constraint.
+        coalesce: Folds two tags' values for this constraint into the one that
+            applies: the tighter limit, or the logical OR of two flags.
+    """
+
     def __init__(
         self,
-        name: str,
         validator: Callable[[Any], bool],
         coalesce: Callable[[Any, Any], Any],
-        description: Optional[str] = "",
     ):
-        self.name = name
-        self.description = description
         self.validator = validator
         self.coalesce = coalesce
 
@@ -1091,44 +1099,26 @@ class Tag(Base):
     DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY = "disallow_self_add_ownership"
     CONSTRAINTS: Dict[str, TagConstraint] = {
         MEMBER_TIME_LIMIT_CONSTRAINT_KEY: TagConstraint(
-            name="Limit time of membership",
-            description="Specify a maximum length of time in seconds that a user or role can be a member of "
-            + "this group or groups associated with this app.",
             validator=lambda value: isinstance(value, int) and value > 0,
             coalesce=lambda a, b: min(a, b),
         ),
         OWNER_TIME_LIMIT_CONSTRAINT_KEY: TagConstraint(
-            name="Limit time of ownership",
-            description="Specify a maximum length of time in seconds that a user or role can be a owner of "
-            + "this group or groups associated with this app.",
             validator=lambda value: isinstance(value, int) and value > 0,
             coalesce=lambda a, b: min(a, b),
         ),
         REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: TagConstraint(
-            name="Require reason for member access",
-            description="Require a reason for adding a user or role as a member to this group or groups "
-            + "associated with this app.",
             validator=lambda value: isinstance(value, bool),
             coalesce=lambda a, b: a or b,
         ),
         REQUIRE_OWNER_REASON_CONSTRAINT_KEY: TagConstraint(
-            name="Require reason for owner access",
-            description="Require a reason for adding a user or role as a owner to this group or groups "
-            + "associated with this app.",
             validator=lambda value: isinstance(value, bool),
             coalesce=lambda a, b: a or b,
         ),
         DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: TagConstraint(
-            name="Disallow owners from adding themselves as members",
-            description="Do not allow owners from adding themselves as members to this group or groups "
-            + "associated with this app",
             validator=lambda value: isinstance(value, bool),
             coalesce=lambda a, b: a or b,
         ),
         DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY: TagConstraint(
-            name="Disallow owners from adding themselves as owners",
-            description="Do not allow owners from adding themselves as owners to this group or groups "
-            + "associated with this app",
             validator=lambda value: isinstance(value, bool),
             coalesce=lambda a, b: a or b,
         ),

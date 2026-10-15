@@ -15,7 +15,7 @@ import type {EffectiveConstraintDetail} from './api/apiSchemas';
 // an OR over tags here would be the duplication the endpoint exists to remove.
 
 function entry(constraint: string, value: number | boolean): EffectiveConstraintDetail {
-  return {constraint, name: constraint, value, sources: []};
+  return {constraint, value, sources: []};
 }
 
 describe('effectiveTimeLimit', () => {

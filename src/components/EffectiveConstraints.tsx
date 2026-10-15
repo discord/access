@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {Link as RouterLink} from 'react-router-dom';
 
+import Box from '@mui/material/Box';
 import Accordion from '@mui/material/Accordion';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import AccordionSummary from '@mui/material/AccordionSummary';
@@ -17,7 +18,8 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 import {EffectiveConstraintDetail, EffectiveConstraintSourceDetail} from '../api/apiSchemas';
 import {timeLimitLabel} from '../constraints';
-import {byConstraintOrder, constraintLabel} from '../constraintCopy';
+import {byConstraintOrder, constraintDetail, constraintLabel} from '../constraintCopy';
+import {ConstraintHelpButton, ConstraintHelpRegion, useConstraintHelp} from './ConstraintHelp';
 
 const TIME_LIMIT_CONSTRAINTS = ['member_time_limit', 'owner_time_limit'];
 
@@ -28,10 +30,10 @@ function constraintRowLabel(entry: EffectiveConstraintDetail): string {
   const label = constraintLabel(entry.constraint);
   const value = entry.value;
   if (typeof value === 'number' && TIME_LIMIT_CONSTRAINTS.includes(entry.constraint)) {
-    return `${label} — ${timeLimitLabel(value)}`;
+    return `${label}: ${timeLimitLabel(value)}`;
   }
   // Booleans are simple flags: their presence in the list is the information,
-  // so appending "— Yes" would be noise. That holds because the API reports
+  // so appending ": Yes" would be noise. That holds because the API reports
   // only constraints in force -- a flag every tag setting it turns off is left
   // out of the response entirely (`_constraint_entry` in `api/models/tag.py`),
   // which matters since the tag form writes all four boolean keys on every
@@ -39,7 +41,7 @@ function constraintRowLabel(entry: EffectiveConstraintDetail): string {
   if (typeof value === 'boolean') {
     return label;
   }
-  return `${label} — ${value}`;
+  return `${label}: ${value}`;
 }
 
 // The text before the source's name, by origin. `direct` is absent on
@@ -92,6 +94,58 @@ function OriginText({source}: {source: EffectiveConstraintSourceDetail}) {
   );
 }
 
+/**
+ * One constraint in force, with its sources and its help.
+ *
+ * The help omits the paragraph about a tag's scope: this row can coalesce several
+ * tags, which need not agree on it, so the scope is a question for the tag pages
+ * the source column already links to.
+ */
+function ConstraintRow({entry}: {entry: EffectiveConstraintDetail}) {
+  const help = useConstraintHelp(entry.constraint);
+  const label = constraintLabel(entry.constraint);
+  const paragraphs = constraintDetail(entry.constraint);
+  return (
+    <>
+      <TableRow>
+        <TableCell sx={paragraphs.length > 0 && help.expanded ? {borderBottom: 'none'} : undefined}>
+          <Box sx={{display: 'flex', alignItems: 'center', gap: '4px'}}>
+            {constraintRowLabel(entry)}
+            {paragraphs.length > 0 && (
+              <ConstraintHelpButton
+                label={label}
+                expanded={help.expanded}
+                onToggle={help.toggle}
+                regionId={help.regionId}
+              />
+            )}
+          </Box>
+        </TableCell>
+        <TableCell sx={paragraphs.length > 0 && help.expanded ? {borderBottom: 'none'} : undefined}>
+          {(entry.sources ?? []).map((source, index) => (
+            <div key={`${source.tag_id}-${source.origin}-${source.source_id ?? index}`}>
+              <Link component={RouterLink} to={`/tags/${encodeURIComponent(source.tag_name)}`}>
+                {source.tag_name}
+              </Link>
+              {', '}
+              <OriginText source={source} />
+            </div>
+          ))}
+        </TableCell>
+      </TableRow>
+      {/* Only while open: a permanently mounted row would leave an empty `tr`
+          under every constraint, which a screen reader reads out as a row. */}
+      {paragraphs.length > 0 && help.expanded && (
+        <TableRow>
+          <TableCell colSpan={2} sx={{paddingTop: 0}}>
+            <ConstraintHelpRegion sections={[{paragraphs}]} expanded regionId={help.regionId} />
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  );
+}
+
 export default function EffectiveConstraints({constraints}: {constraints: EffectiveConstraintDetail[]}) {
   const [expanded, setExpanded] = React.useState(false);
 
@@ -122,20 +176,7 @@ export default function EffectiveConstraints({constraints}: {constraints: Effect
             </TableHead>
             <TableBody>
               {ordered.map((entry) => (
-                <TableRow key={entry.constraint}>
-                  <TableCell>{constraintRowLabel(entry)}</TableCell>
-                  <TableCell>
-                    {(entry.sources ?? []).map((source, index) => (
-                      <div key={`${source.tag_id}-${source.origin}-${source.source_id ?? index}`}>
-                        <Link component={RouterLink} to={`/tags/${encodeURIComponent(source.tag_name)}`}>
-                          {source.tag_name}
-                        </Link>
-                        {', '}
-                        <OriginText source={source} />
-                      </div>
-                    ))}
-                  </TableCell>
-                </TableRow>
+                <ConstraintRow key={entry.constraint} entry={entry} />
               ))}
             </TableBody>
           </Table>

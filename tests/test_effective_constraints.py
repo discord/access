@@ -325,7 +325,6 @@ async def test_effective_constraints_omits_unset_constraints(db: Db) -> None:
     result = effective_constraints(role)
     assert [entry["constraint"] for entry in result] == [Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY]
     assert result[0]["value"] == 86400
-    assert result[0]["name"] == Tag.CONSTRAINTS[Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY].name
 
 
 async def test_effective_constraints_omits_a_flag_every_tag_turns_off(db: Db) -> None:
