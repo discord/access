@@ -10,6 +10,7 @@ from fastapi import FastAPI
 
 from sqlalchemy import func, or_, select
 from api.config import settings
+from api.exceptions import ConflictError
 from api.extensions import Db
 from api.models import (
     AccessRequestStatus,
@@ -1543,15 +1544,21 @@ async def test_conditional_access_plugin_approval_of_taken_name_routes_to_review
     user: OktaUser,
 ) -> None:
     db.session.add(user)
-    await OktaGroupFactory.create_async(name="Already Taken")
     await db.session.commit()
 
     create_group_spy = mocker.patch.object(okta, "create_group")
     notification_hook = get_notification_hook()
     created_spy = mocker.patch.object(notification_hook, "access_group_request_created")
+
+    # The name is free when the request is filed and taken by the time the
+    # plugin approves it.
+    async def approve_after_name_is_taken(*args: Any, **kwargs: Any) -> list[ConditionalAccessResponse]:
+        await OktaGroupFactory.create_async(name="Already Taken")
+        return [ConditionalAccessResponse(approved=True, reason="Auto-Approved")]
+
     mocker.patch(
         "api.operations.create_group_request.evaluate_conditional_access",
-        return_value=[ConditionalAccessResponse(approved=True, reason="Auto-Approved")],
+        side_effect=approve_after_name_is_taken,
     )
 
     group_request = await CreateGroupRequest(
@@ -1568,6 +1575,124 @@ async def test_conditional_access_plugin_approval_of_taken_name_routes_to_review
     assert group_request.approved_group_id is None
     assert create_group_spy.call_count == 0
     assert created_spy.call_count == 1
+
+
+@pytest.mark.parametrize("requested_name", ["Already Taken", "already taken"])
+async def test_create_group_request_with_taken_name_raises_conflict(
+    app: FastAPI, db: Db, user: OktaUser, requested_name: str
+) -> None:
+    db.session.add(user)
+    await OktaGroupFactory.create_async(name="Already Taken")
+    await db.session.commit()
+
+    with pytest.raises(ConflictError, match="already exists"):
+        await CreateGroupRequest(
+            requester_user=user,
+            requested_group_name=requested_name,
+            requested_group_type="okta_group",
+            request_reason="Need this group",
+        ).execute()
+
+    assert (await db.session.scalars(select(GroupRequest))).first() is None
+
+
+async def test_create_group_request_with_deleted_group_name_succeeds(app: FastAPI, db: Db, user: OktaUser) -> None:
+    db.session.add(user)
+    await OktaGroupFactory.create_async(name="Formerly Taken", deleted_at=datetime.now(timezone.utc))
+    await db.session.commit()
+
+    group_request = await CreateGroupRequest(
+        requester_user=user,
+        requested_group_name="Formerly Taken",
+        requested_group_type="okta_group",
+        request_reason="Need this group",
+    ).execute()
+
+    assert group_request is not None
+    assert group_request.status == AccessRequestStatus.PENDING
+
+
+async def test_app_owner_auto_approval_of_taken_name_routes_to_reviewers(
+    app: FastAPI, db: Db, mocker: MockerFixture
+) -> None:
+    app_owner = await OktaUserFactory.create_async()
+    app_obj = await AppFactory.create_async()
+    owner_group = await AppGroupFactory.create_async(
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        app_id=app_obj.id,
+        is_owner=True,
+    )
+    await OktaUserGroupMemberFactory.create_async(user_id=app_owner.id, group_id=owner_group.id, is_owner=True)
+    group_name = f"App-{app_obj.name}-NewTeam"
+    await AppGroupFactory.create_async(name=group_name, app_id=app_obj.id)
+
+    # Let the request through the create-time check so approval meets the
+    # collision, as when another request creates the group in between.
+    mocker.patch("api.operations.create_group_request.is_group_name_taken", return_value=False)
+    create_group_spy = mocker.patch.object(okta, "create_group")
+    created_spy = mocker.patch.object(get_notification_hook(), "access_group_request_created")
+
+    group_request = await CreateGroupRequest(
+        requester_user=app_owner,
+        requested_group_name=group_name,
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        request_reason="Need team group for app",
+    ).execute()
+
+    assert group_request is not None
+    await db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.PENDING
+    assert group_request.approved_group_id is None
+    assert create_group_spy.call_count == 0
+    assert created_spy.call_count == 1
+
+
+async def test_post_group_request_with_taken_name_returns_409_via_http(
+    client: AsyncClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
+) -> None:
+    db.session.add(user)
+    await OktaGroupFactory.create_async(name="Already-Taken")
+    await db.session.commit()
+    mock_user(user.id)
+
+    rep = await client.post(
+        url_for("api-group-requests.group_requests_create"),
+        json=OktaGroupRequestBodyFactory.json(requested_group_name="Already-Taken"),
+    )
+
+    assert rep.status_code == 409
+    assert rep.headers["content-type"] == "application/problem+json"
+    assert rep.json()["detail"] == "A group named 'Already-Taken' already exists."
+
+
+async def test_approve_group_request_with_taken_name_returns_409_via_http(
+    client: AsyncClient, db: Db, user: OktaUser, url_for: Any
+) -> None:
+    db.session.add(user)
+    await db.session.commit()
+    group_request = await CreateGroupRequest(
+        requester_user=user,
+        requested_group_name="Taken-Later",
+        requested_group_type="okta_group",
+        request_reason="Need this group",
+    ).execute()
+    assert group_request is not None
+    group_request_id = group_request.id
+    await OktaGroupFactory.create_async(name="Taken-Later")
+    await db.session.commit()
+
+    rep = await client.put(
+        url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request_id),
+        json=ResolveGroupRequestBodyFactory.json(approved=True, reason="Approved"),
+    )
+
+    assert rep.status_code == 409
+    assert "A group named 'Taken-Later' already exists" in rep.json()["detail"]
+    group_request = await db.session.get(GroupRequest, group_request_id, populate_existing=True)
+    assert group_request is not None
+    assert group_request.status == AccessRequestStatus.PENDING
 
 
 async def test_app_owner_auto_approves_own_app_group_request_tagged(
@@ -1764,11 +1889,12 @@ async def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
     group_request.resolved_group_name = sensitive_group.name
     await db.session.commit()
 
-    await ApproveGroupRequest(
-        group_request=group_request,
-        approver_user=app_owner,
-        approval_reason="Approved",
-    ).execute()
+    with pytest.raises(ConflictError, match="already exists"):
+        await ApproveGroupRequest(
+            group_request=group_request,
+            approver_user=app_owner,
+            approval_reason="Approved",
+        ).execute()
 
     await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.PENDING, (
@@ -1833,11 +1959,12 @@ async def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
     group_request.resolved_group_name = existing_okta_group.name
     await db.session.commit()
 
-    await ApproveGroupRequest(
-        group_request=group_request,
-        approver_user=app_owner,
-        approval_reason="Approved",
-    ).execute()
+    with pytest.raises(ConflictError, match="already exists"):
+        await ApproveGroupRequest(
+            group_request=group_request,
+            approver_user=app_owner,
+            approval_reason="Approved",
+        ).execute()
 
     await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.PENDING, (
@@ -1973,11 +2100,12 @@ async def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
     group_request.resolved_group_name = sensitive_group.name.upper()
     await db.session.commit()
 
-    await ApproveGroupRequest(
-        group_request=group_request,
-        approver_user=app_owner,
-        approval_reason="Approved",
-    ).execute()
+    with pytest.raises(ConflictError, match="already exists"):
+        await ApproveGroupRequest(
+            group_request=group_request,
+            approver_user=app_owner,
+            approval_reason="Approved",
+        ).execute()
 
     await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.PENDING, "case-insensitive name collision must also be blocked"
