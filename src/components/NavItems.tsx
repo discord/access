@@ -137,7 +137,7 @@ export default function NavItems(props: NavItemsProps) {
             displayText="Assigned to Me"
             displayIcon={<RequestToMe />}
             sx={{pl: 4}}
-            tooltip="Individual access requests awaiting your approval"
+            tooltip="Individual access requests assigned to you for review"
           />
           <ListItemLink
             to="/requests"
@@ -161,7 +161,7 @@ export default function NavItems(props: NavItemsProps) {
             displayText="Assigned to Me"
             displayIcon={<RequestToMe />}
             sx={{pl: 4}}
-            tooltip="Role-based access requests awaiting your approval"
+            tooltip="Role-based access requests assigned to you for review"
           />
           <ListItemLink
             to="/role-requests"
@@ -195,7 +195,7 @@ export default function NavItems(props: NavItemsProps) {
             displayText="Assigned to Me"
             displayIcon={<RequestToMe />}
             sx={{pl: 4}}
-            tooltip="Group creation requests awaiting your approval"
+            tooltip="Group creation requests assigned to you for review"
           />
           <ListItemLink
             to="/group-requests"

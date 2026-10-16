@@ -10,8 +10,6 @@ from sqlalchemy.orm import joinedload, selectin_polymorphic
 from api.extensions import db
 from api.operations._fan_out import defer_or_drain_fan_out
 from api.models import (
-    AccessRequest,
-    AccessRequestStatus,
     App,
     AppGroup,
     OktaGroup,
@@ -20,7 +18,11 @@ from api.models import (
     OktaUserGroupMember,
     RoleGroup,
     RoleGroupMap,
-    RoleRequest,
+)
+from api.operations._obsolete_requests import (
+    pending_access_requests_for_group,
+    pending_role_requests_for_group,
+    snapshot_obsolete_request_reviewers,
 )
 from api.operations.reject_access_request import RejectAccessRequest
 from api.operations.reject_role_request import RejectRoleRequest
@@ -91,6 +93,9 @@ class DeleteGroup:
                 }
             )
         )
+
+        # Capture assigned reviewers before deleting changes ownership; see `snapshot_assigned_reviewers`.
+        access_reviewers, role_reviewers = await snapshot_obsolete_request_reviewers(group.id)
 
         if self.sync_to_okta:
             okta_tasks.append(asyncio.create_task(okta.delete_group(group.id)))
@@ -270,41 +275,22 @@ class DeleteGroup:
         await db.session.commit()
 
         # Reject all pending access requests for this group
-        obsolete_access_requests = (
-            await db.session.scalars(
-                select(AccessRequest)
-                .where(AccessRequest.requested_group_id == group.id)
-                .where(AccessRequest.status == AccessRequestStatus.PENDING)
-                .where(AccessRequest.resolved_at.is_(None))
-            )
-        ).all()
-        for obsolete_access_request in obsolete_access_requests:
+        for obsolete_access_request in await pending_access_requests_for_group(group.id):
             await RejectAccessRequest(
                 access_request=obsolete_access_request,
                 rejection_reason="Closed because the requested group was deleted",
                 current_user_id=current_user_id,
+                assigned_reviewers=access_reviewers.get(obsolete_access_request.id),
             ).execute()
 
         # Reject all pending role requests touching this group, either as the
         # requested target or as the requester role.
-        obsolete_role_requests = (
-            await db.session.scalars(
-                select(RoleRequest)
-                .where(
-                    or_(
-                        RoleRequest.requested_group_id == group.id,
-                        RoleRequest.requester_role_id == group.id,
-                    )
-                )
-                .where(RoleRequest.status == AccessRequestStatus.PENDING)
-                .where(RoleRequest.resolved_at.is_(None))
-            )
-        ).all()
-        for obsolete_role_request in obsolete_role_requests:
+        for obsolete_role_request in await pending_role_requests_for_group(group.id):
             await RejectRoleRequest(
                 role_request=obsolete_role_request,
                 rejection_reason="Closed because a group in this role request was deleted",
                 current_user_id=current_user_id,
+                assigned_reviewers=role_reviewers.get(obsolete_role_request.id),
             ).execute()
 
         # End all tag mappings for this group
