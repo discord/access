@@ -13,7 +13,6 @@ import TimelineItem from '@mui/lab/TimelineItem';
 import TimelineOppositeContent, {timelineOppositeContentClasses} from '@mui/lab/TimelineOppositeContent';
 import TimelineSeparator from '@mui/lab/TimelineSeparator';
 import Alert from '@mui/material/Alert';
-import Autocomplete from '@mui/material/Autocomplete';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -26,7 +25,6 @@ import Grid from '@mui/material/Grid';
 import Link from '@mui/material/Link';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import {AutocompleteElement, FormContainer, SelectElement, TextFieldElement, useFormContext} from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
@@ -70,6 +68,7 @@ import Loading from '../../components/Loading';
 import accessConfig from '../../config/accessConfig';
 import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
 import PluginConfigDisplay from './PluginConfigDisplay';
+import TagsField, {inheritedAppTags} from './TagsField';
 import ChangeTitle from '../../tab-title';
 import NotFound from '../NotFound';
 
@@ -222,15 +221,11 @@ export default function ReadGroupRequest() {
   const [appName, setAppName] = React.useState('');
   const [appSearchInput, setAppSearchInput] = React.useState('');
   const [selectedTags, setSelectedTags] = React.useState<TagListItem[]>([]);
+  // The app the approver has settled on, which is the requested one until they
+  // change it. Tracked by id because the group inherits that app's tags.
+  const [resolvedAppId, setResolvedAppId] = React.useState<string | null>(null);
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [ownershipUntil, setOwnershipUntil] = React.useState<string | null>(null);
-
-  // The group being tagged does not exist yet, so there is no id to resolve
-  // constraints against — only the tags the approver has picked. That is what
-  // the endpoint's tag mode is for, and it keeps the coalescing on the server
-  // here too.
-  const tagConstraints = useConstraintsForTags(selectedTags.map((tag) => tag.id));
-  const ownershipTimeLimit = tagConstraints.timeLimit(true);
 
   const {data, isError, isLoading} = useGroupRequestById({
     pathParams: {groupRequestId: id ?? ''},
@@ -268,9 +263,46 @@ export default function ReadGroupRequest() {
   React.useEffect(() => {
     if (!appSeeded && requestedAppData?.name) {
       setAppName(requestedAppData.name);
+      setResolvedAppId(requestedAppData.id ?? null);
       setAppSeeded(true);
     }
   }, [requestedAppData, appSeeded]);
+
+  // Reloaded for the resolved app, which is the requested one until the
+  // approver picks another; the app search results carry no tags of their own.
+  // React Query serves the requested app from cache while the two agree.
+  const {data: resolvedAppData} = useAppById(
+    {pathParams: {appId: resolvedAppId ?? ''}},
+    {enabled: resolvedAppId != null && groupType === 'app_group'},
+  );
+
+  // Only an app group inherits an app's tags, so a type the approver has
+  // switched away from `app_group` contributes none.
+  const inheritedTags = React.useMemo(
+    () =>
+      groupType === 'app_group'
+        ? inheritedAppTags(
+            resolvedAppData,
+            selectedTags.map((tag) => tag.id),
+          )
+        : null,
+    [groupType, resolvedAppData, selectedTags],
+  );
+
+  // The group being tagged does not exist yet, so there is no id to resolve
+  // constraints against — only the tags it will be created with. That is what
+  // the endpoint's tag mode is for, and it keeps the coalescing on the server
+  // here too.
+  //
+  // An app group carries the app's tags on top of the chosen ones, so both go
+  // in: asking about the chosen tags alone reports weaker constraints than
+  // creation applies, and the approver is offered durations that
+  // `ApproveGroupRequest` then quietly shortens.
+  const tagConstraints = useConstraintsForTags([
+    ...selectedTags.map((tag) => tag.id),
+    ...(inheritedTags?.tags ?? []).map((tag) => tag.id),
+  ]);
+  const ownershipTimeLimit = tagConstraints.timeLimit(true);
 
   const isAppOwner = React.useMemo<boolean>(() => {
     if (admin || ownRequest || requestedGroupType !== 'app_group' || !requestedAppId) {
@@ -809,6 +841,7 @@ export default function ReadGroupRequest() {
                                         onChange={(value) => {
                                           setGroupType(value);
                                           setAppName('');
+                                          setResolvedAppId(null);
                                         }}
                                         required
                                         // `readOnly`, not `disabled`: react-hook-form omits a
@@ -840,8 +873,10 @@ export default function ReadGroupRequest() {
                                               option.id == value?.id,
                                             onInputChange: (_event: React.SyntheticEvent, newInputValue: string) =>
                                               setAppSearchInput(newInputValue),
-                                            onChange: (_event: React.SyntheticEvent, value: AppDetail | null) =>
-                                              setAppName(value?.name ?? ''),
+                                            onChange: (_event: React.SyntheticEvent, value: AppDetail | null) => {
+                                              setAppName(value?.name ?? '');
+                                              setResolvedAppId(value?.id ?? null);
+                                            },
                                             // `readOnly`, not `disabled`: react-hook-form clears a disabled field's value, and
                                             // rhf-mui forwards `autocompleteProps.disabled` into `useController`, so disabling
                                             // this would drop the app from the submitted form.
@@ -920,7 +955,10 @@ export default function ReadGroupRequest() {
                                     }}
                                   />
                                 </FormControl>
-                                <Grid container columnSpacing={2} rowSpacing={0} alignItems="center">
+                                {/* Top-aligned, not centred: the Tags column grows when the
+                                    app contributes tags of its own, and centring would drop the
+                                    duration field below the field beside it. */}
+                                <Grid container columnSpacing={2} rowSpacing={0} alignItems="flex-start">
                                   {ownershipTimeLimit != null && (
                                     <Grid item xs={12}>
                                       <Typography variant="subtitle2" color="text.accent" sx={{pt: 1}}>
@@ -939,21 +977,12 @@ export default function ReadGroupRequest() {
                                   </Grid>
                                   <Grid item xs={6}>
                                     <FormControl margin="normal" fullWidth>
-                                      <Autocomplete
-                                        multiple
+                                      <TagsField
                                         options={tagSearchOptions}
-                                        value={selectedTags}
-                                        getOptionLabel={(option: TagListItem) => option.name}
-                                        onInputChange={(_event, newInputValue) => setTagSearchInput(newInputValue)}
-                                        onChange={(_event, newValue) => setSelectedTags(newValue)}
-                                        renderTags={(value: TagListItem[], getTagProps) =>
-                                          value.map((option: TagListItem, index: number) => (
-                                            <Chip variant="outlined" label={option.name} {...getTagProps({index})} />
-                                          ))
-                                        }
-                                        renderInput={(params) => (
-                                          <TextField {...params} label="Tags" placeholder="Tags" />
-                                        )}
+                                        selected={selectedTags}
+                                        inherited={inheritedTags}
+                                        onSelectedChange={setSelectedTags}
+                                        onSearchChange={setTagSearchInput}
                                       />
                                     </FormControl>
                                   </Grid>

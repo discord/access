@@ -3,10 +3,8 @@ import dayjs, {Dayjs} from 'dayjs';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import {Link as RouterLink, useNavigate} from 'react-router-dom';
 import Alert from '@mui/material/Alert';
-import Autocomplete from '@mui/material/Autocomplete';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
@@ -16,12 +14,12 @@ import FormControl from '@mui/material/FormControl';
 import Grid from '@mui/material/Grid';
 import Link from '@mui/material/Link';
 import GroupRequestIcon from '@mui/icons-material/GroupAdd';
-import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
 import {FormContainer, AutocompleteElement, SelectElement, TextFieldElement} from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
+import {useFormContext, useWatch} from 'react-hook-form';
 
 import {
   useGroupRequestsCreate,
@@ -34,6 +32,7 @@ import {
 } from '../../api/apiComponents';
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
+import TagsField, {inheritedAppTags} from './TagsField';
 import {
   AppDetail,
   AppGroupDetail,
@@ -42,8 +41,9 @@ import {
   GroupDetail,
   GroupRequestDetail,
   GroupSummary,
-  TagDetail,
+  TagListItem,
 } from '../../api/apiSchemas';
+import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 
@@ -56,6 +56,53 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
 } as const;
 
 const GROUP_TYPE_OPTIONS = Object.entries(GROUP_TYPE_ID_TO_LABELS).map(([id, label]) => ({id, label}));
+
+// Offers only the durations the tags in force allow, and moves the field off
+// one they do not. A request the constraints forbid is not refused on submit --
+// `ApproveGroupRequest` shortens it on approval instead -- so a duration left
+// on offer here is one the requester is told they asked for and does not get.
+function OwnershipLengthField({
+  timeLimit,
+  blocked,
+  onChange,
+}: {
+  timeLimit: number | null;
+  blocked: boolean;
+  onChange: (value: string) => void;
+}) {
+  const {control, setValue} = useFormContext();
+  const selected = useWatch({control, name: 'ownershipUntil'});
+
+  const [options, defaultId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
+    // While the answer is unknown the limit reads as null. Holding the narrower
+    // list rather than re-offering the full one keeps a duration the tags forbid
+    // from being briefly clickable.
+    if (timeLimit == null) {
+      return blocked ? [[], accessConfig.DEFAULT_ACCESS_TIME] : [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
+    }
+    const [lastId, filtered] = filterUntilLabels(timeLimit);
+    return [filtered, lastId];
+  }, [timeLimit, blocked]);
+
+  React.useEffect(() => {
+    if (timeLimit == null) return;
+    if (!options.some((option) => option.id === selected)) {
+      setValue('ownershipUntil', defaultId);
+      onChange(defaultId);
+    }
+  }, [timeLimit, options, defaultId, selected, setValue, onChange]);
+
+  return (
+    <SelectElement
+      fullWidth
+      label="Requested ownership length"
+      name="ownershipUntil"
+      options={options}
+      onChange={(value) => onChange(value)}
+      required
+    />
+  );
+}
 
 const APP_GROUP_PREFIX = 'App-';
 const APP_NAME_APP_GROUP_SEPARATOR = '-';
@@ -72,6 +119,19 @@ const UNTIL_ID_TO_LABELS: Record<string, string> = {
 } as const;
 
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id, label}));
+
+const UNTIL_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
+);
+
+// The durations still on offer under `timeLimit`, and the longest of them.
+// Indefinite is not among them, and neither is any duration over the limit;
+// Custom stays, since its own picker is bounded separately.
+function filterUntilLabels(timeLimit: number): [string, Array<{id: string; label: string}>] {
+  const withinLimit = Object.entries(UNTIL_NUMERIC_ID_TO_LABELS).filter(([key]) => Number(key) <= timeLimit);
+  const labels = [...withinLimit, ['custom', 'Custom']].map(([id, label]) => ({id, label}));
+  return [withinLimit.at(-1)?.[0] ?? 'custom', labels];
+}
 
 /**
  * The full name a request would ask for: the typed name with the prefix its type
@@ -140,7 +200,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const [appSearchInput, setAppSearchInput] = React.useState('');
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [nameInput, setNameInput] = React.useState('');
-  const [selectedTags, setSelectedTags] = React.useState<Array<TagDetail>>([]);
+  const [selectedTags, setSelectedTags] = React.useState<Array<TagListItem>>([]);
   const [ownershipUntil, setOwnershipUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
@@ -192,6 +252,25 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     {enabled: effectiveAppId != null},
   );
   const requestPluginId = pluginIdForApp(effectiveAppDetail);
+
+  // `effectiveAppId` already covers both ways a request lands under an app, so a
+  // name typed with an "App-...-" prefix inherits that app's tags too.
+  const inheritedTags = React.useMemo(
+    () =>
+      inheritedAppTags(
+        effectiveAppDetail,
+        selectedTags.map((tag) => tag.id),
+      ),
+    [effectiveAppDetail, selectedTags],
+  );
+
+  // The group does not exist yet, so its constraints come from the tags it
+  // would be created with rather than from an id.
+  const constraints = useConstraintsForTags([
+    ...selectedTags.map((tag) => tag.id),
+    ...(inheritedTags?.tags ?? []).map((tag) => tag.id),
+  ]);
+  const ownershipTimeLimit = constraints.timeLimit(true);
 
   // Look up the requested name so a taken one is flagged before submitting.
   // The search matches substrings of names and descriptions, so compare the
@@ -383,31 +462,26 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
           />
         </FormControl>
         <FormControl margin="normal" fullWidth>
-          <Autocomplete
-            multiple
+          <TagsField
             options={tagSearchOptions}
-            value={selectedTags}
-            getOptionLabel={(option) => option.name}
-            onInputChange={(_event, newVal) => setTagSearchInput(newVal)}
-            onChange={(_event, newVal) => setSelectedTags(newVal)}
-            renderTags={(value: TagDetail[], getTagProps) =>
-              value.map((option: TagDetail, index: number) => (
-                <Chip variant="outlined" label={option.name} {...getTagProps({index})} />
-              ))
-            }
-            renderInput={(params) => <TextField {...params} label="Tags" placeholder="Tags" />}
+            selected={selectedTags}
+            inherited={inheritedTags}
+            onSelectedChange={setSelectedTags}
+            onSearchChange={setTagSearchInput}
           />
         </FormControl>
         <FormControl margin="normal" fullWidth>
-          <Grid container alignItems="center" spacing={2}>
+          {ownershipTimeLimit != null && (
+            <Typography variant="subtitle2" color="text.accent" sx={{marginBottom: '12px'}}>
+              {'Ownership is limited to ' + timeLimitLabel(ownershipTimeLimit) + ' by a tag constraint.'}
+            </Typography>
+          )}
+          <Grid container alignItems="flex-start" spacing={2}>
             <Grid item xs={6}>
-              <SelectElement
-                fullWidth
-                label="Requested ownership length"
-                name="ownershipUntil"
-                options={UNTIL_OPTIONS}
-                onChange={(value) => setOwnershipUntil(value)}
-                required
+              <OwnershipLengthField
+                timeLimit={ownershipTimeLimit}
+                blocked={constraints.blocked}
+                onChange={setOwnershipUntil}
               />
             </Grid>
             <Grid item xs={6}>
