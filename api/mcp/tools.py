@@ -62,6 +62,7 @@ from sqlalchemy.orm import joinedload, noload, selectin_polymorphic, selectinloa
 
 from api.auth.permissions import can_manage_group
 from api.context import get_request_context
+from api.exceptions import ConflictError
 from api.extensions import db as _db_shim
 from api.mcp.auth import (
     MCP_SCOPE_CREATE_REQUESTS,
@@ -1495,16 +1496,19 @@ def _register_write_tools(mcp: "FastMCP") -> None:
                     current_user_id=current_user_id,
                 ).execute()
 
-            gr = await CreateGroupRequest(
-                requester_user=requester,
-                requested_group_name=body.requested_group_name,
-                requested_group_description=body.requested_group_description or "",
-                requested_group_type=body.requested_group_type,
-                requested_app_id=requested_app_id,
-                requested_group_tags=body.requested_group_tags,
-                requested_ownership_ending_at=body.requested_ownership_ending_at,
-                request_reason=body.request_reason or "",
-            ).execute()
+            try:
+                gr = await CreateGroupRequest(
+                    requester_user=requester,
+                    requested_group_name=body.requested_group_name,
+                    requested_group_description=body.requested_group_description or "",
+                    requested_group_type=body.requested_group_type,
+                    requested_app_id=requested_app_id,
+                    requested_group_tags=body.requested_group_tags,
+                    requested_ownership_ending_at=body.requested_ownership_ending_at,
+                    request_reason=body.request_reason or "",
+                ).execute()
+            except ConflictError as exc:
+                return _error(exc.detail)
             if gr is None:
                 return _error("Group request could not be created")
             # Drop cached ORM state so the response reflects what the operation
