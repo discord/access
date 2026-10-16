@@ -128,16 +128,24 @@ run-backend: .env install-plugins db-migrate
 # Database / migrations
 # ----------------------------------------------------------------------
 
+# Holds the sqlite file LOCAL_DB_URI points at. sqlite does not create a
+# missing parent directory -- it fails with a bare "unable to open database
+# file" -- so every target that opens the local DB takes this as an order-only
+# prerequisite: the directory must exist, but writes into it must not mark
+# those targets out of date.
+instance:
+	@mkdir -p $@
+
 .PHONY: db-migrate
-db-migrate: dev
+db-migrate: dev | instance
 	DATABASE_URI=$(LOCAL_DB_URI) uv run alembic upgrade head
 
 .PHONY: db-downgrade
-db-downgrade: dev
+db-downgrade: dev | instance
 	DATABASE_URI=$(LOCAL_DB_URI) uv run alembic downgrade -1
 
 .PHONY: db-current
-db-current: dev
+db-current: dev | instance
 	DATABASE_URI=$(LOCAL_DB_URI) uv run alembic current
 
 .PHONY: db-history
@@ -145,7 +153,7 @@ db-history: dev
 	uv run alembic history
 
 .PHONY: db-revision
-db-revision: dev
+db-revision: dev | instance
 	@if [ -z "$(msg)" ]; then echo "usage: make db-revision msg=\"<message>\""; exit 1; fi
 	DATABASE_URI=$(LOCAL_DB_URI) uv run alembic revision --autogenerate -m "$(msg)"
 
@@ -159,15 +167,15 @@ db-init: db-migrate
 # ----------------------------------------------------------------------
 
 .PHONY: sync
-sync: install-plugins
+sync: install-plugins | instance
 	DATABASE_URI=$(LOCAL_DB_URI) uv run access sync
 
 .PHONY: notify
-notify: install-plugins
+notify: install-plugins | instance
 	DATABASE_URI=$(LOCAL_DB_URI) uv run access notify
 
 .PHONY: shell
-shell: .env install-plugins
+shell: .env install-plugins | instance
 	set -a && . ./.env && set +a && \
 	DATABASE_URI=$(LOCAL_DB_URI) uv run access shell
 
@@ -179,7 +187,7 @@ shell: .env install-plugins
 # at the same migrated instance/access.db the dev server uses, rather than
 # whatever DATABASE_URI .env happens to set.
 .PHONY: sync-app-groups
-sync-app-groups: .env install-plugins
+sync-app-groups: .env install-plugins | instance
 	set -a && . ./.env && set +a && \
 	DATABASE_URI=$(LOCAL_DB_URI) uv run access sync-app-groups
 

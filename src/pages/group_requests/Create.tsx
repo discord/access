@@ -1,7 +1,7 @@
 import * as React from 'react';
 import dayjs, {Dayjs} from 'dayjs';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
-import {useNavigate} from 'react-router-dom';
+import {Link as RouterLink, useNavigate} from 'react-router-dom';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -12,6 +12,7 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import FormControl from '@mui/material/FormControl';
 import Grid from '@mui/material/Grid';
+import Link from '@mui/material/Link';
 import GroupRequestIcon from '@mui/icons-material/GroupAdd';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
@@ -23,6 +24,7 @@ import {useFormContext, useWatch} from 'react-hook-form';
 import {
   useGroupRequestsCreate,
   useApps,
+  useGroups,
   useAppById,
   useTags,
   GroupRequestsCreateError,
@@ -38,6 +40,7 @@ import {
   OktaUserDetail,
   GroupDetail,
   GroupRequestDetail,
+  GroupSummary,
   TagListItem,
 } from '../../api/apiSchemas';
 import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
@@ -128,6 +131,34 @@ function filterUntilLabels(timeLimit: number): [string, Array<{id: string; label
   const withinLimit = Object.entries(UNTIL_NUMERIC_ID_TO_LABELS).filter(([key]) => Number(key) <= timeLimit);
   const labels = [...withinLimit, ['custom', 'Custom']].map(([id, label]) => ({id, label}));
   return [withinLimit.at(-1)?.[0] ?? 'custom', labels];
+}
+
+/**
+ * The full name a request would ask for: the typed name with the prefix its type
+ * implies. An okta_group name typed as "App-<app>-…" takes the matched app's
+ * canonical spelling, since such a request is filed as an app group. One typed as
+ * "Role-…" is filed as a role group and is already the full role name, so it is
+ * returned as typed.
+ */
+function requestedGroupName(
+  type: CreateGroupRequestForm['type'],
+  name: string,
+  selectedApp: AppDetail | null,
+  detectedApp: AppSummary | null,
+): string {
+  if (type === 'okta_group' && name.startsWith(APP_GROUP_PREFIX) && detectedApp != null) {
+    const withoutPrefix = name.slice(APP_GROUP_PREFIX.length);
+    const sepIdx = withoutPrefix.indexOf(APP_NAME_APP_GROUP_SEPARATOR);
+    const rest = withoutPrefix.slice(sepIdx + APP_NAME_APP_GROUP_SEPARATOR.length);
+    return APP_GROUP_PREFIX + detectedApp.name + APP_NAME_APP_GROUP_SEPARATOR + rest;
+  }
+  if (type === 'app_group') {
+    return APP_GROUP_PREFIX + (selectedApp?.name ?? '') + APP_NAME_APP_GROUP_SEPARATOR + name;
+  }
+  if (type === 'role_group') {
+    return ROLE_GROUP_PREFIX + name;
+  }
+  return name;
 }
 
 interface CreateGroupRequestForm {
@@ -241,6 +272,23 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   ]);
   const ownershipTimeLimit = constraints.timeLimit(true);
 
+  // Look up the requested name so a taken one is flagged before submitting.
+  // The search matches substrings of names and descriptions, so compare the
+  // results exactly; names are unique ignoring case.
+  const candidateName =
+    nameInput === '' || (groupType === 'app_group' && selectedApp == null)
+      ? ''
+      : requestedGroupName(groupType, nameInput, selectedApp, detectedApp);
+  const {data: sameNameGroupData} = useGroups(
+    {queryParams: {page: 1, size: 50, q: candidateName}},
+    {enabled: candidateName !== ''},
+  );
+  const nameTaken =
+    candidateName !== '' &&
+    (sameNameGroupData?.items ?? []).some(
+      (group: GroupSummary) => group.name.toLowerCase() === candidateName.toLowerCase(),
+    );
+
   const {data: tagSearchData} = useTags({
     queryParams: {page: 1, size: 10, q: tagSearchInput},
   });
@@ -250,7 +298,6 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     setSubmitting(true);
 
     let effectiveType = formData.type;
-    let groupName = formData.name;
     let appId: string | undefined = undefined;
 
     if (formData.type === 'okta_group' && formData.name.startsWith(APP_GROUP_PREFIX) && detectedAppName === '') {
@@ -268,19 +315,12 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     } else if (formData.type === 'okta_group' && formData.name.startsWith(APP_GROUP_PREFIX) && detectedApp != null) {
       effectiveType = 'app_group';
       appId = detectedApp.id;
-      const withoutPrefix = formData.name.slice(APP_GROUP_PREFIX.length);
-      const sepIdx = withoutPrefix.indexOf(APP_NAME_APP_GROUP_SEPARATOR);
-      const rest = withoutPrefix.slice(sepIdx + APP_NAME_APP_GROUP_SEPARATOR.length);
-      groupName = APP_GROUP_PREFIX + detectedApp.name + APP_NAME_APP_GROUP_SEPARATOR + rest;
     } else if (formData.type === 'okta_group' && formData.name.startsWith(ROLE_GROUP_PREFIX)) {
       effectiveType = 'role_group';
-      groupName = ROLE_GROUP_PREFIX + formData.name.slice(ROLE_GROUP_PREFIX.length);
     } else if (formData.type === 'app_group') {
-      groupName = APP_GROUP_PREFIX + (selectedApp?.name ?? '') + APP_NAME_APP_GROUP_SEPARATOR + formData.name;
       appId = selectedApp?.id;
-    } else if (formData.type === 'role_group') {
-      groupName = ROLE_GROUP_PREFIX + formData.name;
     }
+    const groupName = requestedGroupName(formData.type, formData.name, selectedApp, detectedApp);
 
     const requestedPluginData = extractRequestedPluginData(formData as any);
 
@@ -396,6 +436,15 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               />
             </Box>
           </Box>
+          {nameTaken && (
+            <Alert severity="error" sx={{mt: 1}}>
+              A group named "{candidateName}" already exists. To join it,{' '}
+              <Link component={RouterLink} to="/requests" color="inherit" onClick={() => props.setOpen(false)}>
+                request access to it
+              </Link>{' '}
+              instead.
+            </Alert>
+          )}
         </FormControl>
         <FormControl margin="normal" fullWidth>
           <TextFieldElement
@@ -469,7 +518,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       </DialogContent>
       <DialogActions>
         <Button onClick={() => props.setOpen(false)}>Cancel</Button>
-        <Button type="submit" disabled={submitting}>
+        <Button type="submit" disabled={submitting || nameTaken}>
           {submitting ? <CircularProgress size={24} /> : 'Submit'}
         </Button>
       </DialogActions>

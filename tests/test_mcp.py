@@ -44,7 +44,7 @@ from api.mcp.auth import (
 )
 from api.models import App, AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
-from tests.factories import RoleGroupFactory
+from tests.factories import OktaGroupFactory, RoleGroupFactory
 
 
 @asynccontextmanager
@@ -1018,6 +1018,36 @@ async def test_create_group_request_allowed_for_authenticated_user(
     assert payload["requested_group_name"] == "SomeNewGroup"
     assert payload["requested_group_type"] == "okta_group"
     assert payload["status"] == "PENDING"
+
+
+async def test_create_group_request_with_taken_name_returns_error(
+    with_mcp_enabled: None,
+    db: Db,
+    user: OktaUser,
+) -> None:
+    """A name a live group already uses comes back as an error envelope,
+    matching the 409 from POST /api/group-requests."""
+    db.session.add(user)
+    await OktaGroupFactory.create_async(name="AlreadyTaken")
+    await db.session.commit()
+    from api.mcp.auth import reset_mcp_identity
+    from api.mcp.server import create_mcp_server
+
+    mcp = create_mcp_server()
+
+    token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS})))
+    try:
+        result = await _call_tool(
+            mcp,
+            "create_group_request",
+            group_name="AlreadyTaken",
+            group_type="okta_group",
+            reason="need a new team group",
+        )
+    finally:
+        reset_mcp_identity(token)
+    payload = json.loads(result)
+    assert payload == {"error": "A group named 'AlreadyTaken' already exists."}
 
 
 async def test_create_group_request_requires_app_id_for_app_group(

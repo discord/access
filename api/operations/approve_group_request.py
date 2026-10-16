@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any, Optional
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
+from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.context import get_request_context
 from api.exceptions import ConflictError, InvalidRequestError
@@ -23,6 +23,7 @@ from api.models import (
 )
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.app_group import get_access_owners
+from api.models.okta_group import is_group_name_taken
 from api.models.tag import effective_ended_at
 from api.operations._fan_out import defer_notification
 from api.operations.constraints.check_for_self_add import CheckForSelfAdd
@@ -223,15 +224,13 @@ class ApproveGroupRequest:
         ):
             return group_request
 
-        existing_group = (
-            await db.session.scalars(
-                select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-                .where(func.lower(OktaGroup.name) == func.lower(resolved_name))
-                .where(OktaGroup.deleted_at.is_(None))
+        # Raise rather than leave the request pending: otherwise the approver sees a
+        # successful response for an approval that created nothing.
+        if await is_group_name_taken(resolved_name):
+            raise ConflictError(
+                f"A group named '{resolved_name}' already exists. Reject this request, "
+                "or approve it under a different name."
             )
-        ).first()
-        if existing_group is not None:
-            return group_request
 
         # Resolve the plugin config the new group will carry, and re-validate it here
         # with the rest of the validation: the app or its plugin config may have

@@ -8,7 +8,7 @@ import logging
 from api.context import get_request_context
 from sqlalchemy import select
 
-from api.exceptions import InvalidRequestError
+from api.exceptions import ConflictError, InvalidRequestError
 from api.extensions import db
 from api.models import (
     AccessRequestStatus,
@@ -20,6 +20,7 @@ from api.models import (
     Tag,
 )
 from api.models.app_group import get_access_owners, get_app_managers
+from api.models.okta_group import is_group_name_taken
 from api.models.tag import coalesce_ended_at
 from api.operations.approve_group_request import ApproveGroupRequest
 from api.operations.reject_group_request import RejectGroupRequest
@@ -114,6 +115,11 @@ class CreateGroupRequest:
             if len(tags) != len(self.requested_group_tags):
                 return None
 
+        # Approval can never create a group whose name is taken, so refuse the
+        # request now instead of leaving it for a reviewer to discover.
+        if await is_group_name_taken(self.requested_group_name):
+            raise ConflictError(f"A group named '{self.requested_group_name}' already exists.")
+
         # Apply tag ownership time constraints to requested_ownership_ending_at
         # Ensures that if tags have ownership time limits, they are enforced
         coalesced_ownership_ending_at = coalesce_ended_at(
@@ -146,14 +152,19 @@ class CreateGroupRequest:
             app_owner_user_ids = {u.id for u in await get_app_managers(app.id)}
 
             if requester.id in app_owner_user_ids:
-                await ApproveGroupRequest(
-                    group_request=group_request,
-                    approver_user=requester,
-                    approval_reason="Requester owns parent app and can create app groups",
-                    notify=False,
-                    bypass_self_approval=True,
-                ).execute()
-                return group_request
+                try:
+                    await ApproveGroupRequest(
+                        group_request=group_request,
+                        approver_user=requester,
+                        approval_reason="Requester owns parent app and can create app groups",
+                        notify=False,
+                        bypass_self_approval=True,
+                    ).execute()
+                    return group_request
+                except ConflictError as e:
+                    # The name was taken after the check above; the request is
+                    # already saved, so route it to reviewers like any other.
+                    logger.warning("App owner auto-approval of group request %s failed: %s", group_request.id, e)
 
         # Fetch the users to notify
         # If app group, notify app managers; otherwise notify access owners
@@ -206,7 +217,7 @@ class CreateGroupRequest:
                             ending_at=response.ending_at,
                             notify=False,
                         ).execute()
-                    except InvalidRequestError as e:
+                    except (ConflictError, InvalidRequestError) as e:
                         logger.warning(
                             "Conditional access approval of group request %s failed: %s", group_request.id, e
                         )

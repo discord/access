@@ -1,3 +1,4 @@
+import * as React from 'react';
 import {render, screen, waitFor, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
@@ -18,14 +19,30 @@ const APP = {
 // How the Tags field spells an inherited tag.
 const INHERITED_CHIP = `${APP_TAG.name} (${APP_NAME})`;
 
-const USER = {id: 'user-000000000000', email: 'dana@example.com'} as unknown as OktaUserDetail;
+const createMutate = vi.fn();
+const EXISTING_GROUPS = [
+  {id: 'existing-group-000000', type: 'okta_group', name: 'Platform-Admins'},
+  {id: 'existing-role-0000000', type: 'role_group', name: 'Role-Platform-Engineers'},
+];
+
+const USER = {
+  id: 'user-000000000000000',
+  email: 'user@example.com',
+  active_group_memberships: [],
+  active_group_ownerships: [],
+} as unknown as OktaUserDetail;
 
 const constraintsAskedFor = vi.fn();
 // The owner-side limit the app's tag imposes, as the reader would report it.
 const OWNER_LIMIT_SECONDS = 7776000;
 let reportLimit = true;
 
-vi.mock('react-router-dom', () => ({useNavigate: () => vi.fn()}));
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => vi.fn(),
+  Link: React.forwardRef<HTMLAnchorElement, {to: string; children: React.ReactNode}>(({to, ...rest}, ref) => (
+    <a ref={ref} href={to} {...rest} />
+  )),
+}));
 
 vi.mock('../../constraints', () => ({
   timeLimitLabel: (seconds: number) => `${seconds / 86400} days`,
@@ -44,23 +61,38 @@ vi.mock('../../constraints', () => ({
 }));
 
 vi.mock('../../api/apiComponents', () => ({
-  useGroupRequestsCreate: () => ({mutate: vi.fn()}),
+  useGroupRequestsCreate: () => ({mutate: createMutate}),
   useApps: () => ({data: {items: [APP]}}),
-  useAppById: () => ({data: APP, isLoading: false}),
+  // Honours `enabled` like the real hook: a request with no app in play must
+  // not read as one carrying the app's tags.
+  useAppById: (_variables: unknown, options?: {enabled?: boolean}) => ({
+    data: options?.enabled === false ? undefined : APP,
+    isLoading: false,
+  }),
   useTags: () => ({data: {items: []}}),
+  // Mirrors the API's search: a case-insensitive substring match on the name.
+  useGroups: ({queryParams}: {queryParams: {q: string}}, options?: {enabled?: boolean}) => ({
+    data:
+      options?.enabled === false
+        ? undefined
+        : {items: EXISTING_GROUPS.filter((g) => g.name.toLowerCase().includes(queryParams.q.toLowerCase()))},
+  }),
 }));
 
 import CreateRequest from './Create';
 
 beforeEach(() => {
+  createMutate.mockClear();
   constraintsAskedFor.mockClear();
   reportLimit = true;
 });
 
+const renderDialog = () => render(<CreateRequest currentUser={USER} open setOpen={vi.fn()} />);
+
 const lastConstraintQuery = (): string[] => constraintsAskedFor.mock.calls.at(-1)![0];
 
 async function openDialogAndPickApp() {
-  render(<CreateRequest currentUser={USER} open setOpen={() => {}} />);
+  renderDialog();
   await userEvent.click(await screen.findByRole('combobox', {name: 'Group Type'}));
   await userEvent.click(await screen.findByRole('option', {name: 'App Group'}));
   await userEvent.click(await screen.findByRole('combobox', {name: 'App'}));
@@ -99,5 +131,35 @@ describe('tags a requested app group would inherit', () => {
     const offered = screen.getAllByRole('option').map((option) => option.textContent);
     expect(offered).not.toContain('Indefinite');
     expect(offered).toContain('90 Days');
+  });
+});
+
+describe('requesting a group whose name is taken', () => {
+  it('flags the name and disables Submit, ignoring case', async () => {
+    renderDialog();
+
+    await userEvent.type(screen.getByLabelText(/^Name/), 'platform-admins');
+
+    expect(screen.getByText(/A group named "platform-admins" already exists/)).toBeInTheDocument();
+    expect(screen.getByRole('link', {name: 'request access to it'})).toHaveAttribute('href', '/requests');
+    expect(screen.getByRole('button', {name: 'Submit'})).toBeDisabled();
+  });
+
+  it('checks a "Role-" name typed as a plain group as the role it is filed as', async () => {
+    renderDialog();
+
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Role-Platform-Engineers');
+
+    expect(screen.getByText(/A group named "Role-Platform-Engineers" already exists/)).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Submit'})).toBeDisabled();
+  });
+
+  it('allows a name that only partly matches an existing group', async () => {
+    renderDialog();
+
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Platform');
+
+    expect(screen.queryByText(/already exists/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Submit'})).toBeEnabled();
   });
 });
