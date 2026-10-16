@@ -1,3 +1,4 @@
+import * as React from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -7,7 +8,12 @@ import {OktaUserDetail} from '../../api/apiSchemas';
 const createMutate = vi.fn();
 const EXISTING_GROUPS = [{id: 'existing-group-000000', type: 'okta_group', name: 'Platform-Admins'}];
 
-vi.mock('react-router-dom', () => ({useNavigate: () => vi.fn()}));
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => vi.fn(),
+  Link: React.forwardRef<HTMLAnchorElement, {to: string; children: React.ReactNode}>(({to, ...rest}, ref) => (
+    <a ref={ref} href={to} {...rest} />
+  )),
+}));
 vi.mock('../../api/apiComponents', () => ({
   useApps: () => ({data: {items: []}}),
   useAppById: () => ({data: undefined}),
@@ -44,6 +50,7 @@ describe('requesting a group whose name is taken', () => {
     await userEvent.type(screen.getByLabelText(/^Name/), 'platform-admins');
 
     expect(screen.getByText(/A group named "platform-admins" already exists/)).toBeInTheDocument();
+    expect(screen.getByRole('link', {name: 'request access to it'})).toHaveAttribute('href', '/requests');
     expect(screen.getByRole('button', {name: 'Submit'})).toBeDisabled();
   });
 

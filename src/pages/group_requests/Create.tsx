@@ -1,7 +1,7 @@
 import * as React from 'react';
 import dayjs, {Dayjs} from 'dayjs';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
-import {useNavigate} from 'react-router-dom';
+import {Link as RouterLink, useNavigate} from 'react-router-dom';
 import Alert from '@mui/material/Alert';
 import Autocomplete from '@mui/material/Autocomplete';
 import Box from '@mui/material/Box';
@@ -14,6 +14,7 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import FormControl from '@mui/material/FormControl';
 import Grid from '@mui/material/Grid';
+import Link from '@mui/material/Link';
 import GroupRequestIcon from '@mui/icons-material/GroupAdd';
 import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
@@ -356,7 +357,11 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
           </Box>
           {nameTaken && (
             <Alert severity="error" sx={{mt: 1}}>
-              A group named "{candidateName}" already exists. To join it, request access to it instead.
+              A group named "{candidateName}" already exists. To join it,{' '}
+              <Link component={RouterLink} to="/requests" color="inherit" onClick={() => props.setOpen(false)}>
+                request access to it
+              </Link>{' '}
+              instead.
             </Alert>
           )}
         </FormControl>
