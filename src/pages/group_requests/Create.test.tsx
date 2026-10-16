@@ -6,7 +6,10 @@ import userEvent from '@testing-library/user-event';
 import {OktaUserDetail} from '../../api/apiSchemas';
 
 const createMutate = vi.fn();
-const EXISTING_GROUPS = [{id: 'existing-group-000000', type: 'okta_group', name: 'Platform-Admins'}];
+const EXISTING_GROUPS = [
+  {id: 'existing-group-000000', type: 'okta_group', name: 'Platform-Admins'},
+  {id: 'existing-role-0000000', type: 'role_group', name: 'Role-Platform-Engineers'},
+];
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
@@ -51,6 +54,15 @@ describe('requesting a group whose name is taken', () => {
 
     expect(screen.getByText(/A group named "platform-admins" already exists/)).toBeInTheDocument();
     expect(screen.getByRole('link', {name: 'request access to it'})).toHaveAttribute('href', '/requests');
+    expect(screen.getByRole('button', {name: 'Submit'})).toBeDisabled();
+  });
+
+  it('checks a "Role-" name typed as a plain group as the role it is filed as', async () => {
+    renderDialog();
+
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Role-Platform-Engineers');
+
+    expect(screen.getByText(/A group named "Role-Platform-Engineers" already exists/)).toBeInTheDocument();
     expect(screen.getByRole('button', {name: 'Submit'})).toBeDisabled();
   });
 

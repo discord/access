@@ -76,7 +76,9 @@ const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({
 /**
  * The full name a request would ask for: the typed name with the prefix its type
  * implies. An okta_group name typed as "App-<app>-…" takes the matched app's
- * canonical spelling, since such a request is filed as an app group.
+ * canonical spelling, since such a request is filed as an app group. One typed as
+ * "Role-…" is filed as a role group and is already the full role name, so it is
+ * returned as typed.
  */
 function requestedGroupName(
   type: CreateGroupRequestForm['type'],
