@@ -39,6 +39,9 @@ from tests.factories import (
     RoleGroupFactory,
 )
 from api.models.app_group import app_owners_group_description
+from types import SimpleNamespace
+
+from api.routers.groups import _owner_group_plugin_config_changing
 from tests.helpers import db_count
 from tests.request_factories import (
     AppGroupCreateBodyFactory,
@@ -2183,7 +2186,12 @@ async def test_put_group_app_owner_group_tolerates_a_plugin_status_echo(
         name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{owner_app.name}"
         f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
         description=app_owners_group_description(owner_app.name),
-        plugin_data={"audit_logger": {"configuration": {"level": "info"}, "status": {"synced_at": "yesterday"}}},
+        plugin_data={
+            "audit_logger": {
+                "configuration": {"level": "info", "channel": "#ops"},
+                "status": {"synced_at": "yesterday"},
+            }
+        },
     )
     db.session.add_all([owner_app, owner_group])
     await db.session.commit()
@@ -2203,6 +2211,16 @@ async def test_put_group_app_owner_group_tolerates_a_plugin_status_echo(
     assert echo.status_code == 200, echo.text
     assert echo.json()["description"] == "Owners, plus billing approvers."
 
+    # A patch naming a subset of the configuration merges key by key, so one that repeats
+    # only unchanged keys asks for nothing.
+    subset = await client.put(
+        group_url,
+        json=AppGroupUpdateBodyFactory.json(
+            plugin_data={"audit_logger": {"configuration": {"level": "info"}}},
+        ),
+    )
+    assert subset.status_code == 200, subset.text
+
     # A real configuration change is still refused.
     changed = await client.put(
         group_url,
@@ -2218,3 +2236,51 @@ async def test_put_group_app_owner_group_tolerates_a_plugin_status_echo(
     refreshed = await db.session.get(AppGroup, owner_group_id)
     assert refreshed is not None
     assert refreshed.plugin_data["audit_logger"]["status"] == {"synced_at": "yesterday"}
+
+
+_STORED_PLUGIN_DATA = {"p": {"configuration": {"level": "info", "channel": "#ops"}, "status": {"s": 1}}}
+
+
+@pytest.mark.parametrize(
+    "case, patch, stored, expected",
+    [
+        ("a patch repeating a subset of unchanged keys", {"p": {"configuration": {"level": "info"}}}, None, False),
+        (
+            "a patch repeating the whole configuration",
+            {"p": {"configuration": {"level": "info", "channel": "#ops"}}},
+            None,
+            False,
+        ),
+        ("a changed configuration value", {"p": {"configuration": {"level": "debug"}}}, None, True),
+        ("a configuration key the stored data lacks", {"p": {"configuration": {"new": 1}}}, None, True),
+        ("a status the plugin already wrote", {"p": {"status": {"s": 1}}}, None, False),
+        ("a status that differs", {"p": {"status": {"s": 2}}}, None, True),
+        ("an entry in an unrecognised shape", {"p": {"a": 1}}, None, True),
+        ("an entry for a plugin with nothing stored", {"q": {"a": 1}}, None, True),
+        ("an empty patch", {}, None, False),
+        (
+            "an unchanged list value",
+            {"p": {"configuration": {"l": [1, 2]}}},
+            {"p": {"configuration": {"l": [1, 2]}}},
+            False,
+        ),
+        (
+            "a changed list value",
+            {"p": {"configuration": {"l": [1, 3]}}},
+            {"p": {"configuration": {"l": [1, 2]}}},
+            True,
+        ),
+        ("an explicit null for a key not stored", {"p": {"configuration": {"z": None}}}, None, True),
+        ("any entry when nothing is stored", {"p": {"configuration": {"a": 1}}}, {}, True),
+    ],
+)
+def test_owner_group_plugin_config_changing(
+    case: str, patch: dict[str, Any], stored: dict[str, Any] | None, expected: bool
+) -> None:
+    """The guard mirrors how ModifyGroupPluginData merges: key by key, at every level.
+
+    Only the values a patch names can change anything, so repeating unchanged ones -- or
+    leaving out the status a plugin wrote -- asks for nothing.
+    """
+    group = cast(AppGroup, SimpleNamespace(plugin_data=_STORED_PLUGIN_DATA if stored is None else stored))
+    assert _owner_group_plugin_config_changing(group, patch) is expected, case

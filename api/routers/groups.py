@@ -226,29 +226,31 @@ async def post_group(
 def _owner_group_plugin_config_changing(group: AppGroup, new_plugin_data: dict[str, Any]) -> bool:
     """Whether a plugin_data patch asks to change an owner group's plugin configuration.
 
-    `plugin_data` is a patch: ModifyGroupPluginData keeps the top-level plugin entries and
-        the per-plugin sections a patch omits, and the edit form submits configuration only.
-        Comparing the raw patch against the stored document would therefore report a change on
-        every edit once a plugin has written status the submitter never sends back. Only the
-        sections a patch actually names are compared, so a status a patch omits is irrelevant
-        while an entry naming something that differs -- including one in an unrecognised shape
-        -- still counts, rather than being accepted and then quietly dropped.
+    `plugin_data` is a patch, and ModifyGroupPluginData applies it by merging dicts key by
+    key at every level: top-level plugin entries, then the configuration and status within
+    each. Anything the patch does not name is preserved, so only the values it does name can
+    change anything. Comparing whole dicts would report a change for every key the submitter
+    leaves out -- the status a plugin wrote, or the configuration keys an edit did not touch
+    -- and refuse edits that ask for nothing.
 
-        Args:
-            group: The owner group being edited.
-            new_plugin_data: The submitted plugin_data patch.
+    A value the patch names but the stored data lacks counts as a change, so an entry in an
+    unrecognised shape is refused rather than accepted and then quietly dropped.
 
-        Returns:
-            True if the patch asks for a different configuration than the one stored.
+    Args:
+        group: The owner group being edited.
+        new_plugin_data: The submitted plugin_data patch.
+
+    Returns:
+        True if the patch asks for a value different from the one stored.
     """
+    missing = object()
 
-    def asks_for_change(patch_entry: Any, stored_entry: Any) -> bool:
-        if not isinstance(patch_entry, dict) or not isinstance(stored_entry, dict):
-            return patch_entry != stored_entry
-        return any(stored_entry.get(section) != value for section, value in patch_entry.items())
+    def asks_for_change(patch_value: Any, stored_value: Any) -> bool:
+        if isinstance(patch_value, dict) and isinstance(stored_value, dict):
+            return any(asks_for_change(value, stored_value.get(key, missing)) for key, value in patch_value.items())
+        return stored_value is missing or patch_value != stored_value
 
-    stored = group.plugin_data or {}
-    return any(asks_for_change(entry, stored.get(plugin_id)) for plugin_id, entry in new_plugin_data.items())
+    return asks_for_change(new_plugin_data, group.plugin_data or {})
 
 
 @router.put("/{group_id}", name="group_by_id_put")
