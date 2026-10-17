@@ -226,12 +226,16 @@ async def post_group(
 def _owner_group_plugin_config_changing(group: AppGroup, new_plugin_data: dict[str, Any]) -> bool:
     """Whether a plugin_data patch asks to change an owner group's plugin configuration.
 
-    `plugin_data` is a patch, and ModifyGroupPluginData applies it by merging dicts key by
-    key at every level: top-level plugin entries, then the configuration and status within
-    each. Anything the patch does not name is preserved, so only the values it does name can
-    change anything. Comparing whole dicts would report a change for every key the submitter
-    leaves out -- the status a plugin wrote, or the configuration keys an edit did not touch
-    -- and refuse edits that ask for nothing.
+    `plugin_data` is a patch, and ModifyGroupPluginData merges it key by key down to an
+    individual setting: plugin entries the patch omits are preserved, then each entry's
+    configuration and status take a shallow `dict.update`. Anything the patch does not name
+    that far down survives, so comparing whole dicts would report a change for every key the
+    submitter leaves out -- the status a plugin wrote, or the configuration keys an edit did
+    not touch -- and refuse edits that ask for nothing.
+
+    Below a setting the merge replaces the value whole, so the comparison stops there too. A
+    patch that names a nested value therefore counts as a change even when every leaf inside
+    it matches, because the merge would drop the siblings it leaves out.
 
     A value the patch names but the stored data lacks counts as a change, so an entry in an
     unrecognised shape is refused rather than accepted and then quietly dropped.
@@ -244,13 +248,18 @@ def _owner_group_plugin_config_changing(group: AppGroup, new_plugin_data: dict[s
         True if the patch asks for a value different from the one stored.
     """
     missing = object()
+    # plugin id, then section (configuration / status), then setting. The merge is key-wise
+    # across those three and wholesale beneath them.
+    merged_key_wise_depth = 3
 
-    def asks_for_change(patch_value: Any, stored_value: Any) -> bool:
-        if isinstance(patch_value, dict) and isinstance(stored_value, dict):
-            return any(asks_for_change(value, stored_value.get(key, missing)) for key, value in patch_value.items())
+    def asks_for_change(patch_value: Any, stored_value: Any, depth: int) -> bool:
+        if depth > 0 and isinstance(patch_value, dict) and isinstance(stored_value, dict):
+            return any(
+                asks_for_change(value, stored_value.get(key, missing), depth - 1) for key, value in patch_value.items()
+            )
         return stored_value is missing or patch_value != stored_value
 
-    return asks_for_change(new_plugin_data, group.plugin_data or {})
+    return asks_for_change(new_plugin_data, group.plugin_data or {}, merged_key_wise_depth)
 
 
 @router.put("/{group_id}", name="group_by_id_put")

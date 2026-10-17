@@ -2272,6 +2272,20 @@ _STORED_PLUGIN_DATA = {"p": {"configuration": {"level": "info", "channel": "#ops
         ),
         ("an explicit null for a key not stored", {"p": {"configuration": {"z": None}}}, None, True),
         ("any entry when nothing is stored", {"p": {"configuration": {"a": 1}}}, {}, True),
+        # Below a setting the merge replaces the value whole, so a patch naming a nested
+        # value drops the siblings it leaves out even when every leaf it names matches.
+        (
+            "a nested value missing a sibling the merge would drop",
+            {"p": {"configuration": {"opts": {"a": 1}}}},
+            {"p": {"configuration": {"opts": {"a": 1, "b": 2}}}},
+            True,
+        ),
+        (
+            "a nested value repeated in full",
+            {"p": {"configuration": {"opts": {"a": 1, "b": 2}}}},
+            {"p": {"configuration": {"opts": {"a": 1, "b": 2}}}},
+            False,
+        ),
     ],
 )
 def test_owner_group_plugin_config_changing(
