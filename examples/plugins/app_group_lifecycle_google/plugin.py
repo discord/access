@@ -31,7 +31,10 @@ from api.plugins.app_group_lifecycle import (
 
 PLUGIN_ID = "google_group_manager"
 
-GOOGLE_GROUP_API_SCOPES = ["https://www.googleapis.com/auth/cloud-identity.groups"]
+GOOGLE_GROUP_API_SCOPES = [
+    "https://www.googleapis.com/auth/cloud-identity.groups",
+    "https://www.googleapis.com/auth/apps.groups.settings",
+]
 GOOGLE_API_NUM_RETRIES = 3
 
 ENV_OKTA_APP_ID = "GOOGLE_WORKSPACE_OKTA_APP_ID"
@@ -66,6 +69,12 @@ SYNC_ERROR = "error"
 SYNC_SKIPPED = "skipped"
 
 OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL = "googleGroupEmail"
+
+# Access already shows every group's membership to the whole company, so its Google groups do the
+# same. A members-only setting also breaks calendar invites: an invite sent to a group whose
+# membership the organizer can't see is delivered to the group address rather than expanded to
+# each member, so nobody receives it.
+GOOGLE_WHO_CAN_VIEW_MEMBERSHIP = "ALL_IN_DOMAIN_CAN_VIEW"
 
 # Conservative subset of Google group local-part rules: lowercase alphanumerics
 # plus . _ - internally; must start and end alphanumeric.
@@ -126,6 +135,11 @@ class GoogleGroupManagerPlugin:
         credentials, _ = default(scopes=GOOGLE_GROUP_API_SCOPES)
         self._groups_api = build(
             "cloudidentity", "v1", credentials=credentials, requestBuilder=_RetryingHttpRequest
+        ).groups()
+        # Sharing settings such as membership visibility are not part of the Cloud Identity API;
+        # only the Groups Settings API exposes them.
+        self._group_settings_api = build(
+            "groupssettings", "v1", credentials=credentials, requestBuilder=_RetryingHttpRequest
         ).groups()
 
     # ---- Helpers ----
@@ -384,6 +398,25 @@ class GoogleGroupManagerPlugin:
         update_mask = ",".join(sorted(body))
         await self._execute_request(
             self._groups_api.patch(name=self._resource_name(google_group_id), body=body, updateMask=update_mask)
+        )
+
+    async def _enforce_membership_visibility(self, email: str) -> None:
+        """Set a Google group's membership to be visible to the whole domain, if it isn't already.
+
+        Args:
+            email: The group's full email, which is how the Groups Settings API keys a group.
+
+        Raises:
+            HttpError: If the settings cannot be read or patched.
+        """
+        settings = await self._execute_request(self._group_settings_api.get(groupUniqueId=email))
+        if settings.get("whoCanViewMembership") == GOOGLE_WHO_CAN_VIEW_MEMBERSHIP:
+            return
+        logger.info(f"Setting membership visibility of Google group {email} to {GOOGLE_WHO_CAN_VIEW_MEMBERSHIP}")
+        await self._execute_request(
+            self._group_settings_api.patch(
+                groupUniqueId=email, body={"whoCanViewMembership": GOOGLE_WHO_CAN_VIEW_MEMBERSHIP}
+            )
         )
 
     async def _delete_google_group(self, google_group_id: str) -> None:
@@ -812,6 +845,17 @@ class GoogleGroupManagerPlugin:
             if reconcile_error is not None:
                 self._mark_error(ctx, group, reconcile_error)
                 return
+            # Membership visibility is enforced on adopted groups too, not backfilled from Google;
+            # see GOOGLE_WHO_CAN_VIEW_MEMBERSHIP.
+            google_email = (google_group.get("groupKey") or {}).get("id")
+            if not google_email:
+                self._mark_error(
+                    ctx,
+                    group,
+                    f"Google group {claimed_google_group_id} has no email, so its membership visibility cannot be set.",
+                )
+                return
+            await self._enforce_membership_visibility(google_email)
 
             # Ensure the push mapping exists; may defer if Okta hasn't imported yet. An ambiguous
             # target (duplicate imports sharing the email) won't self-heal, so it errors rather

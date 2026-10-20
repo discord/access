@@ -6,11 +6,15 @@ This plugin automatically creates, modifies, and deletes Google Groups correspon
 
 When an Access group is created or deleted or its plugin configuration is modified, the plugin:
 
-1. On create, creates an Okta group push mapping with a new target group named after the email prefix. Okta creates the downstream Google Group *and* links it in one step, so the plugin never has to wait for Okta to import a group created directly in Google (which requires a manual trigger). It then updates that Google Group's display name and description from Access.
+1. On create, creates an Okta group push mapping with a new target group named after the email prefix. Okta creates the downstream Google Group *and* links it in one step, so the plugin never has to wait for Okta to import a group created directly in Google (which requires a manual trigger). It then updates that Google Group's display name and description from Access, and makes its membership visible to everyone in the domain.
 2. On modify, updates the corresponding Google Group's properties (display name, description) in the configured Google Workspace domain. The email is immutable.
 3. On delete, removes the Okta group push mapping and the Google Group.
 
 Membership is kept in sync automatically by Okta group push. A Google Group linked out-of-band is adopted rather than recreated; if Okta hasn't yet pushed a newly-created group to Google, the group is marked pending and finalized on a later reconcile. Groups are also periodically reconciled to ensure eventual alignment to the source of truth in Access.
+
+### Membership visibility
+
+Every Google Group the plugin manages, including one it adopts, has its `whoCanViewMembership` setting enforced to `ALL_IN_DOMAIN_CAN_VIEW` on each reconcile. Access already shows every group's membership to everyone in the company, so the Google Group matches. A members-only setting also breaks calendar invites: an invite sent to a group whose membership the organizer can't see goes to the group address instead of to each member, so nobody gets it.
 
 ## Files
 
@@ -61,7 +65,12 @@ For this plugin to work, Access must have permission to create and delete group 
 
 ### Calling the Google API
 
-This plugin uses the **Cloud Identity Groups API** (`cloudidentity.googleapis.com`, scope `https://www.googleapis.com/auth/cloud-identity.groups`) to look up groups and to update and delete them. (Group *creation* goes through Okta group push, not this API.) Because that API authorizes the calling principal directly, assign the service account reachable via [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials) the Google Workspace **Group Administrator** admin role: https://knowledge.workspace.google.com/admin/users/assign-specific-admin-roles#service-account. Group membership is still synchronized by Okta group push.
+This plugin calls two Google APIs:
+
+- The **Cloud Identity Groups API** (`cloudidentity.googleapis.com`, scope `https://www.googleapis.com/auth/cloud-identity.groups`) to look up groups and to update and delete them. (Group *creation* goes through Okta group push, not this API.)
+- The **Groups Settings API** (`groupssettings.googleapis.com`, scope `https://www.googleapis.com/auth/apps.groups.settings`) to read and set membership visibility, which the Cloud Identity API does not expose.
+
+Enable both APIs in the Google Cloud project that owns the service account reachable via [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials). Both APIs authorize the calling principal directly, so assign that service account the Google Workspace **Group Administrator** admin role: https://knowledge.workspace.google.com/admin/users/assign-specific-admin-roles#service-account. Group membership is still synchronized by Okta group push.
 
 ## Installation
 
@@ -100,7 +109,7 @@ gcloud auth login --update-adc
 Otherwise, impersonate Access via:
 
 ```bash
-gcloud auth application-default login --impersonate-service-account <ACCESS_SERVICE_ACCOUNT_EMAIL> --scopes=https://www.googleapis.com/auth/cloud-identity.groups,https://www.googleapis.com/auth/cloud-platform
+gcloud auth application-default login --impersonate-service-account <ACCESS_SERVICE_ACCOUNT_EMAIL> --scopes=https://www.googleapis.com/auth/cloud-identity.groups,https://www.googleapis.com/auth/apps.groups.settings,https://www.googleapis.com/auth/cloud-platform
 ```
 
 See https://docs.cloud.google.com/docs/authentication/use-service-account-impersonation#adc.
