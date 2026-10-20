@@ -70,10 +70,10 @@ SYNC_SKIPPED = "skipped"
 
 OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL = "googleGroupEmail"
 
-# Access already shows every group's membership to the whole company, so its Google groups do the
-# same. A members-only setting also breaks calendar invites: an invite sent to a group whose
-# membership the organizer can't see is delivered to the group address rather than expanded to
-# each member, so nobody receives it.
+# Access already shows every group's membership to all users with default access, so its Google
+# groups do the same. A members-only setting also breaks calendar invites: an invite sent to a group
+# whose membership the organizer can't see is delivered to the group address rather than expanded
+# to each member, so nobody receives it.
 GOOGLE_WHO_CAN_VIEW_MEMBERSHIP = "ALL_IN_DOMAIN_CAN_VIEW"
 
 # Conservative subset of Google group local-part rules: lowercase alphanumerics

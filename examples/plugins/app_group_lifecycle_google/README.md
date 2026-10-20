@@ -14,7 +14,7 @@ Membership is kept in sync automatically by Okta group push. A Google Group link
 
 ### Membership visibility
 
-Every Google Group the plugin manages, including one it adopts, has its `whoCanViewMembership` setting enforced to `ALL_IN_DOMAIN_CAN_VIEW` on each reconcile. Access already shows every group's membership to everyone in the company, so the Google Group matches. A members-only setting also breaks calendar invites: an invite sent to a group whose membership the organizer can't see goes to the group address instead of to each member, so nobody gets it.
+Every Google Group the plugin manages, including one it adopts, has its `whoCanViewMembership` setting enforced to `ALL_IN_DOMAIN_CAN_VIEW` on each reconcile. Access already shows every group's membership to all users with default access, so the Google Group matches. A members-only setting also breaks calendar invites: an invite sent to a group whose membership the organizer can't see goes to the group address instead of to each member, so nobody gets it.
 
 ## Files
 
@@ -44,8 +44,8 @@ Every Google Group the plugin manages, including one it adopts, has its `whoCanV
 |-----|-------------|
 | `push_mapping_id` | The Okta group push mapping ID linking the Okta group to the Google Group. |
 | `google_group_id` | The Google Group resource ID. |
-| `sync_status` | One of `synced`, `pending`, or `error`. |
-| `sync_error` | Error message if `sync_status` is `error`; otherwise empty. |
+| `sync_status` | One of `synced`, `pending`, `skipped`, or `error`. `pending` means the plugin is waiting on Okta to create or import the Google Group. `skipped` means the group is not being synced and, when a reason is recorded, that a group owner can fix it by editing the group's plugin configuration. `error` means something only an Access admin can fix. |
+| `sync_error` | Why the group is `pending`, `skipped`, or in `error`; empty once it is `synced`. |
 | `last_synced_at` | Timestamp of the last successful sync. |
 
 There are no app-level status properties.
