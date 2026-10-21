@@ -370,9 +370,9 @@ class AuditLogPayload(BaseModel):
     event_type: Optional[EventType] = None
     user_agent: Optional[str] = None
     ip: Optional[str] = None
-    # Entry-point that produced the audit log. Defaults to "web" for
-    # backwards compatibility; "mcp" is set on entries produced by the
-    # embedded MCP server.
+    # Entry-point that produced the audit log: the request's source ("web",
+    # "mcp") inside a request, else the process source ("server",
+    # "cli:<command>").
     source: Optional[str] = None
     current_user_id: Optional[str] = None
     current_user_email: Optional[str] = None
@@ -527,13 +527,15 @@ class AuditLogSchema:
         if "source" not in data:
             # Auto-inject from the active RequestContext so MCP-driven
             # audit entries get tagged without every operation having to
-            # opt in. Local import to avoid a top-level import cycle —
-            # api.context imports stdlib only, so the lazy form is safe.
-            from api.context import get_request_context
+            # opt in, falling back to the process source (`cli:sync`, …)
+            # outside a request. Local import to avoid a top-level import
+            # cycle — api.context imports stdlib only, so the lazy form is safe.
+            from api.context import get_process_source, get_request_context
 
             _ctx = get_request_context()
-            if _ctx is not None:
-                data = {**data, "source": _ctx.source}
+            source = _ctx.source if _ctx is not None else get_process_source()
+            if source is not None:
+                data = {**data, "source": source}
         payload = AuditLogPayload.model_validate(data).model_dump(mode="json", by_alias=False)
 
         out: dict[str, Any] = {}

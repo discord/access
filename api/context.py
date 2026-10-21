@@ -4,7 +4,8 @@ Operations and audit logging need to know the user-agent, originating IP,
 and request id of the current request. `RequestContextMiddleware` sets a
 `RequestContext` ContextVar; operations consult `get_request_context()`.
 Outside an HTTP request (e.g. the syncer or CLI commands) the context is
-None.
+None, and the process-level source (`server`, `cli:<command>`) set at logging
+configuration time is the closest attribution available.
 """
 
 from __future__ import annotations
@@ -41,3 +42,19 @@ def set_request_context(ctx: Optional[RequestContext]) -> contextvars.Token[Opti
 
 def reset_request_context(token: contextvars.Token[Optional[RequestContext]]) -> None:
     _ctx.reset(token)
+
+
+# Set once per process by `api.app._configure_logging`. Module-level rather
+# than a ContextVar: it describes the process, not a task.
+_process_source: Optional[str] = None
+
+
+def get_process_source() -> Optional[str]:
+    """Return the entrypoint this process runs as (`server`, `cli:<command>`), or None if unset."""
+    return _process_source
+
+
+def set_process_source(source: Optional[str]) -> None:
+    """Record the entrypoint this process runs as, for log and audit attribution."""
+    global _process_source
+    _process_source = source
