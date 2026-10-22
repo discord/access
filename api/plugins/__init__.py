@@ -1,4 +1,8 @@
+from importlib.metadata import entry_points
+
 import pluggy
+
+from api.log_filters import register_plugin_logger_prefixes
 
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecycleContext,
@@ -22,12 +26,18 @@ from api.plugins.app_group_lifecycle import (
 )
 from api.plugins.conditional_access import (
     ConditionalAccessHook,
+    conditional_access_plugin_name,
     ConditionalAccessResponse,
     evaluate_conditional_access,
     get_conditional_access_hook,
 )
-from api.plugins.metrics_reporter import get_metrics_reporter_hook
-from api.plugins.notifications import NotificationHook, get_notification_hook, send_notification
+from api.plugins.metrics_reporter import get_metrics_reporter_hook, metrics_reporter_plugin_name
+from api.plugins.notifications import (
+    NotificationHook,
+    get_notification_hook,
+    notification_plugin_name,
+    send_notification,
+)
 
 app_group_lifecycle_hook_impl = pluggy.HookimplMarker("access_app_group_lifecycle")
 conditional_access_hook_impl = pluggy.HookimplMarker("access_conditional_access")
@@ -46,6 +56,22 @@ def load_plugins() -> None:
     get_conditional_access_hook()
     get_notification_hook()
     get_metrics_reporter_hook()
+    _register_plugin_loggers()
+
+
+def _register_plugin_loggers() -> None:
+    """Attribute logs from every installed plugin package to that plugin."""
+    groups = (
+        app_group_lifecycle_plugin_name,
+        conditional_access_plugin_name,
+        notification_plugin_name,
+        metrics_reporter_plugin_name,
+        # Entry-point group for plugin-contributed CLI commands, loaded by
+        # `api.cli._load_plugin_commands`. Not a hook type, so it has no
+        # `*_plugin_name` constant like the groups above.
+        "access.commands",
+    )
+    register_plugin_logger_prefixes(ep.module.partition(".")[0] for group in groups for ep in entry_points(group=group))
 
 
 __all__ = [
