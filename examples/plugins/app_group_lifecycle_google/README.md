@@ -31,7 +31,7 @@ Membership is kept in sync automatically by Okta group push. A Google Group link
 
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
-| `email` | text | yes | The local-part (prefix) of the Google Group email address. The full address is `{email}@{GOOGLE_WORKSPACE_DOMAIN}`. Immutable after the group is created (the Cloud Identity `groupKey` cannot be changed). |
+| `email` | text | yes | The local-part (prefix) of the Google Group email address. The full address is `{email}@{GOOGLE_WORKSPACE_DOMAIN}`. Immutable once set (the Cloud Identity `groupKey` cannot be changed); a group that predates the plugin can set it on its first edit. |
 | `display_name` | text | yes | The display name for the Google Group. |
 
 ### Group-Level Status
