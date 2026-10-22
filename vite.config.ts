@@ -42,7 +42,7 @@ export default defineConfig(({mode}) => {
     plugins: [
       react(),
       // Vite 7's dev server does not expose `define` values as runtime globals the way the app
-      // reads them (ACCESS_CONFIG / APP_NAME / REQUIRE_DESCRIPTIONS), so under `vite dev` those
+      // reads them (ACCESS_CONFIG / APP_NAME / REQUIRE_* toggles), so under `vite dev` those
       // identifiers are undefined and the SPA throws on boot (blank screen). Inject them as window
       // globals for the dev server only; production builds still get them via the `define` static
       // replacement below.
@@ -56,7 +56,8 @@ export default defineConfig(({mode}) => {
             children:
               `window.ACCESS_CONFIG=${accessConfig};` +
               `window.APP_NAME=${JSON.stringify(env.APP_NAME || 'Access')};` +
-              `window.REQUIRE_DESCRIPTIONS=${JSON.stringify(env.REQUIRE_DESCRIPTIONS?.toLowerCase() === 'true')};`,
+              `window.REQUIRE_DESCRIPTIONS=${JSON.stringify(env.REQUIRE_DESCRIPTIONS?.toLowerCase() === 'true')};` +
+              `window.REQUIRE_REQUEST_REASONS=${JSON.stringify(env.REQUIRE_REQUEST_REASONS?.toLowerCase() === 'true')};`,
           },
         ],
       },
@@ -82,6 +83,7 @@ export default defineConfig(({mode}) => {
       ACCESS_CONFIG: accessConfig,
       APP_NAME: JSON.stringify(env.APP_NAME || 'Access'),
       REQUIRE_DESCRIPTIONS: env.REQUIRE_DESCRIPTIONS?.toLowerCase() === 'true',
+      REQUIRE_REQUEST_REASONS: env.REQUIRE_REQUEST_REASONS?.toLowerCase() === 'true',
       // `undefined` rather than `""` when unset: Sentry treats an empty-string release as a
       // real release name and files every event under it.
       'import.meta.env.VITE_SENTRY_RELEASE': sentryRelease ? JSON.stringify(sentryRelease) : 'undefined',

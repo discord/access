@@ -315,6 +315,22 @@ requests at once sends a correspondingly large number of notifications, so on a
 busy instance it is worth knowing how many requests are pending past a cutoff or
 past their requested end date.
 
+##### Requiring request reasons
+
+Set `REQUIRE_REQUEST_REASONS=true` to reject any access, role, or group request
+submitted without a reason, whatever tags its target carries. It applies to
+every requester, Access admins included, and to requests made through the MCP
+server. A reason made only of whitespace counts as missing.
+
+It governs the requester's reason only. Approvers' reasons, and reasons for
+adding members or owners directly, still follow the `require_member_reason` and
+`require_owner_reason` tag constraints.
+
+The frontend reads the same variable when it is built, to mark the reason field
+required, so set it in the build environment as well as at runtime. A frontend
+built without it still works; requests without a reason are then rejected by
+the server instead of the form.
+
 ### Access application configuration
 
 _All front-end and back-end configuration overrides are **optional**._
