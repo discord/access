@@ -66,6 +66,9 @@ def _register_plugin_loggers() -> None:
         conditional_access_plugin_name,
         notification_plugin_name,
         metrics_reporter_plugin_name,
+        # Entry-point group for plugin-contributed CLI commands, loaded by
+        # `api.cli._load_plugin_commands`. Not a hook type, so it has no
+        # `*_plugin_name` constant like the groups above.
         "access.commands",
     )
     register_plugin_logger_prefixes(ep.module.partition(".")[0] for group in groups for ep in entry_points(group=group))
