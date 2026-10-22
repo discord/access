@@ -6,7 +6,7 @@ This plugin automatically creates, modifies, and deletes Google Groups correspon
 
 When an Access group is created or deleted or its plugin configuration is modified, the plugin:
 
-1. On create, creates an Okta group push mapping with a new target group named after the email prefix. Okta creates the downstream Google Group *and* links it in one step, so the plugin never has to wait for Okta to import a group created directly in Google (which requires a manual trigger). It then updates that Google Group's display name and description from Access, and makes its membership visible to everyone in the domain.
+1. On create, creates an Okta group push mapping with a new target group named after the email prefix. Okta creates the downstream Google Group *and* links it in one step, so the plugin never has to wait for Okta to import a group created directly in Google (which requires a manual trigger). It then updates that Google Group's display name and description from Access, and, if configured, its membership visibility.
 2. On modify, updates the corresponding Google Group's properties (display name, description) in the configured Google Workspace domain. The email is immutable.
 3. On delete, removes the Okta group push mapping and the Google Group.
 
@@ -14,7 +14,11 @@ Membership is kept in sync automatically by Okta group push. A Google Group link
 
 ### Membership visibility
 
-Every Google Group the plugin manages, including one it adopts, has its `whoCanViewMembership` setting enforced to `ALL_IN_DOMAIN_CAN_VIEW` on each reconcile. Access already shows every group's membership to all users with default access, so the Google Group matches. A members-only setting also breaks calendar invites: an invite sent to a group whose membership the organizer can't see goes to the group address instead of to each member, so nobody gets it.
+Set `GOOGLE_WORKSPACE_GROUP_MEMBERSHIP_VISIBILITY` to have the plugin enforce a Google Group `whoCanViewMembership` value on every group it manages, including ones it adopts, on each reconcile. That overrides whatever was set in Google, so a group someone made members-only by hand is changed back. Unset, the plugin leaves the setting alone.
+
+`ALL_IN_DOMAIN_CAN_VIEW` matches Access's own visibility: Access already shows every group's membership to all users with default access. It also keeps calendar invites working. An invite sent to a group whose membership the organizer can't see goes to the group address instead of to each member, so nobody gets it.
+
+Membership visibility is set after the group is linked, so a Groups Settings API failure never stops a group from being pushed. A 404, which can happen while Google finishes creating a new group, leaves the group `pending` until the next reconcile. Any other failure, such as the API not being enabled, puts the group in `error`.
 
 ## Files
 
@@ -56,6 +60,7 @@ There are no app-level status properties.
 |----------|-------------|
 | `GOOGLE_WORKSPACE_OKTA_APP_ID` | The Okta application ID for the Google Workspace application. See https://support.okta.com/help/s/article/How-to-obtain-an-application-ID. |
 | `GOOGLE_WORKSPACE_DOMAIN` | The Google Workspace domain (e.g. `acme.com`). Used to construct the full Google Group email address. |
+| `GOOGLE_WORKSPACE_GROUP_MEMBERSHIP_VISIBILITY` | Optional. One of `ALL_IN_DOMAIN_CAN_VIEW`, `ALL_MEMBERS_CAN_VIEW`, or `ALL_MANAGERS_CAN_VIEW`. When set, the plugin enforces it on every managed Google Group; see [Membership visibility](#membership-visibility). Requires the Groups Settings API. |
 
 ## Authentication and Authorization
 
@@ -65,12 +70,12 @@ For this plugin to work, Access must have permission to create and delete group 
 
 ### Calling the Google API
 
-This plugin calls two Google APIs:
+This plugin calls up to two Google APIs:
 
 - The **Cloud Identity Groups API** (`cloudidentity.googleapis.com`, scope `https://www.googleapis.com/auth/cloud-identity.groups`) to look up groups and to update and delete them. (Group *creation* goes through Okta group push, not this API.)
-- The **Groups Settings API** (`groupssettings.googleapis.com`, scope `https://www.googleapis.com/auth/apps.groups.settings`) to read and set membership visibility, which the Cloud Identity API does not expose.
+- The **Groups Settings API** (`groupssettings.googleapis.com`, scope `https://www.googleapis.com/auth/apps.groups.settings`) to read and set membership visibility, which the Cloud Identity API does not expose. Only used when `GOOGLE_WORKSPACE_GROUP_MEMBERSHIP_VISIBILITY` is set.
 
-Enable both APIs in the Google Cloud project that owns the service account reachable via [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials). Both APIs authorize the calling principal directly, so assign that service account the Google Workspace **Group Administrator** admin role: https://knowledge.workspace.google.com/admin/users/assign-specific-admin-roles#service-account. Group membership is still synchronized by Okta group push.
+Enable the APIs you use in the Google Cloud project that owns the service account reachable via [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials). Both authorize the calling principal directly, so assign that service account the Google Workspace **Group Administrator** admin role: https://knowledge.workspace.google.com/admin/users/assign-specific-admin-roles#service-account. Group membership is still synchronized by Okta group push.
 
 ## Installation
 
@@ -111,6 +116,8 @@ Otherwise, impersonate Access via:
 ```bash
 gcloud auth application-default login --impersonate-service-account <ACCESS_SERVICE_ACCOUNT_EMAIL> --scopes=https://www.googleapis.com/auth/cloud-identity.groups,https://www.googleapis.com/auth/apps.groups.settings,https://www.googleapis.com/auth/cloud-platform
 ```
+
+The `apps.groups.settings` scope is only needed if you set `GOOGLE_WORKSPACE_GROUP_MEMBERSHIP_VISIBILITY`.
 
 See https://docs.cloud.google.com/docs/authentication/use-service-account-impersonation#adc.
 

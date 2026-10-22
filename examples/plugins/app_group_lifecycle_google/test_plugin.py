@@ -59,7 +59,7 @@ from plugin import (  # noqa: E402
     CONFIG_EMAIL,
     CONFIG_ENABLED,
     GOOGLE_API_NUM_RETRIES,
-    GOOGLE_WHO_CAN_VIEW_MEMBERSHIP,
+    GOOGLE_GROUP_SETTINGS_API_SCOPE,
     PLUGIN_ID,
     STATUS_GOOGLE_GROUP_ID,
     STATUS_PUSH_MAPPING_ID,
@@ -112,6 +112,20 @@ def plugin_instance(mocker: MockerFixture, mock_groups_api: MagicMock) -> Google
         {
             "GOOGLE_WORKSPACE_OKTA_APP_ID": "test-okta-app-123",
             "GOOGLE_WORKSPACE_DOMAIN": "test-company.com",
+        },
+    )
+    return GoogleGroupManagerPlugin()
+
+
+@pytest.fixture
+def visibility_plugin(mocker: MockerFixture, mock_google_apis: dict[str, MagicMock]) -> GoogleGroupManagerPlugin:
+    """A plugin instance with membership visibility enforcement turned on."""
+    mocker.patch.dict(
+        os.environ,
+        {
+            "GOOGLE_WORKSPACE_OKTA_APP_ID": "test-okta-app-123",
+            "GOOGLE_WORKSPACE_DOMAIN": "test-company.com",
+            "GOOGLE_WORKSPACE_GROUP_MEMBERSHIP_VISIBILITY": "ALL_IN_DOMAIN_CAN_VIEW",
         },
     )
     return GoogleGroupManagerPlugin()
@@ -394,11 +408,38 @@ def test_google_client_configures_bounded_retries(mocker: MockerFixture) -> None
 
     GoogleGroupManagerPlugin()
 
+    build.assert_called_once_with("cloudidentity", "v1", credentials=credentials, requestBuilder=_RetryingHttpRequest)
+    assert GOOGLE_API_NUM_RETRIES == 3
+
+
+def test_membership_visibility_is_off_unless_configured(plugin_instance: GoogleGroupManagerPlugin) -> None:
+    # Unset, the plugin needs no Groups Settings API access at all, so upgrading changes nothing.
+    assert plugin_instance._membership_visibility is None
+    assert plugin_instance._group_settings_api is None
+
+
+def test_membership_visibility_builds_the_settings_client_and_requests_its_scope(mocker: MockerFixture) -> None:
+    mocker.patch.dict(os.environ, {"GOOGLE_WORKSPACE_GROUP_MEMBERSHIP_VISIBILITY": "ALL_IN_DOMAIN_CAN_VIEW"})
+    credentials = Mock()
+    default = mocker.patch("plugin.default", return_value=(credentials, None))
+    build = mocker.patch("plugin.build", return_value=MagicMock())
+
+    GoogleGroupManagerPlugin()
+
+    assert GOOGLE_GROUP_SETTINGS_API_SCOPE in default.call_args.kwargs["scopes"]
     assert build.call_args_list == [
         call("cloudidentity", "v1", credentials=credentials, requestBuilder=_RetryingHttpRequest),
         call("groupssettings", "v1", credentials=credentials, requestBuilder=_RetryingHttpRequest),
     ]
-    assert GOOGLE_API_NUM_RETRIES == 3
+
+
+def test_membership_visibility_rejects_an_unknown_value(mocker: MockerFixture) -> None:
+    mocker.patch.dict(os.environ, {"GOOGLE_WORKSPACE_GROUP_MEMBERSHIP_VISIBILITY": "EVERYONE"})
+    mocker.patch("plugin.default", return_value=(Mock(), None))
+    mocker.patch("plugin.build", return_value=MagicMock())
+
+    with pytest.raises(ValueError, match="GOOGLE_WORKSPACE_GROUP_MEMBERSHIP_VISIBILITY"):
+        GoogleGroupManagerPlugin()
 
 
 def test_google_client_request_retry_default(mocker: MockerFixture) -> None:
@@ -426,12 +467,17 @@ async def test_patch_google_group_noop_when_no_fields(
     mock_groups_api.patch.assert_not_called()
 
 
-async def test_enforce_membership_visibility_patches_a_group_not_visible_to_the_domain(
-    plugin_instance: GoogleGroupManagerPlugin, mock_group_settings_api: MagicMock
+async def test_enforce_membership_visibility_patches_a_differing_setting(
+    visibility_plugin: GoogleGroupManagerPlugin,
+    mock_group_settings_api: MagicMock,
+    mocker: MockerFixture,
+    ctx_mock: MagicMock,
 ) -> None:
     mock_group_settings_api.get().execute.return_value = {"whoCanViewMembership": "ALL_MEMBERS_CAN_VIEW"}
 
-    await plugin_instance._enforce_membership_visibility("sec@test-company.com")
+    assert await visibility_plugin._enforce_membership_visibility(
+        ctx_mock, _group(mocker), "sec@test-company.com", "ALL_IN_DOMAIN_CAN_VIEW"
+    )
 
     assert mock_group_settings_api.get.call_args.kwargs == {"groupUniqueId": "sec@test-company.com"}
     assert mock_group_settings_api.patch.call_args.kwargs == {
@@ -440,14 +486,42 @@ async def test_enforce_membership_visibility_patches_a_group_not_visible_to_the_
     }
 
 
-async def test_enforce_membership_visibility_leaves_a_domain_visible_group_alone(
-    plugin_instance: GoogleGroupManagerPlugin, mock_group_settings_api: MagicMock
+async def test_enforce_membership_visibility_leaves_a_matching_setting_alone(
+    visibility_plugin: GoogleGroupManagerPlugin,
+    mock_group_settings_api: MagicMock,
+    mocker: MockerFixture,
+    ctx_mock: MagicMock,
 ) -> None:
-    mock_group_settings_api.get().execute.return_value = {"whoCanViewMembership": GOOGLE_WHO_CAN_VIEW_MEMBERSHIP}
+    mock_group_settings_api.get().execute.return_value = {"whoCanViewMembership": "ALL_IN_DOMAIN_CAN_VIEW"}
 
-    await plugin_instance._enforce_membership_visibility("sec@test-company.com")
+    assert await visibility_plugin._enforce_membership_visibility(
+        ctx_mock, _group(mocker), "sec@test-company.com", "ALL_IN_DOMAIN_CAN_VIEW"
+    )
 
     mock_group_settings_api.patch.assert_not_called()
+
+
+@pytest.mark.parametrize("status,sync_status", [(404, SYNC_PENDING), (403, SYNC_ERROR), (500, SYNC_ERROR)])
+async def test_enforce_membership_visibility_records_a_failure_instead_of_raising(
+    visibility_plugin: GoogleGroupManagerPlugin,
+    mock_group_settings_api: MagicMock,
+    mocker: MockerFixture,
+    ctx_mock: MagicMock,
+    status: int,
+    sync_status: str,
+) -> None:
+    # A 404 is the settings API lagging Cloud Identity on a new group, so it waits; anything else
+    # (the API disabled, the scope not granted) is for an admin.
+    from googleapiclient.errors import HttpError
+
+    group = _group(mocker)
+    mock_group_settings_api.get().execute.side_effect = HttpError(status)
+
+    assert not await visibility_plugin._enforce_membership_visibility(
+        ctx_mock, group, "sec@test-company.com", "ALL_IN_DOMAIN_CAN_VIEW"
+    )
+
+    assert group.plugin_data[PLUGIN_ID]["status"][STATUS_SYNC_STATUS] == sync_status
 
 
 async def test_delete_google_group_calls_delete_by_resource_name(
@@ -622,12 +696,10 @@ async def test_reconcile_creates_when_no_link_and_config_present(
         },
     )
     patch = mocker.patch.object(plugin_instance, "_patch_google_group")
-    enforce_visibility = mocker.patch.object(plugin_instance, "_enforce_membership_visibility")
 
     await plugin_instance._reconcile(ctx_mock, group)
 
     ctx_mock.create_push_mapping_and_new_group.assert_awaited_once_with(group, "test-okta-app-123", "platform-security")
-    enforce_visibility.assert_awaited_once_with("platform-security@test-company.com")
     status = group.plugin_data[PLUGIN_ID]["status"]
     assert status[STATUS_GOOGLE_GROUP_ID] == "ggid-1"
     assert status[STATUS_PUSH_MAPPING_ID] == "map-1"
@@ -742,7 +814,6 @@ async def test_reconcile_adopts_missing_config_from_live_group(
     seed = ctx_mock.set_config
     modify = ctx_mock.set_group_description
     patch = mocker.patch.object(plugin_instance, "_patch_google_group")
-    enforce_visibility = mocker.patch.object(plugin_instance, "_enforce_membership_visibility")
 
     await plugin_instance._reconcile(ctx_mock, group)
 
@@ -750,32 +821,80 @@ async def test_reconcile_adopts_missing_config_from_live_group(
     seed.assert_any_call(group, CONFIG_DISPLAY_NAME, "Adopted Name")
     # Empty Access description backfilled from Google via the ModifyGroupDetails operation (which
     # updates Access + syncs Okta); the group_updated hook is suppressed to avoid re-entering this
-    # plugin, and Google's display name and description are not mutated.
+    # plugin, and Google itself is not mutated.
     modify.assert_awaited_once_with(group, "Adopted desc")
     patch.assert_not_called()
-    # Membership visibility is a fixed policy, so it is enforced even on an adopted group.
-    enforce_visibility.assert_awaited_once_with("adopted@test-company.com")
 
 
-async def test_reconcile_errors_when_google_group_has_no_email(
+def _unlinked_adoptable_group(plugin: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock) -> Mock:
+    """An Access group with no config whose Google group exists but has no push mapping yet."""
+    group = _group(mocker, group_config={}, description="")
+    ctx_mock.discover_existing_push_mapping_and_target_group_external_id.return_value = (
+        None,
+        "adopted@test-company.com",
+    )
+    mocker.patch.object(plugin, "_look_up_google_group_id", return_value="ggid-1")
+    mocker.patch.object(
+        plugin,
+        "_get_google_group",
+        return_value={"name": "groups/ggid-1", "groupKey": {"id": "adopted@test-company.com"}, "displayName": "A"},
+    )
+    ctx_mock.create_push_mapping_for_existing_group.return_value = "map-existing"
+    return group
+
+
+async def test_reconcile_enforces_membership_visibility_on_an_adopted_group(
+    visibility_plugin: GoogleGroupManagerPlugin,
+    mock_group_settings_api: MagicMock,
+    mocker: MockerFixture,
+    ctx_mock: MagicMock,
+) -> None:
+    group = _unlinked_adoptable_group(visibility_plugin, mocker, ctx_mock)
+    mock_group_settings_api.get().execute.return_value = {"whoCanViewMembership": "ALL_MEMBERS_CAN_VIEW"}
+
+    await visibility_plugin._reconcile(ctx_mock, group)
+
+    # Enforced, not backfilled: the configured value overrides what the adopted group had.
+    assert mock_group_settings_api.patch.call_args.kwargs == {
+        "groupUniqueId": "adopted@test-company.com",
+        "body": {"whoCanViewMembership": "ALL_IN_DOMAIN_CAN_VIEW"},
+    }
+    assert group.plugin_data[PLUGIN_ID]["status"][STATUS_SYNC_STATUS] == SYNC_SYNCED
+
+
+async def test_reconcile_still_links_an_adopted_group_when_the_settings_call_fails(
+    visibility_plugin: GoogleGroupManagerPlugin,
+    mock_group_settings_api: MagicMock,
+    mocker: MockerFixture,
+    ctx_mock: MagicMock,
+) -> None:
+    # An operator who turns enforcement on before enabling the Groups Settings API gets 403s. The
+    # group must still be pushed, so its membership syncs, and the failure is reported rather than
+    # raised.
+    from googleapiclient.errors import HttpError
+
+    group = _unlinked_adoptable_group(visibility_plugin, mocker, ctx_mock)
+    mock_group_settings_api.get().execute.side_effect = HttpError(403)
+
+    await visibility_plugin._reconcile(ctx_mock, group)
+
+    ctx_mock.create_push_mapping_for_existing_group.assert_awaited_once()
+    status = group.plugin_data[PLUGIN_ID]["status"]
+    assert status[STATUS_PUSH_MAPPING_ID] == "map-existing"
+    assert status[STATUS_SYNC_STATUS] == SYNC_ERROR
+    assert "Groups Settings API" in status[STATUS_SYNC_ERROR]
+
+
+async def test_reconcile_never_calls_the_settings_api_when_visibility_is_unset(
     plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
 ) -> None:
-    group = _group(
-        mocker,
-        group_config={"email": "sec", "display_name": "Sec"},
-        status={STATUS_GOOGLE_GROUP_ID: "ggid-1", STATUS_PUSH_MAPPING_ID: "map-1"},
-    )
-    mocker.patch.object(plugin_instance, "_get_owned_group_id", return_value="ggid-1")
-    mocker.patch.object(plugin_instance, "_get_google_group", return_value={"name": "groups/ggid-1"})
-    mocker.patch.object(plugin_instance, "_adopt_or_enforce", return_value=None)
-    enforce_visibility = mocker.patch.object(plugin_instance, "_enforce_membership_visibility")
+    group = _unlinked_adoptable_group(plugin_instance, mocker, ctx_mock)
+    enforce = mocker.patch.object(plugin_instance, "_enforce_membership_visibility")
 
     await plugin_instance._reconcile(ctx_mock, group)
 
-    enforce_visibility.assert_not_called()
-    status = group.plugin_data[PLUGIN_ID]["status"]
-    assert status[STATUS_SYNC_STATUS] == SYNC_ERROR
-    assert "membership visibility" in status[STATUS_SYNC_ERROR]
+    enforce.assert_not_called()
+    assert group.plugin_data[PLUGIN_ID]["status"][STATUS_SYNC_STATUS] == SYNC_SYNCED
 
 
 async def test_reconcile_flags_error_on_domain_mismatch_adoption(
