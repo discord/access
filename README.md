@@ -325,9 +325,11 @@ adding members or owners directly, still follow the `require_member_reason` and
 `require_owner_reason` tag constraints.
 
 The frontend reads the same variable when it is built, to mark the reason field
-required, so set it in the build environment as well as at runtime. A frontend
-built without it still works; requests without a reason are then rejected by
-the server instead of the form.
+required, so set it in the build environment as well as at runtime. For the
+Docker image, pass it as a build argument
+(`docker build --build-arg REQUIRE_REQUEST_REASONS=true .`); `REQUIRE_DESCRIPTIONS`
+works the same way. A frontend built without it still works; requests without a
+reason are then rejected by the server instead of the form.
 
 ### Access application configuration
 
