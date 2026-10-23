@@ -181,12 +181,20 @@ export default function ListRequests() {
               const [id, displayName, ownership, group, status, resolver] = option.split(';');
               return (
                 <li {...props} key={id}>
-                  <Grid container alignItems="center">
-                    <Grid item>
+                  <Grid
+                    container
+                    sx={{
+                      alignItems: 'center',
+                    }}>
+                    <Grid>
                       <Box>
                         {displayName} {ownership == 'true' ? 'ownership of' : 'membership to'} {group}
                       </Box>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: 'text.secondary',
+                        }}>
                         {status} {status == 'PENDING' || resolver == '' ? '' : 'by ' + resolver}
                       </Typography>
                     </Grid>
@@ -309,15 +317,17 @@ export default function ListRequests() {
                 count={totalRows}
                 rowsPerPage={rowsPerPage}
                 page={page}
-                SelectProps={{
-                  inputProps: {
-                    'aria-label': 'rows per page',
-                  },
-                  native: true,
-                }}
                 onPageChange={handleChangePage}
                 onRowsPerPageChange={handleChangeRowsPerPage}
                 ActionsComponent={TablePaginationActions}
+                slotProps={{
+                  select: {
+                    inputProps: {
+                      'aria-label': 'rows per page',
+                    },
+                    native: true,
+                  },
+                }}
               />
             </TableRow>
           </TableFooter>

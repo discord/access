@@ -177,7 +177,11 @@ export default function AppGroupLifecyclePluginData({
               sx={{
                 flexGrow: 0.95,
               }}>
-              <Typography variant="h6" color="text.accent">
+              <Typography
+                variant="h6"
+                sx={{
+                  color: 'text.accent',
+                }}>
                 Associated App Group Lifecycle Plugin: {selectedPlugin.display_name}
               </Typography>
               <Typography variant="body1" color="grey">
@@ -196,7 +200,14 @@ export default function AppGroupLifecyclePluginData({
                       <CircularProgress size={24} />
                     </Box>
                   ) : hasConfig || hasStatus ? (
-                    <Stack direction="row" useFlexGap flexWrap={'wrap'} justifyContent={'space-between'} gap={'2rem'}>
+                    <Stack
+                      direction="row"
+                      useFlexGap
+                      sx={{
+                        flexWrap: 'wrap',
+                        justifyContent: 'space-between',
+                        gap: '2rem',
+                      }}>
                       {hasConfig && (
                         <PluginDataPropertiesTable
                           type="Configuration"
@@ -209,7 +220,11 @@ export default function AppGroupLifecyclePluginData({
                       )}
                     </Stack>
                   ) : (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: 'text.secondary',
+                      }}>
                       No configuration or status information available for this plugin.
                     </Typography>
                   )}

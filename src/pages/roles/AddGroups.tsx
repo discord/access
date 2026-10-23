@@ -241,7 +241,11 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
               group, please create a role request.
             </Alert>
           ) : null}
-          <Typography variant="subtitle1" color="text.accent">
+          <Typography
+            variant="subtitle1"
+            sx={{
+              color: 'text.accent',
+            }}>
             {timeLimit
               ? (props.owner ? 'Ownership of ' : 'Membership to ') +
                 'one or more selected groups is limited to ' +
@@ -348,10 +352,18 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
                 renderOption: (props, option, state) => {
                   return (
                     <li {...props}>
-                      <Grid container alignItems="center">
-                        <Grid item>
+                      <Grid
+                        container
+                        sx={{
+                          alignItems: 'center',
+                        }}>
+                        <Grid>
                           <Box>{option.name}</Box>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: 'text.secondary',
+                            }}>
                             {GROUP_TYPE_ID_TO_LABELS[option.type]}
                           </Typography>
                         </Grid>

@@ -192,7 +192,11 @@ function AddUsersDialog(props: AddUsersDialogProps) {
         onSuccess={(formData) => submit(formData)}>
         <DialogTitle>Add {addUsersText}</DialogTitle>
         <DialogContent>
-          <Typography variant="subtitle1" color="text.accent">
+          <Typography
+            variant="subtitle1"
+            sx={{
+              color: 'text.accent',
+            }}>
             {timeLimit
               ? (props.owner ? 'Ownership of ' : 'Membership to ') +
                 'this group is limited to ' +
@@ -200,7 +204,11 @@ function AddUsersDialog(props: AddUsersDialogProps) {
                 '.'
               : null}
           </Typography>
-          <Typography variant="subtitle1" color="text.accent">
+          <Typography
+            variant="subtitle1"
+            sx={{
+              color: 'text.accent',
+            }}>
             {selfAddDisallowed && !isAccessAdmin(props.currentUser) ? (
               <>
                 You cannot add yourself to this group due to the{' '}
@@ -282,10 +290,18 @@ function AddUsersDialog(props: AddUsersDialogProps) {
                 renderOption: (props, option, state) => {
                   return (
                     <li {...props}>
-                      <Grid container alignItems="center">
-                        <Grid item>
+                      <Grid
+                        container
+                        sx={{
+                          alignItems: 'center',
+                        }}>
+                        <Grid>
                           <Box>{displayUserName(option)}</Box>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: 'text.secondary',
+                            }}>
                             {option.email.toLowerCase()}
                           </Typography>
                         </Grid>

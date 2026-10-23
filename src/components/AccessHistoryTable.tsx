@@ -51,7 +51,13 @@ export default function AccessHistoryTable({
 
   if (accessEntries.length === 0) {
     return (
-      <Typography variant="body2" color="text.secondary" align="center" sx={{my: 2}}>
+      <Typography
+        variant="body2"
+        align="center"
+        sx={{
+          color: 'text.secondary',
+          my: 2,
+        }}>
         {emptyMessage}
       </Typography>
     );

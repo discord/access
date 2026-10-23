@@ -151,11 +151,20 @@ const AccordionItem: React.FC<{
       <TableContainer key={appGroup.id} component={Paper}>
         {/* unmountOnExit so collapsed groups don't fetch/render members — only
             the expanded group hits the member-details endpoint. */}
-        <Accordion expanded={expanded} onChange={handleToggle} TransitionProps={{unmountOnExit: true}}>
+        <Accordion
+          expanded={expanded}
+          onChange={handleToggle}
+          slotProps={{
+            transition: {unmountOnExit: true},
+          }}>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Box sx={{display: 'inline-flex', flexGrow: 1}}>
               <Stack direction="column" spacing={1} sx={{flexGrow: 0.95}}>
-                <Typography variant="h6" color="text.accent">
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: 'text.accent',
+                  }}>
                   <Link
                     to={`/groups/${appGroup.name}`}
                     sx={{textDecoration: 'none', color: 'inherit'}}
@@ -180,7 +189,14 @@ const AccordionItem: React.FC<{
               <TableBody className="accordion-body">
                 <TableRow>
                   <TableCell colSpan={2}>
-                    <Stack direction="row" useFlexGap flexWrap={'wrap'} justifyContent={'space-between'} gap={'2rem'}>
+                    <Stack
+                      direction="row"
+                      useFlexGap
+                      sx={{
+                        flexWrap: 'wrap',
+                        justifyContent: 'space-between',
+                        gap: '2rem',
+                      }}>
                       <GroupDetailList member_list={owners} title={'Group Owners'} loading={ownersQuery.isLoading} />
                       <Stack direction="column" spacing={1}>
                         <GroupDetailList member_list={members} title={'Members'} loading={membersQuery.isLoading} />
@@ -284,15 +300,19 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = Reac
     return (
       <React.Fragment>
         <Grid
-          item
-          xs={12}
           sx={{
             display: 'flex',
             flexDirection: 'column',
             gap: '1.25rem',
-          }}>
+          }}
+          size={12}>
           {(appGroupList?.length || 0) > 0 && list_group_title && (
-            <Typography variant="h5" component={'div'} fontWeight={500}>
+            <Typography
+              variant="h5"
+              component={'div'}
+              sx={{
+                fontWeight: 500,
+              }}>
               {list_group_title}
             </Typography>
           )}

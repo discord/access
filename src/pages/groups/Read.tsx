@@ -350,11 +350,27 @@ export default function ReadGroup() {
       <ChangeTitle title={group.name} />
       <Container maxWidth="lg" sx={{my: 4}}>
         <Grid container spacing={3}>
-          <Grid item sm={12}>
+          <Grid
+            size={{
+              sm: 12,
+            }}>
             <Paper sx={{p: 2}}>
-              <Stack direction="column" gap={2}>
-                <Stack direction={{sm: 'column', md: 'row-reverse'}} gap={1}>
-                  <Stack direction={{sm: 'row', md: 'column'}} gap={2} justifyContent="center">
+              <Stack
+                direction="column"
+                sx={{
+                  gap: 2,
+                }}>
+                <Stack
+                  direction={{sm: 'column', md: 'row-reverse'}}
+                  sx={{
+                    gap: 1,
+                  }}>
+                  <Stack
+                    direction={{sm: 'row', md: 'column'}}
+                    sx={{
+                      gap: 2,
+                      justifyContent: 'center',
+                    }}>
                     <AvatarButton
                       icon={group.type === 'role_group' ? <RoleIcon /> : <GroupIcon />}
                       text={displayGroupType(group)}
@@ -363,13 +379,15 @@ export default function ReadGroup() {
                     {!group.is_managed && <ExternallyManaged group={group} />}
                   </Stack>
                   <Stack
-                    alignItems="center"
-                    justifyContent="center"
                     direction="column"
-                    gap={1}
-                    flexGrow={1}
-                    sx={{wordBreak: 'break-word'}}
-                    paddingLeft={{sm: 0, md: '100px'}}>
+                    sx={{
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 1,
+                      flexGrow: 1,
+                      paddingLeft: {sm: 0, md: '100px'},
+                      wordBreak: 'break-word',
+                    }}>
                     <Typography variant="h3" align="center">
                       {group.deleted_at != null ? (
                         <>
@@ -400,7 +418,11 @@ export default function ReadGroup() {
                   </Stack>
                 </Stack>
                 <Divider />
-                <Stack direction="row" justifyContent="center">
+                <Stack
+                  direction="row"
+                  sx={{
+                    justifyContent: 'center',
+                  }}>
                   <ActionTooltip title="Edit">
                     <CreateUpdateGroup currentUser={currentUser} group={group} />
                   </ActionTooltip>
@@ -410,13 +432,20 @@ export default function ReadGroup() {
                   <Tooltip
                     title={group.type == 'role_group' ? 'Users audit' : 'Audit'}
                     placement="top"
-                    PopperProps={moveTooltip}>
+                    slotProps={{
+                      popper: moveTooltip,
+                    }}>
                     <IconButton aria-label="audit" to={`/groups/${id}/audit`} component={RouterLink}>
                       <AuditGroupIcon />
                     </IconButton>
                   </Tooltip>
                   {group.type == 'role_group' ? (
-                    <Tooltip title="Role audit" placement="top" PopperProps={moveTooltip}>
+                    <Tooltip
+                      title="Role audit"
+                      placement="top"
+                      slotProps={{
+                        popper: moveTooltip,
+                      }}>
                       <IconButton aria-label="audit" to={`/roles/${id}/audit`} component={RouterLink}>
                         <AuditRoleIcon />
                       </IconButton>
@@ -432,12 +461,12 @@ export default function ReadGroup() {
               group with no constraints, which is most of them. Hence the
               condition here as well as inside the component. */}
           {(group.effective_constraints ?? []).length > 0 && (
-            <Grid item xs={12}>
+            <Grid size={12}>
               <EffectiveConstraints constraints={group.effective_constraints ?? []} />
             </Grid>
           )}
           {group.type === 'app_group' && (app as any)?.app_group_lifecycle_plugin && (
-            <Grid item xs={12}>
+            <Grid size={12}>
               <AppGroupLifecyclePluginData
                 entityType="group"
                 pluginId={(app as any).app_group_lifecycle_plugin}
@@ -456,13 +485,17 @@ export default function ReadGroup() {
           )}
           {group.type == 'role_group' ? (
             <>
-              <Grid item xs={6}>
+              <Grid size={6}>
                 <TableContainer component={Paper}>
                   <Table sx={{minWidth: 325}} size="small" aria-label="groups owned by role membership">
                     <TableHead>
                       <TableRow>
                         <TableCell>
-                          <Typography variant="h6" color="text.accent">
+                          <Typography
+                            variant="h6"
+                            sx={{
+                              color: 'text.accent',
+                            }}>
                             Groups Owned by Role Membership
                           </Typography>
                         </TableCell>
@@ -474,10 +507,8 @@ export default function ReadGroup() {
                         <TableCell>Name</TableCell>
                         <TableCell colSpan={2}>
                           <Grid container>
-                            <Grid item xs={2}>
-                              Ending
-                            </Grid>
-                            <Grid item xs={10}>
+                            <Grid size={2}>Ending</Grid>
+                            <Grid size={10}>
                               <Box
                                 sx={{
                                   display: 'flex',
@@ -543,13 +574,17 @@ export default function ReadGroup() {
                   </Table>
                 </TableContainer>
               </Grid>
-              <Grid item xs={6}>
+              <Grid size={6}>
                 <TableContainer component={Paper}>
                   <Table sx={{minWidth: 325}} size="small" aria-label="groups with members granted by role membership">
                     <TableHead>
                       <TableRow>
                         <TableCell>
-                          <Typography variant="h6" color="text.accent">
+                          <Typography
+                            variant="h6"
+                            sx={{
+                              color: 'text.accent',
+                            }}>
                             Groups with Members granted by Role Membership
                           </Typography>
                         </TableCell>
@@ -561,10 +596,8 @@ export default function ReadGroup() {
                         <TableCell>Name</TableCell>
                         <TableCell colSpan={2}>
                           <Grid container>
-                            <Grid item xs={2}>
-                              Ending
-                            </Grid>
-                            <Grid item xs={10}>
+                            <Grid size={2}>Ending</Grid>
+                            <Grid size={10}>
                               <Box
                                 sx={{
                                   display: 'flex',
@@ -623,7 +656,11 @@ export default function ReadGroup() {
                       ) : (
                         <TableRow key="rolemembergroup">
                           <TableCell>
-                            <Typography variant="body2" color="text.secondary">
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                color: 'text.secondary',
+                              }}>
                               None
                             </Typography>
                           </TableCell>
@@ -638,17 +675,25 @@ export default function ReadGroup() {
               </Grid>
             </>
           ) : null}
-          <Grid item xs={12}>
+          <Grid size={12}>
             <TableContainer component={Paper}>
               <Table sx={{minWidth: 650}} size="small" aria-label="group owners">
                 <TableHead>
                   <TableRow>
                     <TableCell colSpan={3}>
                       <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="text.accent">
+                        <Typography
+                          variant="h6"
+                          sx={{
+                            color: 'text.accent',
+                          }}>
                           {group.type == 'role_group' ? 'Role Owners' : 'Group Owners'}
                         </Typography>
-                        <Typography variant="body1" color="text.secondary">
+                        <Typography
+                          variant="body1"
+                          sx={{
+                            color: 'text.secondary',
+                          }}>
                           {group.type == 'role_group'
                             ? 'Can manage description and membership of Role'
                             : 'Can manage description and membership of Group'}
@@ -656,7 +701,12 @@ export default function ReadGroup() {
                       </Stack>
                     </TableCell>
                     <TableCell align="right">
-                      <Stack direction="row" spacing={1} justifyContent={'flex-end'}>
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{
+                          justifyContent: 'flex-end',
+                        }}>
                         <CreateRequest currentUser={currentUser} group={group} owner={true}></CreateRequest>
                         <AddUsers currentUser={currentUser} group={group} owner={true} />
                         <AddRoles currentUser={currentUser} group={group} owner={true} />
@@ -670,10 +720,10 @@ export default function ReadGroup() {
                     {group.type != 'role_group' ? (
                       <TableCell>
                         <Grid container>
-                          <Grid item xs={6}>
+                          <Grid size={6}>
                             {group.type == 'app_group' ? 'Direct, App Owner, or via Roles' : 'Direct or via Roles'}
                           </Grid>
-                          <Grid item xs={6}>
+                          <Grid size={6}>
                             <Box
                               sx={{
                                 display: 'flex',
@@ -793,7 +843,11 @@ export default function ReadGroup() {
                   ) : (
                     <TableRow key="owners">
                       <TableCell>
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: 'text.secondary',
+                          }}>
                           None
                         </Typography>
                       </TableCell>
@@ -806,7 +860,7 @@ export default function ReadGroup() {
               </Table>
             </TableContainer>
           </Grid>
-          <Grid item xs={12}>
+          <Grid size={12}>
             <TableContainer component={Paper}>
               <Table sx={{minWidth: 650}} size="small" aria-label="group members">
                 <TableHead>
@@ -815,18 +869,41 @@ export default function ReadGroup() {
                       <Stack
                         direction="row"
                         spacing={2}
-                        alignItems="center"
-                        justifyContent="space-between"
-                        sx={{flexWrap: 'wrap', rowGap: 1}}>
-                        <Stack direction="row" spacing={1} alignItems="center" sx={{flexWrap: 'wrap'}}>
-                          <Typography variant="h6" color="text.accent">
+                        sx={{
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          rowGap: 1,
+                        }}>
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          sx={{
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                          }}>
+                          <Typography
+                            variant="h6"
+                            sx={{
+                              color: 'text.accent',
+                            }}>
                             {group.type == 'role_group' ? 'Role Members' : 'Group Members'}
                           </Typography>
-                          <Typography variant="body1" color="text.secondary">
+                          <Typography
+                            variant="body1"
+                            sx={{
+                              color: 'text.secondary',
+                            }}>
                             {group.type == 'role_group' ? 'Members of Okta Group for Role' : 'Members of Okta Group'}
                           </Typography>
                         </Stack>
-                        <Stack direction="row" spacing={1} alignItems="center" sx={{flexWrap: 'nowrap'}}>
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          sx={{
+                            alignItems: 'center',
+                            flexWrap: 'nowrap',
+                          }}>
                           {/*
                            * The field is an uncontrolled Autocomplete, so MUI owns its text.
                            * /groups/:id and /roles/:id render the same ReadGroup element, so
@@ -855,10 +932,8 @@ export default function ReadGroup() {
                     {group.type != 'role_group' ? (
                       <TableCell>
                         <Grid container>
-                          <Grid item xs={6}>
-                            Direct or via Roles
-                          </Grid>
-                          <Grid item xs={6}>
+                          <Grid size={6}>Direct or via Roles</Grid>
+                          <Grid size={6}>
                             <Box
                               sx={{
                                 display: 'flex',
@@ -972,7 +1047,11 @@ export default function ReadGroup() {
                   ) : (
                     <TableRow key="member">
                       <TableCell>
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: 'text.secondary',
+                          }}>
                           {memberSearchQuery ? 'No matching members' : 'None'}
                         </Typography>
                       </TableCell>
