@@ -27,7 +27,14 @@ from api import exception_handlers, middleware
 from api.config import settings
 from api.database import build_async_engine
 from api.extensions import db
-from api.log_filters import RedactingUvicornLogger, TokenSanitizingFilter
+from api.context import set_process_source
+from api.log_filters import (
+    TEXT_LOG_FORMAT,
+    JsonLogFormatter,
+    LogOriginFilter,
+    RedactingUvicornLogger,
+    TokenSanitizingFilter,
+)
 from api.schemas.core_schemas import ProblemDetail
 from api.services import okta
 
@@ -120,10 +127,47 @@ def _flatten_query_param_models(openapi_schema: dict[str, Any]) -> None:
             operation["parameters"] = flattened
 
 
-def _configure_logging() -> None:
+_LOG_FORMATS = ("plain", "text", "json")
+_log_origin_filter = LogOriginFilter()
+# Unformatted, so audit lines stay the bare JSON document log pipelines parse.
+_audit_handler = logging.StreamHandler(sys.stdout)
+_audit_handler.setFormatter(logging.Formatter("%(message)s"))
+
+
+def _configure_audit_logging(log_format: str) -> None:
+    """Route `access.audit` around the root formatter under `text` and `json`."""
+    audit_logger = logging.getLogger("access.audit")
+    if log_format == "plain":
+        audit_logger.removeHandler(_audit_handler)
+        audit_logger.propagate = True
+    else:
+        audit_logger.addHandler(_audit_handler)
+        audit_logger.propagate = False
+
+
+def _configure_logging(source: str = "server") -> None:
+    """Configure root logging from `LOG_LEVEL` and `LOG_FORMAT`.
+
+    Args:
+        source: The entrypoint this process runs as (`server`,
+            `cli:<command>`), used to attribute log lines and audit entries
+            emitted outside a request.
+    """
     level = environ.get("LOG_LEVEL", "INFO").upper()
+    requested_format = environ.get("LOG_FORMAT", "plain").lower()
+    log_format = requested_format if requested_format in _LOG_FORMATS else "plain"
+    set_process_source(source)
     logging.basicConfig(level=level, stream=sys.stdout, format="%(message)s")
     logging.root.setLevel(level)
+    for handler in logging.root.handlers:
+        handler.addFilter(_log_origin_filter)
+        # Leave handlers alone under the default format, so another owner of
+        # the root handlers (a test harness, an embedding process) keeps its own.
+        if log_format != "plain":
+            handler.setFormatter(JsonLogFormatter() if log_format == "json" else logging.Formatter(TEXT_LOG_FORMAT))
+    _configure_audit_logging(log_format)
+    if requested_format != log_format:
+        logger.warning("Unknown LOG_FORMAT %r; expected one of %s", requested_format, _LOG_FORMATS)
     token_filter = TokenSanitizingFilter()
     logging.getLogger("authlib").addFilter(token_filter)
     logging.getLogger("uvicorn.access").addFilter(token_filter)
