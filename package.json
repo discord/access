@@ -7,7 +7,7 @@
     "@emotion/cache": "^11.14.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
-    "@mui/base": "^5.0.0-beta.28",
+    "@mui/base": "5.0.0-beta.70",
     "@mui/icons-material": "^6.5.0",
     "@mui/lab": "^6.0.1-beta.36",
     "@mui/material": "^6.5.0",
@@ -20,7 +20,7 @@
     "env-cmd": "^10.1.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-hook-form": "^7.51.2",
+    "react-hook-form": "^7.54.0",
     "react-hook-form-mui": "^7.6.2",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.2"
@@ -61,7 +61,8 @@
     "@openapi-codegen/typescript": "^11.1.0",
     "@sentry/vite-plugin": "^4.0.2",
     "@testing-library/jest-dom": "^6.6.4",
-    "@testing-library/react": "^14.2.2",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.5.2",
     "@types/node": "^24.2.0",
     "@types/react": "^19.3.0",
@@ -80,6 +81,10 @@
     "*.{js,ts,jsx,tsx}": "prettier --write"
   },
   "overrides": {
+    "confetti-cannon": {
+      "react": "$react",
+      "react-dom": "$react-dom"
+    },
     "esbuild": "^0.28.1",
     "uuid": "^14.0.2"
   }

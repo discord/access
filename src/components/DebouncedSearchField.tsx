@@ -29,7 +29,7 @@ export default function DebouncedSearchField({
   const onSearchChangeRef = React.useRef(onSearchChange);
   onSearchChangeRef.current = onSearchChange;
 
-  const debounceRef = React.useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = React.useRef<ReturnType<typeof setTimeout>>(undefined);
   const handleInputChange = React.useCallback(
     (_: unknown, newValue: string | null) => {
       const q = newValue?.trim() ?? '';
