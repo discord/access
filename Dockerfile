@@ -42,7 +42,7 @@ RUN --mount=type=secret,id=ACCESS_CONFIG_OVERRIDE \
   ACCESS_CONFIG_FILE=$(test -f config/config.override.json && echo config.override.json) npm run build
 
 # Build step #2: build the API with the client as static files
-FROM python:3.13
+FROM python:3.15
 ARG SENTRY_RELEASE=""
 WORKDIR /app
 
