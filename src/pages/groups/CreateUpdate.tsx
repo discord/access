@@ -92,7 +92,7 @@ const ROLE_GROUP_PREFIX = 'Role-';
 function GroupDialog(props: GroupDialogProps) {
   const navigate = useNavigate();
 
-  const defaultGroupType = props.app != null ? 'app_group' : props.group?.type ?? props.defaultGroupType;
+  const defaultGroupType = props.app != null ? 'app_group' : (props.group?.type ?? props.defaultGroupType);
   const [groupType, setGroupType] = React.useState(defaultGroupType);
   const defaultTags =
     props.group && props.group.active_group_tags && props.group.active_group_tags.length > 0
@@ -226,7 +226,7 @@ function GroupDialog(props: GroupDialogProps) {
                 name:
                   props.group?.type == 'role_group'
                     ? props.group?.name.substring(ROLE_GROUP_PREFIX.length)
-                    : props.group?.name ?? '',
+                    : (props.group?.name ?? ''),
                 description: props.group?.description ?? '',
               }
         }
@@ -354,9 +354,6 @@ function GroupDialog(props: GroupDialogProps) {
               multiline
               rows={4}
               rules={{maxLength: 1024}}
-              // `disabled`, like the name above: immutable for an owner group, so it is left out
-              // of the partial update rather than submitted unchanged.
-              disabled={props.app_owner_group}
               parseError={(error) => {
                 if (error?.message != '') {
                   return error?.message ?? '';
@@ -388,7 +385,9 @@ function GroupDialog(props: GroupDialogProps) {
               renderInput={(params) => <TextField {...params} label="Tags" placeholder="Tags" />}
             />
           </FormControl>
-          {appGroupLifecyclePluginId && isAllowedToConfigureAppGroupLifecyclePlugin && (
+          {/* Not offered for an owner group: the API refuses a plugin configuration change
+              there, so an editable form would only invite a rejected submit. */}
+          {appGroupLifecyclePluginId && isAllowedToConfigureAppGroupLifecyclePlugin && !props.app_owner_group && (
             <AppGroupLifecyclePluginConfigurationForm
               entityType="group"
               selectedPluginId={appGroupLifecyclePluginId}

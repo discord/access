@@ -32,10 +32,10 @@
     "build": "env-cmd -f .env.production vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "prepare": "husky install"
+    "prepare": "husky"
   },
   "engines": {
-    "node": ">=22.12.0",
+    "node": ">=22.22.1",
     "npm": ">=11.16.0"
   },
   "allowScripts": {
@@ -72,7 +72,7 @@
     "jsdom": "^26.1.0",
     "lint-staged": "^17.6.0",
     "prettier": "^3.9.10",
-    "typescript": "^7.0.2",
+    "typescript": "~5.3.3",
     "vite": "^8.3.4",
     "vitest": "^4.1.11"
   },

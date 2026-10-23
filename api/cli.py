@@ -32,7 +32,7 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 
 @asynccontextmanager
-async def app_context(*, scope: str | None = None) -> AsyncIterator[None]:
+async def app_context(*, scope: str | None = None, log_source: str = "cli") -> AsyncIterator[None]:
     """Bootstrap the application context an out-of-request entrypoint needs.
 
     Binds the SQLAlchemy async engine, mirrors `create_app()`'s logging /
@@ -50,6 +50,8 @@ async def app_context(*, scope: str | None = None) -> AsyncIterator[None]:
             entrypoint's `db.session` from any other. Omit to leave the
             ambient scope in place, which for an ad-hoc caller is the
             process-global default (see `_session_scope`).
+        log_source: Entrypoint name stamped on log lines and audit entries,
+            e.g. `cli:sync`.
 
     Yields:
         None. Callers reach the session through `api.extensions.db`.
@@ -62,7 +64,7 @@ async def app_context(*, scope: str | None = None) -> AsyncIterator[None]:
     # Without _configure_okta() in particular, the module-level `okta`
     # singleton is missing `okta_client` and anything that touches Okta
     # raises AttributeError.
-    _configure_logging()
+    _configure_logging(source=log_source)
     _configure_sentry()
     _configure_okta()
 
@@ -102,8 +104,11 @@ def _with_app_context(func: F) -> F:
 
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
+        click_ctx = click.get_current_context(silent=True)
+        log_source = f"cli:{click_ctx.info_name}" if click_ctx is not None else "cli"
+
         async def _run() -> Any:
-            async with app_context(scope=f"cli-{uuid.uuid4().hex}"):
+            async with app_context(scope=f"cli-{uuid.uuid4().hex}", log_source=log_source):
                 return await func(*args, **kwargs)
 
         return asyncio.run(_run())
@@ -648,7 +653,7 @@ def shell() -> None:
         # than `async with`, because the console that runs in between is
         # synchronous and drives the loop one statement at a time.
         stack = AsyncExitStack()
-        runner.run(stack.enter_async_context(app_context()))
+        runner.run(stack.enter_async_context(app_context(log_source="cli:shell")))
         try:
             banner = (
                 f"Access shell — {db.engine.url.render_as_string(hide_password=True)}\n"
