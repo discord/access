@@ -87,9 +87,9 @@ def validated(model: Any) -> Callable[[Sequence[Any]], list[Any]]:
 
 __all__ = [
     "APP_GROUPS_SIZE",
-    "AppGroupsPage",
     "DEFAULT_SIZE",
     "MAX_SIZE",
+    "AppGroupsPage",
     "Page",
     "PageParams",
     "validated",

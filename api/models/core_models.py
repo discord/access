@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Optional
+from typing import Any, ClassVar, Optional
 
 from sqlalchemy import (
     JSON,
@@ -498,7 +498,7 @@ class OktaGroup(Base):
         lazy="raise_on_sql",
     )
 
-    __mapper_args__ = {
+    __mapper_args__ = {  # noqa: RUF012 - DeclarativeBase types it as an instance attribute, so not a ClassVar
         "polymorphic_identity": "okta_group",
         "polymorphic_on": "type",
     }
@@ -645,7 +645,7 @@ class RoleGroup(OktaGroup):
         innerjoin=True,
     )
 
-    __mapper_args__ = {
+    __mapper_args__ = {  # noqa: RUF012 - DeclarativeBase types it as an instance attribute, so not a ClassVar
         "polymorphic_identity": "role_group",
     }
 
@@ -666,7 +666,7 @@ class AppGroup(OktaGroup):
 
     app: Mapped["App"] = relationship("App", back_populates="app_groups", lazy="raise_on_sql")
 
-    __mapper_args__ = {
+    __mapper_args__ = {  # noqa: RUF012 - DeclarativeBase types it as an instance attribute, so not a ClassVar
         "polymorphic_identity": "app_group",
     }
 
@@ -1098,7 +1098,7 @@ class Tag(Base):
     REQUIRE_OWNER_REASON_CONSTRAINT_KEY = "require_owner_reason"
     DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY = "disallow_self_add_membership"
     DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY = "disallow_self_add_ownership"
-    CONSTRAINTS: dict[str, TagConstraint] = {
+    CONSTRAINTS: ClassVar[dict[str, TagConstraint]] = {
         MEMBER_TIME_LIMIT_CONSTRAINT_KEY: TagConstraint(
             validator=lambda value: isinstance(value, int) and value > 0,
             coalesce=lambda a, b: min(a, b),

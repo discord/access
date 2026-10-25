@@ -73,7 +73,7 @@ def _register_plugin_loggers() -> None:
     register_plugin_logger_prefixes(ep.module.partition(".")[0] for group in groups for ep in entry_points(group=group))
 
 
-__all__ = [
+__all__ = [  # noqa: RUF022 - grouped by plugin type
     # App Group Lifecycle Plugin
     "app_group_lifecycle_plugin_name",
     "AppGroupLifecycleContext",

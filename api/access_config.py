@@ -110,4 +110,4 @@ def get_access_config() -> AccessConfig:
     return _ACCESS_CONFIG
 
 
-__all__ = ["get_access_config", "AccessConfig"]
+__all__ = ["AccessConfig", "get_access_config"]

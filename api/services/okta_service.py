@@ -8,7 +8,7 @@ import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from okta.client import Client as OktaClient
 from okta.models.add_group_request import AddGroupRequest
@@ -508,7 +508,7 @@ class OktaService:
 
         return Group(group)
 
-    DEFAULT_QUERY_PARAMS = {"filter": 'type eq "BUILT_IN" or type eq "OKTA_GROUP"'}
+    DEFAULT_QUERY_PARAMS: ClassVar[dict[str, str]] = {"filter": 'type eq "BUILT_IN" or type eq "OKTA_GROUP"'}
 
     async def list_groups(self, *, query_params: dict[str, str] = DEFAULT_QUERY_PARAMS) -> list[Group]:
         # ``query_params`` keys (``filter``, ``q``, ``search``) map directly onto

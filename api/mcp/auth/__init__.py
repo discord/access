@@ -177,11 +177,11 @@ def requires_scope(scope: str) -> Callable[[F], F]:
 
 __all__ = [
     "ALL_V1_SCOPES",
+    "MCP_SCOPE_CREATE_REQUESTS",
+    "MCP_SCOPE_READ_ALL",
     "MCPAuthenticationError",
     "MCPIdentity",
     "MCPScopeError",
-    "MCP_SCOPE_CREATE_REQUESTS",
-    "MCP_SCOPE_READ_ALL",
     "get_mcp_identity",
     "get_mcp_scopes",
     "get_mcp_user_id",

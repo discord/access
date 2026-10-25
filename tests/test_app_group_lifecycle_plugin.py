@@ -953,7 +953,7 @@ class TestContextFindGroupsByStatus:
         therefore mandatory, not decorative -- and a warm session would hide a missing one, since
         many-to-one resolves from the identity map without SQL.
         """
-        _, group = await self._app_with_group(db, "FindAppCold", "C", {"ext_id": "cold"})
+        _, _group = await self._app_with_group(db, "FindAppCold", "C", {"ext_id": "cold"})
         expected_app_name = "FindAppCold"
 
         db.session.expunge_all()

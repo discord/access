@@ -50,14 +50,14 @@ async def retry_operation[T](
 
             # Log differently based on attempt number
             if attempt >= max_attempts:
-                logger.error(f"Max retry attempts ({max_attempts}) reached. Last error: {str(e)}")
+                logger.error(f"Max retry attempts ({max_attempts}) reached. Last error: {e!s}")
                 return None
             else:
                 # Add jitter to avoid thundering herd
                 jitter = random.uniform(0, 0.1 * delay)
                 sleep_time = min(delay + jitter, max_delay)
                 logger.warning(
-                    f"Operation failed (attempt {attempt}/{max_attempts}): {str(e)}. Retrying in {sleep_time:.2f}s"
+                    f"Operation failed (attempt {attempt}/{max_attempts}): {e!s}. Retrying in {sleep_time:.2f}s"
                 )
                 await asyncio.sleep(sleep_time)
                 delay = min(delay * 2, max_delay)  # Exponential backoff

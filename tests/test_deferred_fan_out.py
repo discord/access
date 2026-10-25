@@ -172,7 +172,7 @@ async def test_detach_for_deferred_fan_out_is_selective_and_idempotent(db: Db, o
     await db.session.commit()
     assert okta_group in db.session
 
-    collected, token = begin_deferred_fan_out()  # deferring → detach is active
+    _collected, token = begin_deferred_fan_out()  # deferring → detach is active
     try:
         # None and objects already absent from the session are tolerated.
         detach_for_deferred_fan_out(db.session, [None, okta_group])

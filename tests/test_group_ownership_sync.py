@@ -21,7 +21,7 @@ OwnershipDetails = namedtuple("OwnershipDetails", ["expired_at", "db_pk"])
 async def test_ownership_sync(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.build_batch(3)
-    initial_db_users, initial_db_groups = await seed_db(db, initial_okta_users, initial_okta_groups)
+    _initial_db_users, _initial_db_groups = await seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_owners_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
@@ -36,7 +36,7 @@ async def test_ownership_sync(db: Db, mocker: MockerFixture) -> None:
 async def test_ownership_in_okta_not_in_db_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
-    initial_db_users, initial_db_groups = await seed_db(db, initial_okta_users, initial_okta_groups)
+    _initial_db_users, _initial_db_groups = await seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_owners_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
@@ -322,7 +322,7 @@ async def test_ownership_in_both_non_authoritative(db: Db, mocker: MockerFixture
 async def test_ownership_unamanaged_group_in_okta_not_in_db_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
-    initial_db_users, initial_db_groups = await seed_db(db, initial_okta_users, initial_okta_groups)
+    _initial_db_users, _initial_db_groups = await seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_owners_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
