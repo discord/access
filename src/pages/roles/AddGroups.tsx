@@ -474,7 +474,3 @@ export default function AddGroups(props: AddGroupsProps) {
     </>
   );
 }
-
-AddGroups.defaultProps = {
-  owner: false,
-};

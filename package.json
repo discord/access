@@ -7,7 +7,7 @@
     "@emotion/cache": "^11.14.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
-    "@mui/base": "^5.0.0-beta.28",
+    "@mui/base": "5.0.0-beta.70",
     "@mui/icons-material": "^6.5.0",
     "@mui/lab": "^6.0.1-beta.36",
     "@mui/material": "^6.5.0",
@@ -18,9 +18,9 @@
     "confetti-cannon": "^2.3.2",
     "dayjs": "^1.11.10",
     "env-cmd": "^10.1.0",
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0",
-    "react-hook-form": "^7.51.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-hook-form": "^7.54.0",
     "react-hook-form-mui": "^7.6.2",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.2"
@@ -65,8 +65,8 @@
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.8",
     "@types/node": "^24.2.0",
-    "@types/react": "^18.2.74",
-    "@types/react-dom": "^18.2.24",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.0",
     "@vitest/ui": "^5.0.5",
     "husky": "^9.1.7",
@@ -81,6 +81,10 @@
     "*.{js,ts,jsx,tsx}": "prettier --write"
   },
   "overrides": {
+    "confetti-cannon": {
+      "react": "$react",
+      "react-dom": "$react-dom"
+    },
     "esbuild": "^0.28.1",
     "uuid": "^14.0.2"
   }
