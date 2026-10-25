@@ -12,8 +12,8 @@ from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
 from api.auth.permissions import (
+    AppForOwner,
     require_access_admin_or_app_creator,
-    require_app_owner_or_access_admin_for_app,
 )
 from api.database import DbSession
 from api.models import (
@@ -277,7 +277,7 @@ async def put_app(
     body: UpdateAppBody,
     db: DbSession,
     current_user_id: CurrentUserId,
-    app_obj=Depends(require_app_owner_or_access_admin_for_app),
+    app_obj: AppForOwner,
 ) -> AppDetail:
     import copy
 
@@ -468,7 +468,7 @@ async def delete_app(
     app_id: str,
     db: DbSession,
     current_user_id: CurrentUserId,
-    app_obj=Depends(require_app_owner_or_access_admin_for_app),
+    app_obj: AppForOwner,
 ) -> DeleteMessage:
     from api.operations import DeleteApp
 

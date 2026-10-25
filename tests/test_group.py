@@ -366,7 +366,7 @@ async def _update_group_type(
     okta_group: OktaGroup,
     update_group_spy: Mock,
     group_type: str,
-    extra_data: dict[str, Any] = {},
+    extra_data: dict[str, Any] | None = None,
     expected_tags_count: int = 0,
     url_for: Any = None,
 ) -> None:
@@ -377,7 +377,7 @@ async def _update_group_type(
         "name": "Updated",
         "description": f"new description {group_type}",
     }
-    data.update(extra_data)
+    data.update(extra_data or {})
 
     group_id = okta_group.id
     assert url_for is not None, "_update_group_type requires the url_for fixture"

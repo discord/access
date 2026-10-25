@@ -15,8 +15,8 @@ class CheckForReason:
         self,
         group: OktaGroup | str,
         reason: str | None,
-        members_to_add: list[str] = [],
-        owners_to_add: list[str] = [],
+        members_to_add: list[str] | None = None,
+        owners_to_add: list[str] | None = None,
     ):
         # `members_to_add` / `owners_to_add` are id lists: OktaUser ids for the
         # direct group path (execute_for_group), or the group ids a role is
@@ -25,8 +25,8 @@ class CheckForReason:
 
         self.reason = reason
 
-        self.members_to_add = members_to_add
-        self.owners_to_add = owners_to_add
+        self.members_to_add = members_to_add or []
+        self.owners_to_add = owners_to_add or []
 
     @staticmethod
     def invalid_reason(reason: str | None) -> bool:

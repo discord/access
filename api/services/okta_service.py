@@ -519,9 +519,9 @@ class OktaService:
                     group_ids_with_group_rules.setdefault(id, []).append(group_rule)
         return group_ids_with_group_rules
 
-    async def list_group_rules(self, *, query_params: dict[str, str] = {}) -> list[OktaGroupRuleType]:
+    async def list_group_rules(self, *, query_params: dict[str, str] | None = None) -> list[OktaGroupRuleType]:
         async with self._okta_client() as client:
-            group_rules = await self._paginate(client.list_group_rules, **query_params)
+            group_rules = await self._paginate(client.list_group_rules, **(query_params or {}))
 
         return group_rules
 

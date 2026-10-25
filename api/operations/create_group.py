@@ -21,14 +21,14 @@ class GroupDict(TypedDict):
 
 
 class CreateGroup:
-    def __init__(self, *, group: T | GroupDict, tags: list[str] = [], current_user_id: str | None = None):
+    def __init__(self, *, group: T | GroupDict, tags: list[str] | None = None, current_user_id: str | None = None):
         if isinstance(group, dict):
             group_dict = cast(GroupDict, group)
             self.group = cast(T, OktaGroup(name=group_dict["name"], description=group_dict["description"]))
         else:
             self.group = cast(T, group)
 
-        self.tag_ids = tags
+        self.tag_ids = tags or []
         self.current_user_id = current_user_id
 
     async def execute(self, *, _group: T | None = None) -> T:

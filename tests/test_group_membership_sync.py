@@ -388,14 +388,14 @@ async def run_sync(
     okta_groups: list[OktaGroup],
     user_membership_func: Callable[[str], list[User]],
     act_as_authority: bool,
-    groups_with_rules: set[str] = set(),
+    groups_with_rules: set[str] | None = None,
 ) -> list[OktaUserGroupMember]:
     async with AsyncSession(db.engine) as session:
         mocker.patch.object(okta, "list_groups", return_value=okta_groups)
 
         mocker.patch.object(okta, "list_users_for_group", side_effect=user_membership_func)
 
-        mocker.patch.object(okta, "list_groups_with_active_rules", return_value=groups_with_rules)
+        mocker.patch.object(okta, "list_groups_with_active_rules", return_value=groups_with_rules or set())
 
         await sync_group_memberships(act_as_authority, concurrency=10)
 

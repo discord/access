@@ -15,13 +15,13 @@ class ModifyGroupTags:
         self,
         *,
         group: OktaGroup | str,
-        tags_to_add: list[str] = [],
-        tags_to_remove: list[str] = [],
+        tags_to_add: list[str] | None = None,
+        tags_to_remove: list[str] | None = None,
         current_user_id: str | None,
     ):
         self.group_id = group if isinstance(group, str) else group.id
-        self.tag_ids_to_add = tags_to_add
-        self.tag_ids_to_remove = tags_to_remove
+        self.tag_ids_to_add = tags_to_add or []
+        self.tag_ids_to_remove = tags_to_remove or []
         self.current_user_id = current_user_id
 
     async def execute(self) -> OktaGroup:

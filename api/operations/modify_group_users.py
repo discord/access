@@ -37,12 +37,12 @@ class ModifyGroupUsers:
         *,
         group: OktaGroup | str,
         users_added_ended_at: datetime | None = None,
-        members_to_add: list[str] = [],
-        owners_to_add: list[str] = [],
-        members_should_expire: list[int] = [],
-        owners_should_expire: list[int] = [],
-        members_to_remove: list[str] = [],
-        owners_to_remove: list[str] = [],
+        members_to_add: list[str] | None = None,
+        owners_to_add: list[str] | None = None,
+        members_should_expire: list[int] | None = None,
+        owners_should_expire: list[int] | None = None,
+        members_to_remove: list[str] | None = None,
+        owners_to_remove: list[str] | None = None,
         sync_to_okta: bool = True,
         current_user_id: str | None = None,
         created_reason: str = "",
@@ -50,12 +50,12 @@ class ModifyGroupUsers:
     ):
         self.group_id = group if isinstance(group, str) else group.id
         self.users_added_ended_at = users_added_ended_at
-        self.member_ids_to_add = members_to_add
-        self.owner_ids_to_add = owners_to_add
-        self.member_should_expire_ids = members_should_expire
-        self.owner_should_expire_ids = owners_should_expire
-        self.member_ids_to_remove = members_to_remove
-        self.owner_ids_to_remove = owners_to_remove
+        self.member_ids_to_add = members_to_add or []
+        self.owner_ids_to_add = owners_to_add or []
+        self.member_should_expire_ids = members_should_expire or []
+        self.owner_should_expire_ids = owners_should_expire or []
+        self.member_ids_to_remove = members_to_remove or []
+        self.owner_ids_to_remove = owners_to_remove or []
 
         self.sync_to_okta = sync_to_okta
 

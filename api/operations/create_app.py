@@ -28,7 +28,7 @@ class CreateApp:
         self,
         *,
         app: App | AppDict,
-        tags: list[str] = [],
+        tags: list[str] | None = None,
         owner_id: str | None = None,
         owner_role_ids: list[str] | None = None,
         additional_app_groups: list[AppGroup] | list[GroupDict] | None = None,
@@ -43,7 +43,7 @@ class CreateApp:
             app_model.id = id
             self.app = app_model
 
-        self.tag_ids = tags
+        self.tag_ids = tags or []
         self.owner_id = owner_id
         self.owner_role_ids = owner_role_ids
 

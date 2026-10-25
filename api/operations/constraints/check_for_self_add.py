@@ -16,8 +16,8 @@ class CheckForSelfAdd:
         self,
         group: OktaGroup | str,
         current_user: OktaUser | str | None,
-        members_to_add: list[str] = [],
-        owners_to_add: list[str] = [],
+        members_to_add: list[str] | None = None,
+        owners_to_add: list[str] | None = None,
     ):
         # `members_to_add` / `owners_to_add` are id lists: OktaUser ids for the
         # direct group path (execute_for_group), or the group ids a role is
@@ -27,8 +27,8 @@ class CheckForSelfAdd:
             current_user.id if current_user is not None and not isinstance(current_user, str) else current_user
         )
 
-        self.members_to_add = members_to_add
-        self.owners_to_add = owners_to_add
+        self.members_to_add = members_to_add or []
+        self.owners_to_add = owners_to_add or []
 
     async def execute_for_group(self) -> tuple[bool, str]:
         group = (

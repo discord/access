@@ -41,12 +41,12 @@ class ModifyRoleGroups:
         self,
         role_group: RoleGroup | str,
         groups_added_ended_at: datetime | None = None,
-        groups_to_add: list[str] = [],
-        owner_groups_to_add: list[str] = [],
-        groups_should_expire: list[int] = [],
-        owner_groups_should_expire: list[int] = [],
-        groups_to_remove: list[str] = [],
-        owner_groups_to_remove: list[str] = [],
+        groups_to_add: list[str] | None = None,
+        owner_groups_to_add: list[str] | None = None,
+        groups_should_expire: list[int] | None = None,
+        owner_groups_should_expire: list[int] | None = None,
+        groups_to_remove: list[str] | None = None,
+        owner_groups_to_remove: list[str] | None = None,
         sync_to_okta: bool = True,
         current_user_id: str | None = None,
         created_reason: str = "",
@@ -56,12 +56,12 @@ class ModifyRoleGroups:
 
         self.groups_added_ended_at = groups_added_ended_at
 
-        self.group_ids_to_add = groups_to_add
-        self.owner_group_ids_to_add = owner_groups_to_add
-        self.group_should_expire_ids = groups_should_expire
-        self.owner_group_should_expire_ids = owner_groups_should_expire
-        self.group_ids_to_remove = groups_to_remove
-        self.owner_group_ids_to_remove = owner_groups_to_remove
+        self.group_ids_to_add = groups_to_add or []
+        self.owner_group_ids_to_add = owner_groups_to_add or []
+        self.group_should_expire_ids = groups_should_expire or []
+        self.owner_group_should_expire_ids = owner_groups_should_expire or []
+        self.group_ids_to_remove = groups_to_remove or []
+        self.owner_group_ids_to_remove = owner_groups_to_remove or []
 
         self.sync_to_okta = sync_to_okta
 
@@ -731,9 +731,7 @@ class ModifyRoleGroups:
 
         return self.role
 
-    async def __remove_groups_from_role(
-        self, groups_to_remove: list[OktaGroup] = [], owner_groups: bool = False
-    ) -> None:
+    async def __remove_groups_from_role(self, groups_to_remove: list[OktaGroup], owner_groups: bool = False) -> None:
         if len(groups_to_remove) == 0:
             return
 
