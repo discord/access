@@ -1,5 +1,5 @@
 # Build step #1: build the React front end
-FROM node:24-alpine AS build-step
+FROM node:26-alpine AS build-step
 WORKDIR /app
 ENV PATH=/app/node_modules/.bin:$PATH
 # Pin npm >= 11.16 so the v12 install defaults in .npmrc are enforced
