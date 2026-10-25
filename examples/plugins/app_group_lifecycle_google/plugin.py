@@ -410,20 +410,22 @@ class GoogleGroupManagerPlugin:
         )
 
     async def _enforce_membership_visibility(
-        self, ctx: AppGroupLifecycleContext, group: AppGroup, email: str, visibility: str
+        self, ctx: AppGroupLifecycleContext, group: AppGroup, email: str, visibility: str, claimed_this_pass: bool
     ) -> bool:
         """Set a Google group's whoCanViewMembership to ``visibility``, if it isn't already.
 
-        A 404 means the Groups Settings API can't see the group yet, which can briefly lag Cloud
-        Identity right after Okta creates it, so it is recorded as pending. Any other failure, such as
-        the API being disabled or the scope not granted, needs an Access admin and is recorded as an
-        error.
+        The Groups Settings API answers 404 for a group it can't see. Cloud Identity has already found
+        the group by this point, so a 404 on the pass that claimed it may be the settings API catching
+        up on a new group, and is recorded as pending. On any later pass it is not a lag, so it is an
+        error, as is any other failure, such as the API being disabled or the scope not granted.
 
         Args:
             ctx: The plugin capability context.
             group: The Access group being reconciled.
             email: The Google group's full email, which is how the Groups Settings API keys a group.
             visibility: The whoCanViewMembership value to enforce.
+            claimed_this_pass: Whether this reconcile is the one that linked the Google group to
+                ``group``.
 
         Returns:
             True when the setting is in place; False when a pending or error status was recorded.
@@ -436,7 +438,7 @@ class GoogleGroupManagerPlugin:
                     self._group_settings_api.patch(groupUniqueId=email, body={"whoCanViewMembership": visibility})
                 )
         except HttpError as e:
-            if getattr(getattr(e, "resp", None), "status", None) == 404:
+            if claimed_this_pass and getattr(getattr(e, "resp", None), "status", None) == 404:
                 self._mark_pending(ctx, group, "Awaiting the Google group's settings to become available")
             else:
                 self._mark_error(
@@ -713,6 +715,7 @@ class GoogleGroupManagerPlugin:
             # Case 1: Retrieve an existing Google group already claimed by this Access group
             # This should generally be the case in all but the group's first or second reconcile.
             claimed_google_group_id = await self._get_owned_group_id(ctx, group)
+            claimed_this_pass = claimed_google_group_id is None
 
             if claimed_google_group_id is None:
                 # Case 2: Retrieve an existing Google group matching the configured email (created out-of-band)
@@ -909,7 +912,7 @@ class GoogleGroupManagerPlugin:
             # Runs after linking so that a settings failure never keeps a group from being pushed.
             # Enforced on adopted groups too, not backfilled from Google; see ENV_MEMBERSHIP_VISIBILITY.
             if self._membership_visibility is not None and not await self._enforce_membership_visibility(
-                ctx, group, google_group["groupKey"]["id"], self._membership_visibility
+                ctx, group, google_group["groupKey"]["id"], self._membership_visibility, claimed_this_pass
             ):
                 return
 

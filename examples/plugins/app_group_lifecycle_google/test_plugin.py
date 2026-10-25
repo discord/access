@@ -476,7 +476,7 @@ async def test_enforce_membership_visibility_patches_a_differing_setting(
     mock_group_settings_api.get().execute.return_value = {"whoCanViewMembership": "ALL_MEMBERS_CAN_VIEW"}
 
     assert await visibility_plugin._enforce_membership_visibility(
-        ctx_mock, _group(mocker), "sec@test-company.com", "ALL_IN_DOMAIN_CAN_VIEW"
+        ctx_mock, _group(mocker), "sec@test-company.com", "ALL_IN_DOMAIN_CAN_VIEW", claimed_this_pass=False
     )
 
     assert mock_group_settings_api.get.call_args.kwargs == {"groupUniqueId": "sec@test-company.com"}
@@ -495,30 +495,39 @@ async def test_enforce_membership_visibility_leaves_a_matching_setting_alone(
     mock_group_settings_api.get().execute.return_value = {"whoCanViewMembership": "ALL_IN_DOMAIN_CAN_VIEW"}
 
     assert await visibility_plugin._enforce_membership_visibility(
-        ctx_mock, _group(mocker), "sec@test-company.com", "ALL_IN_DOMAIN_CAN_VIEW"
+        ctx_mock, _group(mocker), "sec@test-company.com", "ALL_IN_DOMAIN_CAN_VIEW", claimed_this_pass=False
     )
 
     mock_group_settings_api.patch.assert_not_called()
 
 
-@pytest.mark.parametrize("status,sync_status", [(404, SYNC_PENDING), (403, SYNC_ERROR), (500, SYNC_ERROR)])
+@pytest.mark.parametrize(
+    "status,claimed_this_pass,sync_status",
+    [
+        (404, True, SYNC_PENDING),
+        (404, False, SYNC_ERROR),
+        (403, True, SYNC_ERROR),
+        (500, False, SYNC_ERROR),
+    ],
+)
 async def test_enforce_membership_visibility_records_a_failure_instead_of_raising(
     visibility_plugin: GoogleGroupManagerPlugin,
     mock_group_settings_api: MagicMock,
     mocker: MockerFixture,
     ctx_mock: MagicMock,
     status: int,
+    claimed_this_pass: bool,
     sync_status: str,
 ) -> None:
-    # A 404 is the settings API lagging Cloud Identity on a new group, so it waits; anything else
-    # (the API disabled, the scope not granted) is for an admin.
+    # Only a 404 on the pass that linked the group waits, in case the settings API is catching up on
+    # a new group; a 404 that persists past it, or any other failure, is for an admin.
     from googleapiclient.errors import HttpError
 
     group = _group(mocker)
     mock_group_settings_api.get().execute.side_effect = HttpError(status)
 
     assert not await visibility_plugin._enforce_membership_visibility(
-        ctx_mock, group, "sec@test-company.com", "ALL_IN_DOMAIN_CAN_VIEW"
+        ctx_mock, group, "sec@test-company.com", "ALL_IN_DOMAIN_CAN_VIEW", claimed_this_pass
     )
 
     assert group.plugin_data[PLUGIN_ID]["status"][STATUS_SYNC_STATUS] == sync_status
