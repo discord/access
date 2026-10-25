@@ -13,8 +13,8 @@ import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
 import RoleRequestIcon from '@mui/icons-material/WorkHistory';
 import AlertIcon from '@mui/icons-material/Campaign';
-import PendingIcon from '@mui/icons-material/HelpOutline';
-import ApprovedIcon from '@mui/icons-material/CheckCircleOutline';
+import PendingIcon from '@mui/icons-material/HelpOutlineOutlined';
+import ApprovedIcon from '@mui/icons-material/CheckCircleOutlineOutlined';
 import RejectedIcon from '@mui/icons-material/HighlightOff';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -406,7 +406,12 @@ export default function ReadRoleRequest() {
       />
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
-          <Grid item xs={12} md={5} lg={3}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 5,
+              lg: 3,
+            }}>
             <Paper
               sx={{
                 p: 2,
@@ -454,7 +459,12 @@ export default function ReadRoleRequest() {
               </Avatar>
             </Paper>
           </Grid>
-          <Grid item xs={12} md={7} lg={9}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 7,
+              lg: 9,
+            }}>
             <Paper
               sx={{
                 p: 2,
@@ -466,12 +476,11 @@ export default function ReadRoleRequest() {
               }}>
               <Grid container>
                 <Grid
-                  item
-                  xs={8}
                   sx={{
                     textAlign: 'center',
                     wordBreak: 'break-word',
-                  }}>
+                  }}
+                  size={8}>
                   <Typography variant="h4">
                     {(roleRequest.requester_role?.deleted_at ?? null) != null ? (
                       <Link
@@ -522,14 +531,13 @@ export default function ReadRoleRequest() {
                 </Grid>
                 <Divider orientation="vertical" flexItem sx={{mr: '-1px'}} />
                 <Grid
-                  item
-                  xs={4}
                   sx={{
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
                     textAlign: 'center',
-                  }}>
+                  }}
+                  size={4}>
                   <Typography variant="h6">Status</Typography>
                   <Typography variant="h4">
                     <b>{roleRequest.status}</b>
@@ -539,7 +547,7 @@ export default function ReadRoleRequest() {
             </Paper>
           </Grid>
           {/* Access History Section */}
-          <Grid item xs={12}>
+          <Grid size={12}>
             <AccessHistory
               subjectType="role"
               subjectName={roleRequest.requester_role?.name ?? ''}
@@ -547,7 +555,7 @@ export default function ReadRoleRequest() {
               auditHistory={groupRoleAudits}
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid size={12}>
             <Timeline
               sx={{
                 [`& .${timelineOppositeContentClasses.root}`]: {
@@ -649,9 +657,18 @@ export default function ReadRoleRequest() {
                   </Paper>
                   {manager && blocked ? (
                     <Paper sx={{p: 2}}>
-                      <Stack alignItems="center" direction="row" gap={2}>
+                      <Stack
+                        direction="row"
+                        sx={{
+                          alignItems: 'center',
+                          gap: 2,
+                        }}>
                         <AlertIcon fontSize="large" sx={{color: 'primary.main'}} />
-                        <Typography display="inline" variant="body1">
+                        <Typography
+                          variant="body1"
+                          sx={{
+                            display: 'inline',
+                          }}>
                           <b>
                             While you own group {group.name}, you are blocked from responding to this request by group
                             tags. The request has been forwarded to other group owners or Access admins.
@@ -663,9 +680,18 @@ export default function ReadRoleRequest() {
                     <>
                       {adminNoteForBlocked ? (
                         <Paper sx={{p: 2, mb: 1}}>
-                          <Stack alignItems="center" direction="row" gap={2}>
+                          <Stack
+                            direction="row"
+                            sx={{
+                              alignItems: 'center',
+                              gap: 2,
+                            }}>
                             <AlertIcon fontSize="large" sx={{color: 'primary.main'}} />
-                            <Typography display="inline" variant="body1">
+                            <Typography
+                              variant="body1"
+                              sx={{
+                                display: 'inline',
+                              }}>
                               <b>
                                 All owners of group {group.name} are blocked from approving this request due to group
                                 tags. As an Access admin, you may respond to it on their behalf.
@@ -683,7 +709,12 @@ export default function ReadRoleRequest() {
                           groupName={roleRequest.requested_group?.name ?? ''}
                           owner={roleRequest.request_ownership ?? false}
                         />
-                        <Typography display="inline" variant="body1" sx={{pl: 1}}>
+                        <Typography
+                          variant="body1"
+                          sx={{
+                            display: 'inline',
+                            pl: 1,
+                          }}>
                           If approved, everyone who is a member of the role will be added to the group.
                         </Typography>
                       </Paper>
@@ -739,8 +770,12 @@ export default function ReadRoleRequest() {
                               {!ownRequest ? (
                                 <FormControl fullWidth>
                                   <Grid container>
-                                    <Grid item xs={12}>
-                                      <Typography variant="subtitle1" color="text.accent">
+                                    <Grid size={12}>
+                                      <Typography
+                                        variant="subtitle1"
+                                        sx={{
+                                          color: 'text.accent',
+                                        }}>
                                         {timeLimit
                                           ? (roleRequest.request_ownership ? 'Ownership of ' : 'Membership to ') +
                                             'this group is limited to ' +
@@ -749,7 +784,7 @@ export default function ReadRoleRequest() {
                                           : null}
                                       </Typography>
                                     </Grid>
-                                    <Grid item xs={8}>
+                                    <Grid size={8}>
                                       <SelectElement
                                         fullWidth
                                         label="For how long?"
@@ -759,8 +794,8 @@ export default function ReadRoleRequest() {
                                         required
                                       />
                                     </Grid>
-                                    <Grid item xs={1} />
-                                    <Grid item xs={2}>
+                                    <Grid size={1} />
+                                    <Grid size={2}>
                                       <ToggleButtonGroupElement
                                         name="ownerOrMember"
                                         enforceAtLeastOneSelected
@@ -780,7 +815,7 @@ export default function ReadRoleRequest() {
                                         ]}
                                       />
                                     </Grid>
-                                    <Grid item xs={1} />
+                                    <Grid size={1} />
                                   </Grid>
                                 </FormControl>
                               ) : null}
@@ -857,7 +892,11 @@ export default function ReadRoleRequest() {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="text.accent">
+                                      <Typography
+                                        variant="h6"
+                                        sx={{
+                                          color: 'text.accent',
+                                        }}>
                                         {roleRequest.requested_group?.name}{' '}
                                         {roleRequest.requested_group?.type == 'role_group' ? 'Owners' : 'Group Owners'}
                                       </Typography>
@@ -912,7 +951,11 @@ export default function ReadRoleRequest() {
                                   ) : (
                                     <TableRow key="owners">
                                       <TableCell colSpan={3}>
-                                        <Typography variant="body2" color="text.secondary">
+                                        <Typography
+                                          variant="body2"
+                                          sx={{
+                                            color: 'text.secondary',
+                                          }}>
                                           None
                                         </Typography>
                                       </TableCell>
@@ -928,7 +971,11 @@ export default function ReadRoleRequest() {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="text.accent">
+                                      <Typography
+                                        variant="h6"
+                                        sx={{
+                                          color: 'text.accent',
+                                        }}>
                                         {((roleRequest.requested_group ?? {}) as AppGroupDetail).app?.name}
                                         {' App Owners'}
                                       </Typography>
@@ -983,7 +1030,11 @@ export default function ReadRoleRequest() {
                                   ) : (
                                     <TableRow key="owners">
                                       <TableCell colSpan={3}>
-                                        <Typography variant="body2" color="text.secondary">
+                                        <Typography
+                                          variant="body2"
+                                          sx={{
+                                            color: 'text.secondary',
+                                          }}>
                                           None
                                         </Typography>
                                       </TableCell>
@@ -1000,7 +1051,11 @@ export default function ReadRoleRequest() {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="text.accent">
+                                      <Typography
+                                        variant="h6"
+                                        sx={{
+                                          color: 'text.accent',
+                                        }}>
                                         {ACCESS_APP_RESERVED_NAME}
                                         {' Admins'}
                                       </Typography>
@@ -1055,7 +1110,11 @@ export default function ReadRoleRequest() {
                                   ) : (
                                     <TableRow key="owners">
                                       <TableCell colSpan={3}>
-                                        <Typography variant="body2" color="text.secondary">
+                                        <Typography
+                                          variant="body2"
+                                          sx={{
+                                            color: 'text.secondary',
+                                          }}>
                                           None
                                         </Typography>
                                       </TableCell>

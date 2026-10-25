@@ -348,7 +348,13 @@ function AccordionMaker({which, expandedSlug, onSlugChange, onInternalLink}: Acc
 
   return (
     <>
-      <Typography variant="h5" color="text.accent" sx={{mt: 0, mb: '15px'}}>
+      <Typography
+        variant="h5"
+        sx={{
+          color: 'text.accent',
+          mt: 0,
+          mb: '15px',
+        }}>
         {sections[which][0]}
       </Typography>
       {Object.entries(guide[which]).map(([question, answer]) => {
@@ -369,7 +375,11 @@ function AccordionMaker({which, expandedSlug, onSlugChange, onInternalLink}: Acc
                     onClick={(e) => handleCopyLink(e, slug)}
                     aria-label="Copy link"
                     sx={{ml: 1, opacity: 0.5, '&:hover': {opacity: 1}}}>
-                    <LinkIcon fontSize="small" />
+                    <LinkIcon
+                      sx={{
+                        fontSize: 'small',
+                      }}
+                    />
                   </IconButton>
                 </Tooltip>
               </Box>
@@ -609,15 +619,32 @@ export default function Home() {
                             width: '100%',
                           }}>
                           {stat.isAction ? (
-                            <Typography variant="body2" fontWeight={600} sx={{color}}>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                fontWeight: 600,
+                                color,
+                              }}>
                               {stat.label}
                             </Typography>
                           ) : (
                             <Box>
-                              <Typography variant="h4" fontWeight={700} sx={{color, lineHeight: 1}}>
+                              <Typography
+                                variant="h4"
+                                sx={{
+                                  fontWeight: 700,
+                                  color,
+                                  lineHeight: 1,
+                                }}>
                                 {statCounts[stat.id] ?? 0}
                               </Typography>
-                              <Typography variant="caption" color="text.secondary" sx={{mt: 0.5, display: 'block'}}>
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  color: 'text.secondary',
+                                  mt: 0.5,
+                                  display: 'block',
+                                }}>
                                 {statCounts[stat.id] === 1 ? (stat.singularLabel ?? stat.label) : stat.label}
                               </Typography>
                             </Box>
@@ -645,19 +672,38 @@ export default function Home() {
       </Paper>
       <Paper>
         <Grid container spacing={2} direction="row" sx={{padding: 2}}>
-          <Grid item xs={12} lg={3}>
+          <Grid
+            size={{
+              xs: 12,
+              lg: 3,
+            }}>
             <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <Grid container justifyContent="center">
-                  <Grid item>
-                    <Typography variant="h5" fontWeight={500} color="text.accent">
+              <Grid size={12}>
+                <Grid
+                  container
+                  sx={{
+                    justifyContent: 'center',
+                  }}>
+                  <Grid>
+                    <Typography
+                      variant="h5"
+                      sx={{
+                        fontWeight: 500,
+                        color: 'text.accent',
+                      }}>
                       {appName} User Guides
                     </Typography>
                   </Grid>
                 </Grid>
               </Grid>
               {Object.entries(sections).map(([key, [, buttonTitle, icon]]) => (
-                <Grid item xs={6} sm={4} lg={12} key={key}>
+                <Grid
+                  key={key}
+                  size={{
+                    xs: 6,
+                    sm: 4,
+                    lg: 12,
+                  }}>
                   <Button
                     variant="contained"
                     size="large"
@@ -670,13 +716,21 @@ export default function Home() {
               ))}
             </Grid>
           </Grid>
-          <Grid item sx={{display: {xs: 'none', lg: 'flex'}}} lg={0.1}>
+          <Grid
+            sx={{display: {xs: 'none', lg: 'flex'}}}
+            size={{
+              lg: 0.1,
+            }}>
             <Divider orientation="vertical" />
           </Grid>
-          <Grid item xs={12} sx={{display: {xs: 'block', lg: 'none'}, py: '0 !important'}}>
+          <Grid sx={{display: {xs: 'block', lg: 'none'}, mt: -2}} size={12}>
             <Divider />
           </Grid>
-          <Grid item xs={12} lg={8.8}>
+          <Grid
+            size={{
+              xs: 12,
+              lg: 8.8,
+            }}>
             <AccordionMaker
               which={whichAccordion}
               expandedSlug={expandedSlug}

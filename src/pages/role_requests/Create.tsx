@@ -307,7 +307,11 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
         Request
       </DialogTitle>
       <DialogContent>
-        <Typography variant="subtitle1" color="text.accent">
+        <Typography
+          variant="subtitle1"
+          sx={{
+            color: 'text.accent',
+          }}>
           {timeLimit
             ? (owner ? 'Ownership of ' : 'Membership to ') +
               'this group is limited to ' +
@@ -345,10 +349,18 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               renderOption: (props, option, state) => {
                 return (
                   <li {...props}>
-                    <Grid container alignItems="center">
-                      <Grid item>
+                    <Grid
+                      container
+                      sx={{
+                        alignItems: 'center',
+                      }}>
+                      <Grid>
                         <Box>{option.name}</Box>
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: 'text.secondary',
+                          }}>
                           {GROUP_TYPE_ID_TO_LABELS[option.type]}
                         </Typography>
                       </Grid>
@@ -390,10 +402,18 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               renderOption: (props, option, state) => {
                 return (
                   <li {...props}>
-                    <Grid container alignItems="center">
-                      <Grid item>
+                    <Grid
+                      container
+                      sx={{
+                        alignItems: 'center',
+                      }}>
+                      <Grid>
                         <Box>{option.name}</Box>
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: 'text.secondary',
+                          }}>
                           {GROUP_TYPE_ID_TO_LABELS[option.type]}
                         </Typography>
                       </Grid>
@@ -406,7 +426,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
         </FormControl>
         <FormControl margin="normal" fullWidth>
           <Grid container>
-            <Grid item xs={7}>
+            <Grid size={7}>
               <SelectElement
                 fullWidth
                 label="For how long?"
@@ -416,8 +436,8 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
                 required
               />
             </Grid>
-            <Grid item xs={1} />
-            <Grid item xs={2}>
+            <Grid size={1} />
+            <Grid size={2}>
               <ToggleButtonGroupElement
                 name="ownerOrMember"
                 enforceAtLeastOneSelected
@@ -452,7 +472,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
                 }
               />
             </Grid>
-            <Grid item xs={1} />
+            <Grid size={1} />
           </Grid>
         </FormControl>
         {until == 'custom' ? (
