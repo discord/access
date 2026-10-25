@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pytest_mock import MockerFixture
 
 from api.config import settings
-from api.models import AccessRequest, AccessRequestStatus, OktaGroup, OktaUser
 from api.extensions import Db
+from api.models import AccessRequest, AccessRequestStatus, OktaGroup, OktaUser
 from api.syncer import expire_access_requests
 from tests.factories import AccessRequestFactory
 

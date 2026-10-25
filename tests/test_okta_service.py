@@ -5,13 +5,12 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from okta.errors.okta_api_error import OktaAPIError
 from okta.models.add_group_request import AddGroupRequest
 from okta.models.group import Group as OktaGroupType
 from okta.models.group_push_mapping import GroupPushMapping
 from okta.models.group_rule import GroupRule as OktaGroupRuleType
 from okta.models.user_schema import UserSchema as OktaUserSchemaType
-
-from okta.errors.okta_api_error import OktaAPIError
 
 from api.services.okta_service import (
     OKTA_TRANSIENT_RETRIES,

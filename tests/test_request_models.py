@@ -28,7 +28,6 @@ from api.schemas.requests_schemas import (
     _OktaGroupRequestBody,
 )
 
-
 # --- CreateAppBody / UpdateAppBody ------------------------------------------
 
 

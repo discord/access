@@ -1,9 +1,10 @@
-from datetime import datetime, UTC
+from collections.abc import Callable
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Optional
-from collections.abc import Callable
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     DateTime,
@@ -11,7 +12,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    JSON,
     TypeDecorator,
     Unicode,
     func,

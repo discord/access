@@ -1,7 +1,10 @@
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from api.extensions import Db
 from api.models import (
     App,
     AppGroup,
@@ -12,7 +15,6 @@ from api.models import (
     RoleGroupMap,
     Tag,
 )
-from api.extensions import Db
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from tests.factories import (
     AppTagMapFactory,
@@ -21,7 +23,6 @@ from tests.factories import (
     OktaUserFactory,
     RoleGroupFactory,
 )
-from typing import Any
 
 
 async def test_user_audit_resolves_at_me(client: AsyncClient, db: Db, url_for: Any) -> None:

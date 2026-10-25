@@ -15,8 +15,8 @@ that cross-loop use raises "another operation is in progress".
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 import pytest

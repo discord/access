@@ -1,6 +1,6 @@
 import logging
-from typing import Any
 from collections.abc import Callable, Generator
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -14,12 +14,11 @@ from api.config import settings
 from api.extensions import Db
 from api.models import AccessRequestStatus, AppGroup, GroupRequest, OktaUser, OktaUserGroupMember
 from api.operations import ApproveGroupRequest, CreateGroupRequest
-from api.plugins.app_group_lifecycle import AppGroupLifecyclePluginFilteringError, hookimpl
+from api.plugins.app_group_lifecycle import AppGroupLifecycleContext, AppGroupLifecyclePluginFilteringError, hookimpl
 from api.schemas import EventType
 from api.schemas.requests_schemas import CreateGroupRequestBody, ResolveGroupRequestBody
 from api.services import okta
 from tests.factories import AppFactory, AppGroupFactory, OktaUserFactory
-from api.plugins.app_group_lifecycle import AppGroupLifecycleContext
 from tests.test_app_group_lifecycle_plugin import DummyPlugin
 
 UNREGISTERED_PLUGIN_ID = "unregistered_plugin"

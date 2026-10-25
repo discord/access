@@ -5,10 +5,10 @@ import functools
 import inspect
 import json
 import logging
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any
-from collections.abc import AsyncGenerator, Awaitable, Callable
 
 from okta.client import Client as OktaClient
 from okta.models.add_group_request import AddGroupRequest

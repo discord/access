@@ -1,13 +1,11 @@
 import asyncio
-
 import logging
 
 from sqlalchemy import func, or_, select, update
-from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
+from api.context import get_request_context
 from api.extensions import db
-from api.operations._fan_out import defer_or_drain_fan_out
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -21,6 +19,7 @@ from api.models import (
     RoleGroupMap,
     RoleRequest,
 )
+from api.operations._fan_out import defer_or_drain_fan_out
 from api.operations.reject_access_request import RejectAccessRequest
 from api.operations.reject_role_request import RejectRoleRequest
 from api.plugins.app_group_lifecycle import (
@@ -28,8 +27,8 @@ from api.plugins.app_group_lifecycle import (
     get_active_group_members,
     invoke_app_group_lifecycle_hook,
 )
-from api.services import okta
 from api.schemas import AuditLogSchema, EventType
+from api.services import okta
 
 
 class DeleteGroup:

@@ -26,7 +26,7 @@ a `datetime` before passing it to operations or SQLAlchemy columns.
 
 from __future__ import annotations
 
-from datetime import date, datetime, UTC
+from datetime import UTC, date, datetime
 from email.utils import parsedate_to_datetime
 from typing import Annotated, Any
 

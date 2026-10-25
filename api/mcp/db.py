@@ -32,12 +32,13 @@ client drops the session) still returns its connection.
 from __future__ import annotations
 
 import uuid
-from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.extensions import _session_scope, db as _db_shim
+from api.extensions import _session_scope
+from api.extensions import db as _db_shim
 
 
 @asynccontextmanager

@@ -11,11 +11,11 @@ Expiring roles pages and the per-user / per-group audit views.
 
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
-
+from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import and_, func, not_, nullsfirst, nullslast, or_, select
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload, with_polymorphic
@@ -32,8 +32,6 @@ from api.models import (
     RoleGroup,
     RoleGroupMap,
 )
-from fastapi_pagination.ext.sqlalchemy import apaginate
-
 from api.pagination import Page
 from api.schemas import (
     AuditOrderBy,

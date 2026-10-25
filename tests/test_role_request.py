@@ -1,10 +1,10 @@
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from httpx import AsyncClient
-from sqlalchemy import select
-from pytest_mock import MockerFixture
 from fastapi import FastAPI
+from httpx import AsyncClient
+from pytest_mock import MockerFixture
+from sqlalchemy import select
 
 from api.config import settings
 from api.extensions import Db

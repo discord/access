@@ -2,11 +2,11 @@ import asyncio
 import logging
 from collections import defaultdict
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
-from datetime import date, datetime, timedelta, UTC
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from okta.models.group_rule import GroupRule as OktaGroupRuleType
 from sqlalchemy import and_, func, or_, select
-from api.config import settings
 from sqlalchemy.orm import (
     aliased,
     joinedload,
@@ -14,8 +14,7 @@ from sqlalchemy.orm import (
     with_polymorphic,
 )
 
-from okta.models.group_rule import GroupRule as OktaGroupRuleType
-
+from api.config import settings
 from api.extensions import db
 from api.models import (
     AccessRequest,

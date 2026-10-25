@@ -1,8 +1,8 @@
 import logging
 
 from sqlalchemy import func, or_, select
-from api.context import get_request_context
 
+from api.context import get_request_context
 from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, GroupRequest, OktaUser, OktaUserGroupMember

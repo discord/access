@@ -13,18 +13,18 @@ them, leaving the role as the single legible source of the access.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any
-from collections.abc import Sequence
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import aliased
 
+from api.exceptions import InvalidRequestError
 from api.extensions import db
 from api.models import App, AppGroup, OktaGroup, OktaUser, OktaUserGroupMember
-from api.exceptions import InvalidRequestError
 from api.operations.modify_group_users import ModifyGroupUsers
 
 logger = logging.getLogger(__name__)

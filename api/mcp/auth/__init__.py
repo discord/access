@@ -19,9 +19,9 @@ from __future__ import annotations
 import contextvars
 import functools
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeVar, cast
-from collections.abc import Awaitable, Callable
 
 # Scope strings used by the v1 tool surface. Tools declare a required
 # scope via ``@require_scope(MCP_SCOPE_READ_ALL)`` etc.; the

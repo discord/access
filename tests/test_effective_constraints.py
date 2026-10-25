@@ -5,7 +5,6 @@ from sqlalchemy.orm import selectinload
 
 from api.extensions import Db
 from api.models import AppTagMap, OktaGroup, OktaGroupTagMap, RoleGroup, Tag
-from api.routers._eager import effective_constraint_options
 from api.models.tag import (
     ConstraintOrigin,
     ConstraintSource,
@@ -16,6 +15,7 @@ from api.models.tag import (
     effective_constraints,
     effective_ended_at,
 )
+from api.routers._eager import effective_constraint_options
 from tests.factories import (
     AppFactory,
     AppGroupFactory,

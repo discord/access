@@ -19,7 +19,6 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
-
 from sqlalchemy import select
 from sqlalchemy.orm import selectin_polymorphic, selectinload
 

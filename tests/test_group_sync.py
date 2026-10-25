@@ -7,8 +7,8 @@ from pytest_mock import MockerFixture
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.models import OktaGroup
 from api.extensions import Db
+from api.models import OktaGroup
 from api.services import okta
 from api.services.okta_service import Group
 from api.syncer import sync_groups

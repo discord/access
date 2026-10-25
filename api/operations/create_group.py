@@ -1,17 +1,16 @@
+import logging
 from typing import TypedDict, TypeVar, cast
 
-import logging
-
-from api.context import get_request_context
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic, with_polymorphic
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
 from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.plugins.app_group_lifecycle import AppGroupLifecycleHook
-from api.services import okta
 from api.schemas import AuditLogSchema, EventType
+from api.services import okta
 
 T = TypeVar("T", bound=OktaGroup)
 

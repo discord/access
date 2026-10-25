@@ -1,8 +1,8 @@
 import logging
 
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import selectin_polymorphic
 
-from sqlalchemy import func, or_, select, update
 from api.extensions import db
 from api.models import (
     AccessRequest,

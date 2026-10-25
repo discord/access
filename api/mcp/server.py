@@ -31,9 +31,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
-
+from contextlib import asynccontextmanager
 from urllib.parse import urlsplit, urlunsplit
 
 from mcp.server.fastmcp import FastMCP

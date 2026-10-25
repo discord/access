@@ -1,11 +1,11 @@
 import logging
 
 from sqlalchemy import func, or_, select, update
-from api.context import get_request_context
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroupTagMap, OktaUser, Tag
-from api.operations import ModifyGroupsTimeLimit
+from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
 from api.schemas import AuditLogSchema, EventType
 
 

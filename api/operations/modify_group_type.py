@@ -1,11 +1,10 @@
+import logging
 from typing import cast
 
-import logging
-
-from api.context import get_request_context
 from sqlalchemy import Table, delete, func, insert, or_, select, update
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import (
     AppGroup,
@@ -17,10 +16,10 @@ from api.models import (
     RoleGroup,
     RoleGroupMap,
 )
+from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
 from api.operations.modify_role_groups import ModifyRoleGroups
-from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecycleHook,
     get_active_group_members,

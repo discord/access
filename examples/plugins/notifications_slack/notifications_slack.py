@@ -2,9 +2,9 @@ import asyncio
 import logging
 import os
 import random
+from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timedelta
 from typing import Any
-from collections.abc import Awaitable, Callable
 
 import pluggy
 from slack_sdk.web.async_client import AsyncWebClient

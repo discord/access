@@ -1,14 +1,14 @@
-from datetime import datetime, timedelta, UTC
-from typing import Any, cast, Protocol
+from datetime import UTC, datetime, timedelta
+from typing import Any, Protocol, cast
 
 import pytest
 from faker import Faker
+from fastapi import FastAPI
 from httpx import AsyncClient
 from okta.models import Group
 from pytest_mock import MockerFixture
-from fastapi import FastAPI
-
 from sqlalchemy import func, or_, select
+
 from api.config import settings
 from api.exceptions import ConflictError
 from api.extensions import Db
@@ -17,13 +17,13 @@ from api.models import (
     AppGroup,
     GroupRequest,
     OktaGroup,
+    OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
-    OktaGroupTagMap,
     Tag,
 )
-from api.operations import CreateGroupRequest, ApproveGroupRequest, RejectGroupRequest
+from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
 from api.plugins import ConditionalAccessResponse, get_notification_hook
 from api.services import okta
 from tests.factories import (

@@ -6,12 +6,11 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import JSON, Connection
 
+# Make sure all models are imported so Base.metadata is populated
+import api.models  # noqa: F401
 from api.config import settings
 from api.database import build_async_engine
 from api.extensions import Base
-
-# Make sure all models are imported so Base.metadata is populated
-import api.models  # noqa: F401
 
 config = context.config
 

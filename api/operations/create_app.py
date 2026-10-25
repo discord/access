@@ -1,13 +1,12 @@
+import logging
 import random
 import string
 from typing import TypedDict, cast
 
-import logging
-
-from api.context import get_request_context
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import with_polymorphic
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
 from api.models.app_group import app_owners_group_description

@@ -1,15 +1,12 @@
 import asyncio
+import logging
 from datetime import UTC, datetime
 
-import logging
-
 from sqlalchemy import func, or_, select, update
-from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
+from api.context import get_request_context
 from api.extensions import db
-from api.operations._derived_reason import role_derived_reason
-from api.operations._fan_out import defer_or_drain_fan_out, prepare_notification_task
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -23,13 +20,15 @@ from api.models import (
 )
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import effective_ended_at
-from api.routers._eager import effective_constraint_options
+from api.operations._derived_reason import role_derived_reason
+from api.operations._fan_out import defer_or_drain_fan_out, prepare_notification_task
+from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import NotificationHook
-from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.plugins.app_group_lifecycle import AppGroupLifecycleHook
-from api.services import okta
+from api.routers._eager import effective_constraint_options
 from api.schemas import AuditLogSchema, EventType
+from api.services import okta
 
 
 class ModifyGroupUsers:

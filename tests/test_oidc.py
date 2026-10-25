@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import base64
 import json
+from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from collections.abc import AsyncGenerator, Generator
 
 import httpx
 import itsdangerous

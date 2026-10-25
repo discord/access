@@ -18,8 +18,8 @@
 from __future__ import annotations
 
 import os
-from typing import Any
 from collections.abc import AsyncGenerator, Callable, Generator
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
@@ -31,7 +31,8 @@ from sqlalchemy.pool import StaticPool
 from api.app import create_app
 from api.auth.dependencies import get_current_user_id
 from api.config import settings
-from api.extensions import Base, Db, _session_scope, db as _db
+from api.extensions import Base, Db, _session_scope
+from api.extensions import db as _db
 from api.models import App, AppGroup, OktaUserGroupMember
 from tests.factories import (
     AccessRequestFactory,

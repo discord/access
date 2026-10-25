@@ -16,7 +16,6 @@ here keeps the stored shape identical across all three.
 
 from __future__ import annotations
 
-
 from api.models import OktaUserGroupMember
 
 USER_IN_ROLE_PREFIX = "User in role because: "

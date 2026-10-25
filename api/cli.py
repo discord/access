@@ -13,17 +13,16 @@ Run via:
 
 from __future__ import annotations
 
-import asyncio
 import ast
+import asyncio
 import code
 import functools
 import types
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime
 from typing import Any, cast
-from collections.abc import Callable
 
 import click
 from sqlalchemy import func, or_, select
@@ -547,7 +546,7 @@ def _shell_namespace() -> dict[str, Any]:
     from datetime import UTC, datetime, timedelta
 
     from sqlalchemy import and_, delete, update
-    from sqlalchemy.orm import selectinload, selectin_polymorphic, with_polymorphic
+    from sqlalchemy.orm import selectin_polymorphic, selectinload, with_polymorphic
 
     from api import models, operations
     from api.config import settings

@@ -1,13 +1,13 @@
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any, Protocol, cast
 
 import pytest
 from faker import Faker
+from fastapi import FastAPI
 from httpx import AsyncClient
-from sqlalchemy import select
 from okta.models.group import Group
 from pytest_mock import MockerFixture
-from fastapi import FastAPI
+from sqlalchemy import select
 
 from api.config import settings
 from api.extensions import Db

@@ -1,15 +1,15 @@
 import logging
 
-from api.context import get_request_context
 from sqlalchemy import func, select
 from sqlalchemy.orm import with_polymorphic
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import App, AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.plugins.app_group_lifecycle import AppGroupLifecycleHook
-from api.services import okta
 from api.schemas import AuditLogSchema, EventType
+from api.services import okta
 
 
 class ModifyGroupDetails:

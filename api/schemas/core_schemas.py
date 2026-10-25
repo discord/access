@@ -25,7 +25,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from api.models.tag import ConstraintOrigin
 from api.schemas.datetimes import FlexibleDatetime
 
-
 # --- Tags -------------------------------------------------------------------
 
 

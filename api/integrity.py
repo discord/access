@@ -2,6 +2,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_, select, update
+
 from api.extensions import db
 from api.models import OktaGroup, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
 from api.models.tag import effective_constraint

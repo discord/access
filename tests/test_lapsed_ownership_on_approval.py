@@ -8,7 +8,7 @@ approvals route to the app owner or an Access admin rather than the requester.
 """
 
 import uuid
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from okta.models import Group

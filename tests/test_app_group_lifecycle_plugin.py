@@ -9,11 +9,11 @@ This includes tests for:
 - Plugin lifecycle hooks
 """
 
+from collections.abc import Generator
 from dataclasses import asdict
-from unittest.mock import MagicMock
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from collections.abc import Generator
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI

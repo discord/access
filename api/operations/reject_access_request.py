@@ -1,9 +1,9 @@
 import logging
 
-from api.context import get_request_context
 from sqlalchemy import func, nullsfirst, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
+from api.context import get_request_context
 from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequest, AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup

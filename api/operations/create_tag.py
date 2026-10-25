@@ -1,12 +1,11 @@
+import logging
 import random
 import string
 from typing import Any, TypedDict, cast
 
-import logging
-
-from api.context import get_request_context
 from sqlalchemy import func, select
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import OktaUser, Tag
 from api.models.tag import validate_constraint_propagation

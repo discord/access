@@ -40,7 +40,6 @@ from api.routers._fan_out import defer_fan_out
 from api.services import okta
 from tests.factories import AppFactory
 
-
 # --- defer_or_drain_fan_out: defer vs. drain-inline vs. no-op -----------------
 
 

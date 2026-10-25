@@ -1,9 +1,9 @@
 import logging
 import os
 import threading
+from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any
-from collections.abc import AsyncIterator
 
 import pluggy
 

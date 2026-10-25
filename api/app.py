@@ -12,11 +12,11 @@ import json
 import logging
 import re
 import sys
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from os import environ
 from pathlib import Path
 from typing import Any
-from collections.abc import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
@@ -26,9 +26,9 @@ from starlette.responses import Response
 
 from api import exception_handlers, middleware
 from api.config import settings
+from api.context import set_process_source
 from api.database import build_async_engine
 from api.extensions import db
-from api.context import set_process_source
 from api.log_filters import (
     TEXT_LOG_FORMAT,
     JsonLogFormatter,
@@ -222,8 +222,8 @@ def _configure_sentry() -> None:
     from fastapi import HTTPException
     from fastapi.exceptions import RequestValidationError
     from pydantic import ValidationError
-    from sentry_sdk.integrations.starlette import StarletteIntegration
     from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
     from starlette.exceptions import HTTPException as StarletteHTTPException
 
     from api.auth.dependencies import OIDCRedirectRequired
@@ -378,6 +378,7 @@ def create_app(testing: bool | None = False) -> FastAPI:
     # OIDC: Authlib + SessionMiddleware. Only mounted if configured.
     if settings.OIDC_CLIENT_SECRETS is not None and settings.SECRET_KEY:
         from starlette.middleware.sessions import SessionMiddleware
+
         from api.auth.oidc import register_oidc
 
         # HttpOnly is set by SessionMiddleware unconditionally; we add Secure

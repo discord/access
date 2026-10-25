@@ -24,8 +24,8 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
-from typing import Any
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 import anyio
 from sqlalchemy import MetaData
@@ -36,7 +36,6 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
 )
 from sqlalchemy.orm import DeclarativeBase
-
 
 # Per-request session scope. The FastAPI middleware sets this to a unique
 # request id; CLI/syncer entrypoints set it to a per-run sentinel. Default

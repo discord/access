@@ -1,9 +1,9 @@
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import (
     selectin_polymorphic,
     selectinload,
 )
 
-from sqlalchemy import func, or_, select
 from api.auth.permissions import is_access_admin as _is_access_admin
 from api.extensions import db
 from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, OktaUserGroupMember, RoleGroup, Tag

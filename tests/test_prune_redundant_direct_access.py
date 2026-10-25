@@ -13,11 +13,6 @@ from api.cli import cli, prune_redundant_direct_access_command
 from api.extensions import Db
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
 from api.operations import ModifyGroupUsers
-from api.plugins.app_group_lifecycle import (
-    AppGroupLifecyclePluginMetadata,
-    AppGroupLifecyclePluginSpec,
-    hookimpl,
-)
 from api.operations.prune_redundant_direct_access import (
     AccessTarget,
     FilterResolutionError,
@@ -28,6 +23,11 @@ from api.operations.prune_redundant_direct_access import (
     find_redundant_grants,
     resolve_group_ids,
     resolve_user_ids,
+)
+from api.plugins.app_group_lifecycle import (
+    AppGroupLifecyclePluginMetadata,
+    AppGroupLifecyclePluginSpec,
+    hookimpl,
 )
 from api.services import okta
 from tests.factories import (

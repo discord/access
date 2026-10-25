@@ -1,12 +1,11 @@
 import asyncio
 
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import (
     joinedload,
 )
 
-from sqlalchemy import func, or_, select, update
 from api.extensions import db
-from api.operations._fan_out import defer_or_drain_fan_out
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -16,7 +15,10 @@ from api.models import (
     OktaUserGroupMember,
     RoleRequest,
 )
-from api.operations import RejectAccessRequest, RejectGroupRequest, RejectRoleRequest
+from api.operations._fan_out import defer_or_drain_fan_out
+from api.operations.reject_access_request import RejectAccessRequest
+from api.operations.reject_group_request import RejectGroupRequest
+from api.operations.reject_role_request import RejectRoleRequest
 from api.services import okta
 
 

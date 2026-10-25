@@ -3,8 +3,8 @@ from datetime import UTC, datetime, timedelta
 from pytest_mock import MockerFixture
 from sqlalchemy import select
 
-from api.integrity import verify_and_fix_role_memberships
 from api.extensions import Db
+from api.integrity import verify_and_fix_role_memberships
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
 from api.services import okta
 from tests.factories import OktaUserGroupMemberFactory, RoleGroupMapFactory

@@ -5,8 +5,8 @@ FastAPI migration plan."""
 
 from __future__ import annotations
 
-from typing import Any
 from collections.abc import Generator
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -15,7 +15,6 @@ from pytest_mock import MockerFixture
 
 from api.auth.dependencies import require_authenticated
 from api.config import settings
-
 
 _REAL_DSN = "https://abc@o12345.ingest.sentry.io/777"
 _PLACEHOLDER_DSN = "https://user@example.ingest.sentry.io/1234567"

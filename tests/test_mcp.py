@@ -23,9 +23,9 @@ from __future__ import annotations
 import asyncio
 import gc
 import json
+from collections.abc import AsyncIterator, Generator
 from contextlib import asynccontextmanager
 from typing import Any
-from collections.abc import AsyncIterator, Generator
 
 import httpx
 import pytest
@@ -35,7 +35,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from api.config import settings
 from api.context import RequestContext, set_request_context
-from api.extensions import Base, Db, _session_scope, db as _db
+from api.extensions import Base, Db, _session_scope
+from api.extensions import db as _db
 from api.mcp.auth import (
     ALL_V1_SCOPES,
     MCP_SCOPE_CREATE_REQUESTS,

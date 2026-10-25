@@ -22,8 +22,8 @@ they create such a row, by taking the minimum of the two. Anything that later
 shortens one of those inputs has to re-establish it.
 """
 
-from datetime import datetime
 from collections.abc import Collection
+from datetime import datetime
 
 from sqlalchemy import func, or_, select, update
 

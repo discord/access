@@ -1,13 +1,12 @@
+import logging
 import random
 import string
 from datetime import datetime
 
-import logging
-
 from sqlalchemy import func, or_, select
-from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import (
     AccessRequestStatus,
@@ -23,9 +22,9 @@ from api.models import (
 from api.models.app_group import get_access_owners, get_app_managers
 from api.models.okta_group import get_group_managers
 from api.models.tag import effective_constraint
+from api.operations._fan_out import defer_notification
 from api.operations.approve_role_request import ApproveRoleRequest
 from api.operations.reject_role_request import RejectRoleRequest
-from api.operations._fan_out import defer_notification
 from api.plugins import ConditionalAccessHook, NotificationHook, evaluate_conditional_access
 from api.schemas import AuditLogSchema, EventType
 

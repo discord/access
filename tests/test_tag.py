@@ -1,12 +1,12 @@
 import json
 import logging
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from fastapi import FastAPI
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
-from fastapi import FastAPI
 
 from api.config import settings
 from api.extensions import Db
