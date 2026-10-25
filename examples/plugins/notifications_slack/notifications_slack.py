@@ -45,7 +45,7 @@ async def retry_operation[T](
     while attempt < max_attempts:
         try:
             return await operation_func()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - retried, then logged; notifications never propagate
             attempt += 1
 
             # Log differently based on attempt number

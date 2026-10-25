@@ -101,7 +101,7 @@ async def _prefetch_group_okta_lists(
                     # Exception, so it propagates and stops the run rather than
                     # being swallowed.
                     result: list[User] | Exception = task.result()
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - handed to the caller, which skips just this group
                     result = exc
                 # Refill the window before yielding so the replacement fetch
                 # overlaps the caller's reconciliation of this result.

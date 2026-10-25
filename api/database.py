@@ -134,7 +134,7 @@ async def get_db(request: Request) -> AsyncGenerator[AsyncSession]:
     except Exception:
         try:
             await db.session.rollback()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 - re-raise the original error, not the rollback's
             pass
         raise
     else:

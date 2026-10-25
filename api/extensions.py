@@ -153,7 +153,7 @@ class _DB:
         try:
             with anyio.move_on_after(_REMOVE_SHIELDED_TIMEOUT_SECONDS, shield=True):
                 await self.remove()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 - a failed close must not mask the caller's result
             pass
 
     async def create_all(self) -> None:

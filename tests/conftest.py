@@ -27,6 +27,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
+from starlette.routing import NoMatchFound
 
 from api.app import create_app
 from api.auth.dependencies import get_current_user_id
@@ -178,7 +179,7 @@ async def db(app: FastAPI) -> AsyncGenerator[Db]:
     finally:
         try:
             await _db.session.rollback()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 - teardown must still drop the schema
             pass
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
@@ -268,13 +269,13 @@ def url_for(app: FastAPI) -> Callable[..., str]:
         try:
             path = app.url_path_for(endpoint, **path_params)
             return str(path)
-        except Exception:
+        except NoMatchFound:
             try:
                 path = app.url_path_for(endpoint)
                 if path_params:
                     return f"{path}?{urlencode(path_params)}"
                 return str(path)
-            except Exception:
+            except NoMatchFound:
                 return f"/{endpoint}"
 
     return _url_for

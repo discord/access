@@ -315,7 +315,7 @@ async def test_membership_sync_continues_after_group_failure(db: Db, mocker: Moc
 
     def fake_list_users_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
-            raise Exception("Simulated Okta timeout")
+            raise RuntimeError("Simulated Okta timeout")
         if group_id == initial_okta_groups[1].id:
             return initial_okta_users
         return []

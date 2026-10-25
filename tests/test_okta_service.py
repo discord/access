@@ -15,6 +15,7 @@ from okta.models.user_schema import UserSchema as OktaUserSchemaType
 from api.services.okta_service import (
     OKTA_TRANSIENT_RETRIES,
     OktaResourceNotFoundError,
+    OktaResponseError,
     OktaService,
     OktaTransientError,
     UserSchema,
@@ -460,7 +461,7 @@ async def test_delete_group_push_mapping_raises_on_non_404(mocker):
     client.update_group_push_mapping = AsyncMock(return_value=(_mapping(id="map-1"), MagicMock(), None))
     client.delete_group_push_mapping = AsyncMock(return_value=(MagicMock(), MagicMock(status=403)))
 
-    with pytest.raises(Exception):
+    with pytest.raises(OktaResponseError):
         await svc.delete_group_push_mapping("app-1", "map-1")
 
 
@@ -540,7 +541,7 @@ async def test_call_404_on_list_endpoint_surfaces_as_resource_not_found() -> Non
 
 
 async def test_call_non_404_error_is_not_resource_not_found() -> None:
-    """An error that isn't a 404 keeps raising the generic Exception, so genuine
+    """An error that isn't a 404 raises OktaResponseError, so genuine
     failures stay loud instead of being downgraded to the benign path."""
     service = OktaService()
     service.initialize("fake.domain", "fake.token")

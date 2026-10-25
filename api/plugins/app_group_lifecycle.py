@@ -12,7 +12,7 @@ from sqlalchemy.orm import InstrumentedAttribute, joinedload
 from api.models import App, AppGroup, OktaUser, OktaUserGroupMember
 from api.plugins._async_dispatch import run_hooks_to_completion, verify_async_impls
 from api.services import okta
-from api.services.okta_service import OktaResourceNotFoundError
+from api.services.okta_service import OktaResourceNotFoundError, OktaResponseError
 
 app_group_lifecycle_plugin_name = "access_app_group_lifecycle"
 hookspec = pluggy.HookspecMarker(app_group_lifecycle_plugin_name)
@@ -692,7 +692,7 @@ class AppGroupLifecycleContext:
             The id of the push mapping created.
 
         Raises:
-            Exception: If Okta accepts the request but returns no mapping id.
+            OktaResponseError: If Okta accepts the request but returns no mapping id.
         """
         result = await okta.create_group_push_mapping(
             appId=okta_app_id, sourceGroupId=group.id, targetGroupName=target_group_name
@@ -718,7 +718,7 @@ class AppGroupLifecycleContext:
             MissingOktaTargetError: If Okta has not imported the target group yet. Defer and retry.
             AmbiguousOktaTargetError: If more than one target group matches; a misconfiguration
                 that will not self-heal.
-            Exception: If Okta accepts the request but returns no mapping id.
+            OktaResponseError: If Okta accepts the request but returns no mapping id.
         """
         target_group_id = await self._okta_target_group_id(external_id_field_name, external_id)
         if not target_group_id:
@@ -747,7 +747,7 @@ class AppGroupLifecycleContext:
             ``(push_mapping_id, external_id)``, or None if the group is not linked.
 
         Raises:
-            Exception: If the mapping exists but has no id or no target group id.
+            OktaResponseError: If the mapping exists but has no id or no target group id.
             DanglingPushMappingError: If the mapped target group no longer exists in Okta.
             UnresolvableOktaTargetError: If the target group's profile does not carry the external
                 id field, which is the case for any target group Okta created via group push.
@@ -761,10 +761,10 @@ class AppGroupLifecycleContext:
 
         mapping_id = mapping.get("id")
         if not mapping_id:
-            raise Exception(f"Push mapping for {group.name} has no ID. Mapping:\n{mapping}")
+            raise OktaResponseError(f"Push mapping for {group.name} has no ID. Mapping:\n{mapping}")
         target_group_id = mapping.get("targetGroupId")
         if not target_group_id:
-            raise Exception(f"Push mapping for {group.name} has no target group ID. Mapping:\n{mapping}")
+            raise OktaResponseError(f"Push mapping for {group.name} has no target group ID. Mapping:\n{mapping}")
 
         # Custom Okta attributes live in the profile union's actual_instance.additional_properties;
         # both the profile and its actual_instance are Optional on the SDK model, so guard before
@@ -838,12 +838,12 @@ class AppGroupLifecycleContext:
             The push mapping id.
 
         Raises:
-            Exception: If Okta accepted the request but returned no id, which would otherwise be
+            OktaResponseError: If Okta accepted the request but returned no id, which would otherwise be
                 recorded as a mapping that cannot be looked up or deleted.
         """
         mapping_id = result.get("id")
         if not mapping_id:
-            raise Exception(f"Okta push mapping creation returned no id: {result}")
+            raise OktaResponseError(f"Okta push mapping creation returned no id: {result}")
         return mapping_id
 
     @staticmethod
@@ -1383,17 +1383,17 @@ def _get_data_for_plugin(plugin_data: dict[str, Any], plugin_id: str) -> AppGrou
     """
     this_plugin_data = plugin_data.get(plugin_id, {})
     if not isinstance(this_plugin_data, dict):
-        raise ValueError(f"The data for app group lifecycle plugin '{plugin_id}' must be a dictionary")
+        raise ValueError(f"The data for app group lifecycle plugin '{plugin_id}' must be a dictionary")  # noqa: TRY004 - routers map ValueError to a 400
 
     configuration = this_plugin_data.get("configuration", {})
     if not isinstance(configuration, dict):
-        raise ValueError(
+        raise ValueError(  # noqa: TRY004 - routers map ValueError to a 400
             f"The configuration property in the data for app group lifecycle plugin '{plugin_id}' must be a dictionary"
         )
 
     status = this_plugin_data.get("status", {})
     if not isinstance(status, dict):
-        raise ValueError(
+        raise ValueError(  # noqa: TRY004 - routers map ValueError to a 400
             f"The status property in the data for app group lifecycle plugin '{plugin_id}' must be a dictionary"
         )
 

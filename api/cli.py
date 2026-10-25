@@ -79,7 +79,7 @@ async def app_context(*, scope: str | None = None, log_source: str = "cli") -> A
     finally:
         try:
             await db.session.commit()
-        except Exception:
+        except Exception:  # noqa: BLE001 - teardown must still close the session and dispose the engine
             await db.session.rollback()
         await db.remove()
         if token is not None:
@@ -142,7 +142,7 @@ def _load_plugin_commands() -> None:
     for ep in eps:
         try:
             command = ep.load()
-        except Exception:
+        except Exception:  # noqa: BLE001, S112 - a plugin command that fails to load must not break the CLI
             continue
         if isinstance(command, click.Command):
             cli.add_command(command, name=ep.name)
@@ -610,7 +610,7 @@ class _AsyncConsole(code.InteractiveConsole):
                 self._runner.run(result)
         except SystemExit:
             raise
-        except BaseException:
+        except BaseException:  # noqa: BLE001 - an interactive console reports every error and keeps reading
             self.showtraceback()
 
 

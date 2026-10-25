@@ -46,7 +46,7 @@ def _init_datadog() -> Any:
     except ImportError:
         logger.debug("Datadog package not available, metrics disabled")
         _datadog_client = None
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - metrics are optional; Access runs without them
         logger.warning(f"Failed to initialize Datadog: {e}")
         _datadog_client = None
 
