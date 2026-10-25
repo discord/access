@@ -144,9 +144,8 @@ async def test_defer_fan_out_drains_inline_on_endpoint_error(caplog: pytest.LogC
 
     # The endpoint raises: the error response won't carry our BackgroundTask, so
     # the dependency drains inline before re-raising.
-    with caplog.at_level(logging.ERROR, logger="api"):
-        with pytest.raises(ValueError):
-            await agen.athrow(ValueError("endpoint boom"))
+    with caplog.at_level(logging.ERROR, logger="api"), pytest.raises(ValueError):
+        await agen.athrow(ValueError("endpoint boom"))
 
     assert task.done()
     assert ran == ["ran"]

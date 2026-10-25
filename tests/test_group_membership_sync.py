@@ -192,8 +192,6 @@ async def test_membership_in_both_authoritative(db: Db, mocker: MockerFixture) -
     # Verify valid user is untouched
     assert members_rows[initial_okta_users[1].id].expired_at == non_expired_date
 
-    return
-
 
 async def test_membership_in_both_non_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
@@ -237,8 +235,6 @@ async def test_membership_in_both_non_authoritative(db: Db, mocker: MockerFixtur
 
     # Verify that non-expired memberships are unchanged
     assert members_rows[initial_okta_users[1].id].expired_at == non_expired_date
-
-    return
 
 
 async def test_membership_unamanaged_group_in_okta_not_in_db_authoritative(db: Db, mocker: MockerFixture) -> None:

@@ -1,4 +1,4 @@
-import time
+import asyncio
 
 from okta.models.group_rule import GroupRule as OktaGroupRuleType
 from okta.models.group_rule_conditions import GroupRuleConditions as OktaGroupRuleConditionsType
@@ -105,7 +105,7 @@ async def test_group_sync_deleted_in_db_exists_in_okta(db: Db, mocker: MockerFix
     assert deleted_at is not None
 
     # Wait a second to make sure the deleted_at timestamp is different
-    time.sleep(1)
+    await asyncio.sleep(1)
 
     # Add the group back to okta to simulate a case where the value was updated in the DB
     # but somehow didn't get deleted from okta

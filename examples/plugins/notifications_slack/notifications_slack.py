@@ -109,15 +109,15 @@ def parse_dates(comparison_date: datetime, owner: bool) -> str:
     prev_monday = today - timedelta(days=today.weekday())
 
     if owner:  # 'round' dates to previous Monday
-        if prev_monday <= just_date and just_date < prev_monday + timedelta(weeks=1):
+        if prev_monday <= just_date < prev_monday + timedelta(weeks=1):
             return "this week"
-        elif prev_monday + timedelta(weeks=1) <= just_date and just_date < prev_monday + timedelta(weeks=2):
+        elif prev_monday + timedelta(weeks=1) <= just_date < prev_monday + timedelta(weeks=2):
             return "next week"
-        elif prev_monday + timedelta(weeks=2) <= just_date and just_date < prev_monday + timedelta(weeks=3):
+        elif prev_monday + timedelta(weeks=2) <= just_date < prev_monday + timedelta(weeks=3):
             return "in two weeks"
-        elif prev_monday + timedelta(weeks=3) <= just_date and just_date < prev_monday + timedelta(weeks=4):
+        elif prev_monday + timedelta(weeks=3) <= just_date < prev_monday + timedelta(weeks=4):
             return "in three weeks"
-        elif prev_monday + timedelta(weeks=4) <= just_date and just_date < prev_monday + timedelta(weeks=5):
+        elif prev_monday + timedelta(weeks=4) <= just_date < prev_monday + timedelta(weeks=5):
             return "in four weeks"
     else:
         if just_date == today + timedelta(days=1):  # one day before

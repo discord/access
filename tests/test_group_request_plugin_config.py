@@ -693,9 +693,8 @@ async def test_approve_invalid_plugin_config_emits_no_approve_audit_event(
         return_value={"group_id": "changed since submit"},
     )
 
-    with caplog.at_level(logging.INFO, logger="access.audit"):
-        with pytest.raises(ValueError, match="group_id"):
-            await ApproveGroupRequest(group_request=gr, approver_user=admin, approval_reason="ok").execute()
+    with caplog.at_level(logging.INFO, logger="access.audit"), pytest.raises(ValueError, match="group_id"):
+        await ApproveGroupRequest(group_request=gr, approver_user=admin, approval_reason="ok").execute()
 
     audit_messages = [r.getMessage() for r in caplog.records if r.name == "access.audit"]
     assert not any(EventType.group_request_approve.value in message for message in audit_messages), (

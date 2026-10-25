@@ -6,7 +6,7 @@ FastAPI migration plan."""
 from __future__ import annotations
 
 from collections.abc import Generator
-from typing import Any
+from typing import Any, Self
 
 import pytest
 from fastapi import FastAPI
@@ -43,10 +43,10 @@ async def test_sentry_envelope_is_forwarded_with_dsn_rewritten(
     captured: dict[str, Any] = {}
 
     class _FakeAsyncClient:
-        async def __aenter__(self) -> _FakeAsyncClient:
+        async def __aenter__(self) -> Self:
             return self
 
-        async def __aexit__(self, *args: Any) -> None:
+        async def __aexit__(self, *args: object) -> None:
             return None
 
         async def post(self, url: str, *, content: str, headers: dict[str, str], timeout: float) -> None:

@@ -52,7 +52,7 @@ def parse_datetime_value(value: Any) -> datetime | None:
         raise ValueError(f"Cannot parse {value!r} as a datetime")  # noqa: TRY004 - pydantic reports only ValueError as a validation error
     # Try ISO 8601 first; fall back to RFC 822 / RFC 2822.
     try:
-        return _to_naive_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
+        return _to_naive_utc(datetime.fromisoformat(value))
     except ValueError:
         pass
     try:

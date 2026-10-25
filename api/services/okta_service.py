@@ -168,9 +168,7 @@ def _is_retryable_okta_error(error: Any) -> bool:
         return False
     if isinstance(error, asyncio.TimeoutError):
         return False
-    if str(error) == "Request Timeout exceeded.":
-        return False
-    return True
+    return str(error) != "Request Timeout exceeded."
 
 
 def _group_push_mapping_to_dict(mapping: GroupPushMapping) -> dict[str, Any]:
@@ -404,7 +402,7 @@ class OktaService:
         async with self._okta_client() as client:
             users = await self._paginate(client.list_users)
 
-        return list(map(lambda user: User(user), users))
+        return [User(user) for user in users]
 
     async def create_group(self, name: str, description: str) -> Group:
         async with self._okta_client() as client:
@@ -516,7 +514,7 @@ class OktaService:
         async with self._okta_client() as client:
             groups = await self._paginate(client.list_groups, **query_params)
 
-        return list(map(lambda group: Group(group), groups))
+        return [Group(group) for group in groups]
 
     async def list_groups_with_active_rules(self) -> dict[str, list[OktaGroupRuleType]]:
         group_rules = await self.list_group_rules()
@@ -540,7 +538,7 @@ class OktaService:
         async with self._okta_client() as client:
             users = await self._paginate(client.list_group_users, groupId)
 
-        return list(map(lambda user: User(user), users))
+        return [User(user) for user in users]
 
     async def delete_group(self, groupId: str) -> None:
         async with self._okta_client() as client:
@@ -610,7 +608,7 @@ class OktaService:
 
         # ``GroupOwner`` exposes the owning user's ``id``; wrap it in the same
         # loose accessor other okta reads return so callers stay uniform.
-        return list(map(lambda owner: User(owner), owners))
+        return [User(owner) for owner in owners]
 
     # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/GroupPushMapping/#tag/GroupPushMapping/operation/createGroupPushMapping
     async def create_group_push_mapping(
@@ -730,7 +728,7 @@ class User:
         profile: Any = self.user.profile
         profile_data = profile.model_dump(by_alias=True, exclude={"additional_properties"})
         profile_data.update(profile.additional_properties or {})
-        return dict((user_attrs_to_titles.get(k, k), v) for (k, v) in profile_data.items())
+        return {user_attrs_to_titles.get(k, k): v for (k, v) in profile_data.items()}
 
     def get_deleted_at(self) -> datetime | None:
         user: Any = self.user

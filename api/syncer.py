@@ -183,7 +183,7 @@ async def sync_users() -> None:
             .where(or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > func.now()))
         )
     ).all()
-    for user_id in set([u.user_id for u in db_deleted_users_with_access]):
+    for user_id in {u.user_id for u in db_deleted_users_with_access}:
         logger.info(f"Ending active group ownerships/memberships for deleted user in DB {user_id}")
         await DeleteUser(user=user_id).execute()
 
@@ -718,7 +718,7 @@ async def expiring_access_notifications_user() -> None:
         )
     ).all()
 
-    user_id_group_id_roles = set((member.user_id, member.group_id) for member in db_memberships_roles)
+    user_id_group_id_roles = {(member.user_id, member.group_id) for member in db_memberships_roles}
 
     db_memberships_expiring_tomorrow = [
         member
@@ -761,7 +761,7 @@ async def expiring_access_notifications_user() -> None:
     for membership in db_memberships_expiring_next_week:
         grouped_next_week.setdefault(membership.active_user, []).append(membership)
 
-    for user in grouped_tomorrow:
+    for user, memberships_tomorrow in grouped_tomorrow.items():
         # If the user has access expiring both tomorrow and in a week, only send one message
         if user in grouped_next_week:
             # Notification hooks are native async now: awaited directly on the event
@@ -771,23 +771,23 @@ async def expiring_access_notifications_user() -> None:
                 NotificationHook.ACCESS_EXPIRING_USER,
                 user=user,
                 expiration_datetime=None,
-                okta_user_group_members=grouped_tomorrow[user] + grouped_next_week[user],
+                okta_user_group_members=memberships_tomorrow + grouped_next_week[user],
             )
         else:
             await send_notification(
                 NotificationHook.ACCESS_EXPIRING_USER,
                 user=user,
                 expiration_datetime=None if weekend_notif_tomorrow else datetime.now() + timedelta(days=1),
-                okta_user_group_members=grouped_tomorrow[user],
+                okta_user_group_members=memberships_tomorrow,
             )
 
-    for user in grouped_next_week:
+    for user, memberships_next_week in grouped_next_week.items():
         if user not in grouped_tomorrow:
             await send_notification(
                 NotificationHook.ACCESS_EXPIRING_USER,
                 user=user,
                 expiration_datetime=None if weekend_notif_week else datetime.now() + timedelta(weeks=1),
-                okta_user_group_members=grouped_next_week[user],
+                okta_user_group_members=memberships_next_week,
             )
 
     logger.info("Expiring access notifications for users finished.")

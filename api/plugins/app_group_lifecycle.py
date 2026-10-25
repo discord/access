@@ -623,7 +623,7 @@ class AppGroupLifecycleContext:
 
         try:
             for (entity_type, entity_id), properties in by_target.items():
-                model: type[App] | type[AppGroup] = App if entity_type == "app" else AppGroup
+                model: type[App | AppGroup] = App if entity_type == "app" else AppGroup
                 target = (
                     await self._session.scalars(
                         select(model).where(model.id == entity_id).execution_options(populate_existing=True)

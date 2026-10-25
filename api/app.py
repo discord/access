@@ -327,8 +327,7 @@ def create_app(testing: bool | None = False) -> FastAPI:
     # manager's task group is running while requests are served.
     mcp_lifespan: Any | None = None
     if settings.ENABLE_MCP:
-        from api.mcp.server import create_mcp_server
-        from api.mcp.server import mcp_lifespan as mcp_lifespan
+        from api.mcp.server import create_mcp_server, mcp_lifespan
 
         create_mcp_server()
 

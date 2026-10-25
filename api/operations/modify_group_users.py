@@ -750,7 +750,7 @@ class ModifyGroupUsers:
             pending_role_associated_owner_requests = (
                 await db.session.scalars(
                     pending_requests_query.where(
-                        AccessRequest.requested_group_id.in_(set(group_ownerships_added.keys()) - set([group.id]))
+                        AccessRequest.requested_group_id.in_(set(group_ownerships_added.keys()) - {group.id})
                     )
                     .where(AccessRequest.requester_user_id.in_([m.id for m in members_to_add]))
                     .where(AccessRequest.request_ownership.is_(True))

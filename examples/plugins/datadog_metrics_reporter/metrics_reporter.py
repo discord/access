@@ -27,7 +27,7 @@ def _init_datadog() -> Any:
         env = os.environ.get("ENV", "development")
 
         statsd_host = statsd_host_ip if statsd_host_ip else os.environ.get("DD_AGENT_HOST", "127.0.0.1")
-        statsd_port = int(os.environ.get("DD_DOGSTATSD_PORT", 8125))
+        statsd_port = int(os.environ.get("DD_DOGSTATSD_PORT", "8125"))
 
         # Determine environment tag
         env_tag = "prd" if env == "production" else "stg" if env == "staging" else "dev"

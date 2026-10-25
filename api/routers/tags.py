@@ -173,8 +173,8 @@ async def put_tag(
     # already stored. Runs before the setattr loop so a rejected edit leaves
     # the session unmutated.
     validate_constraint_propagation(
-        payload["constraints"] if "constraints" in payload else tag.constraints,
-        payload["propagate_to_roles"] if "propagate_to_roles" in payload else tag.propagate_to_roles,
+        payload.get("constraints", tag.constraints),
+        payload.get("propagate_to_roles", tag.propagate_to_roles),
     )
 
     for key in ("name", "description", "constraints", "enabled", "propagate_to_roles"):

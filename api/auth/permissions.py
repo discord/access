@@ -109,9 +109,7 @@ async def can_manage_group(db: AsyncSession, current_user_id: str, group: OktaGr
         return True
     if await is_app_owner_group_owner(db, current_user_id, app_group=group):
         return True
-    if await is_access_admin(db, current_user_id):
-        return True
-    return False
+    return await is_access_admin(db, current_user_id)
 
 
 async def can_delete_group(db: AsyncSession, current_user_id: str, group: OktaGroup) -> bool:

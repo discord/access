@@ -70,7 +70,7 @@ def _is_safe_next(next_url: str | None) -> bool:
     # the post-auth redirect to a third-party host.
     if not next_url or not next_url.startswith("/"):
         return False
-    if next_url.startswith("//") or next_url.startswith("/\\"):
+    if next_url.startswith(("//", "/\\")):
         return False
     parsed = urlparse(next_url)
     return not parsed.scheme and not parsed.netloc

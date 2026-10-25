@@ -396,7 +396,7 @@ class GoogleGroupManagerPlugin:
                     f"Failed to delete the Google group {google_group_id}, "
                     "possibly because it does not exist or Access lacks permissions"
                 )
-                return None
+                return
             raise
 
     async def _look_up_google_group_id(self, email: str) -> str | None:

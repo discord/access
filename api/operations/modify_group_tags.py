@@ -79,7 +79,7 @@ class ModifyGroupTags:
                 )
             ).all()
 
-            new_tag_ids_to_add = set(tag_ids_to_add) - set([m.tag_id for m in existing_tag_maps])
+            new_tag_ids_to_add = set(tag_ids_to_add) - {m.tag_id for m in existing_tag_maps}
 
             for tag_id in new_tag_ids_to_add:
                 db.session.add(

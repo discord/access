@@ -328,9 +328,8 @@ async def put_app(
             raise HTTPException(400, "App already exists with the same name")
 
     # tags_to_remove gated on admin
-    if body.tags_to_remove and len(body.tags_to_remove) > 0:
-        if not await is_access_admin(db, current_user_id):
-            raise HTTPException(403, "Current user is not an Access Admin and not allowed to remove tags from this app")
+    if body.tags_to_remove and len(body.tags_to_remove) > 0 and not await is_access_admin(db, current_user_id):
+        raise HTTPException(403, "Current user is not an Access Admin and not allowed to remove tags from this app")
 
     tags_to_add = body.tags_to_add or []
     tags_to_remove = body.tags_to_remove or []

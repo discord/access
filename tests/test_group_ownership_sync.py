@@ -270,8 +270,6 @@ async def test_ownership_in_both_authoritative(db: Db, mocker: MockerFixture) ->
     # Verify valid user is untouched
     assert owners_rows[initial_okta_users[1].id].expired_at == non_expired_date
 
-    return
-
 
 async def test_ownership_in_both_non_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
@@ -315,8 +313,6 @@ async def test_ownership_in_both_non_authoritative(db: Db, mocker: MockerFixture
 
     # Verify that non-expired ownerships are unchanged
     assert owners_rows[initial_okta_users[1].id].expired_at == non_expired_date
-
-    return
 
 
 async def test_ownership_unamanaged_group_in_okta_not_in_db_authoritative(db: Db, mocker: MockerFixture) -> None:
