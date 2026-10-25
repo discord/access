@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 import logging
 
@@ -21,9 +20,9 @@ class ApproveAccessRequest:
         self,
         *,
         access_request: AccessRequest | str,
-        approver_user: Optional[OktaUser | str] = None,
+        approver_user: OktaUser | str | None = None,
         approval_reason: str = "",
-        ending_at: Optional[datetime] = None,
+        ending_at: datetime | None = None,
         notify: bool = True,
     ):
         self.access_request_id = access_request if isinstance(access_request, str) else access_request.id

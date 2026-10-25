@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from httpx import AsyncClient
 from sqlalchemy import select
@@ -191,7 +191,7 @@ async def test_user_email_uniqueness(client: AsyncClient, db: Db) -> None:
         await db.session.rollback()
 
     # Verify another user with the same email can be inserted if its state is deleted
-    user2.deleted_at = datetime.now(timezone.utc)
+    user2.deleted_at = datetime.now(UTC)
     db.session.add(user2)
     await db.session.commit()  # This should not raise an exception
 

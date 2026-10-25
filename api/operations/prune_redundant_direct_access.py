@@ -16,7 +16,8 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Sequence
+from typing import Any
+from collections.abc import Sequence
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import aliased

@@ -18,7 +18,8 @@
 from __future__ import annotations
 
 import os
-from typing import Any, AsyncGenerator, Callable, Generator
+from typing import Any
+from collections.abc import AsyncGenerator, Callable, Generator
 from urllib.parse import urlencode
 
 import httpx
@@ -128,7 +129,7 @@ def app(request: pytest.FixtureRequest) -> FastAPI:
 
 
 @pytest.fixture
-async def db(app: FastAPI) -> AsyncGenerator[Db, None]:
+async def db(app: FastAPI) -> AsyncGenerator[Db]:
     """Bind a test engine, create tables, and seed bootstrap data.
 
     Defaults to in-memory SQLite (aiosqlite). Set `TEST_DATABASE_URI` to
@@ -219,7 +220,7 @@ def _stringify_datetimes(obj: Any) -> Any:
 
 
 @pytest.fixture
-async def client(app: FastAPI, db: Db) -> AsyncGenerator[httpx.AsyncClient, None]:
+async def client(app: FastAPI, db: Db) -> AsyncGenerator[httpx.AsyncClient]:
     """Return an in-process async client that shares the test database session.
 
     `raise_app_exceptions=False` matches the old
@@ -238,7 +239,7 @@ async def client(app: FastAPI, db: Db) -> AsyncGenerator[httpx.AsyncClient, None
 
 
 @pytest.fixture
-def mock_user(app: FastAPI) -> Generator[Callable[[Any], None], None, None]:
+def mock_user(app: FastAPI) -> Generator[Callable[[Any], None]]:
     """Returns a callable that overrides `get_current_user_id` to return the
     given user (or user-id string)."""
 

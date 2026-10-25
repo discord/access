@@ -1,7 +1,6 @@
 import random
 import string
 from datetime import datetime
-from typing import List, Optional
 
 import logging
 
@@ -39,11 +38,11 @@ class CreateGroupRequest:
         requested_group_name: str,
         requested_group_description: str = "",
         requested_group_type: str,
-        requested_app_id: Optional[str] = None,
-        requested_group_tags: Optional[List[str]] = None,
-        requested_ownership_ending_at: Optional[datetime] = None,
+        requested_app_id: str | None = None,
+        requested_group_tags: list[str] | None = None,
+        requested_ownership_ending_at: datetime | None = None,
         request_reason: str = "",
-        requested_plugin_data: Optional[dict] = None,
+        requested_plugin_data: dict | None = None,
     ):
         self.id = self.__generate_id()
 
@@ -58,7 +57,7 @@ class CreateGroupRequest:
         self.request_reason = request_reason
         self.requested_plugin_data = requested_plugin_data if requested_plugin_data is not None else {}
 
-    async def execute(self) -> Optional[GroupRequest]:
+    async def execute(self) -> GroupRequest | None:
         requester = await db.session.get(OktaUser, self.requester_user_id)
         assert requester is not None
 

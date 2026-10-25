@@ -5,7 +5,8 @@ FastAPI migration plan."""
 
 from __future__ import annotations
 
-from typing import Any, Generator
+from typing import Any
+from collections.abc import Generator
 
 import pytest
 from fastapi import FastAPI
@@ -22,7 +23,7 @@ _ENVELOPE = f'{{"event_id":"abc","dsn":"{_PLACEHOLDER_DSN}"}}\n{{{{"type":"event
 
 
 @pytest.fixture
-def production_env(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+def production_env(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     """Bypass the dev/test auth shortcut so the 'production' branch of
     `bugs.post_sentry` runs. `require_authenticated` is overridden to no-op
     because the real path would try to verify a Cloudflare/OIDC token."""
@@ -43,7 +44,7 @@ async def test_sentry_envelope_is_forwarded_with_dsn_rewritten(
     captured: dict[str, Any] = {}
 
     class _FakeAsyncClient:
-        async def __aenter__(self) -> "_FakeAsyncClient":
+        async def __aenter__(self) -> _FakeAsyncClient:
             return self
 
         async def __aexit__(self, *args: Any) -> None:

@@ -14,7 +14,7 @@ rather than re-parsing the dict.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, Optional, Self, Union
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, field_validator, model_validator
 
@@ -69,7 +69,7 @@ def _strip_reason(value: Any) -> Any:
 #: reason constraints already treat as not provided. Response models keep plain
 #: `Optional[str]`: they report what is stored, and normalizing on the way out
 #: would hide stored values that were never normalized.
-ReasonStr = Annotated[Optional[str], BeforeValidator(_strip_reason)]
+ReasonStr = Annotated[str | None, BeforeValidator(_strip_reason)]
 
 
 # Discriminated-union refs for the *detail* `requested_group`. Each variant
@@ -83,7 +83,7 @@ class _AccessRequestOktaGroupRef(BaseModel):
     id: str
     type: Literal["okta_group"] = "okta_group"
     name: str
-    deleted_at: Optional[FlexibleDatetime] = None
+    deleted_at: FlexibleDatetime | None = None
     active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
 
 
@@ -92,7 +92,7 @@ class _AccessRequestRoleGroupRef(BaseModel):
     id: str
     type: Literal["role_group"] = "role_group"
     name: str
-    deleted_at: Optional[FlexibleDatetime] = None
+    deleted_at: FlexibleDatetime | None = None
     active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
     active_role_associated_group_member_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
     active_role_associated_group_owner_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
@@ -103,14 +103,14 @@ class _AccessRequestAppGroupRef(BaseModel):
     id: str
     type: Literal["app_group"] = "app_group"
     name: str
-    deleted_at: Optional[FlexibleDatetime] = None
+    deleted_at: FlexibleDatetime | None = None
     is_owner: bool = False
-    app: Optional[AppIdRef] = None
+    app: AppIdRef | None = None
     active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
 
 
 _RichRequestedGroupRef = Annotated[
-    Union[_AccessRequestOktaGroupRef, _AccessRequestRoleGroupRef, _AccessRequestAppGroupRef],
+    _AccessRequestOktaGroupRef | _AccessRequestRoleGroupRef | _AccessRequestAppGroupRef,
     Field(discriminator="type"),
 ]
 
@@ -127,24 +127,24 @@ class AccessRequestDetail(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
     id: str
-    requester_user_id: Optional[str] = None
-    requested_group_id: Optional[str] = None
+    requester_user_id: str | None = None
+    requested_group_id: str | None = None
     request_ownership: bool = False
-    request_reason: Optional[str] = ""
-    request_ending_at: Optional[FlexibleDatetime] = None
+    request_reason: str | None = ""
+    request_ending_at: FlexibleDatetime | None = None
     status: str
-    resolver_user_id: Optional[str] = None
-    resolution_reason: Optional[str] = ""
-    resolved_at: Optional[FlexibleDatetime] = None
-    approval_ending_at: Optional[FlexibleDatetime] = None
+    resolver_user_id: str | None = None
+    resolution_reason: str | None = ""
+    resolved_at: FlexibleDatetime | None = None
+    approval_ending_at: FlexibleDatetime | None = None
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
-    requester: Optional[OktaUserSummary] = None
-    active_requester: Optional[OktaUserSummary] = None
-    requested_group: Optional[_RichRequestedGroupRef] = None
-    active_requested_group: Optional[GroupRef] = None
-    resolver: Optional[OktaUserSummary] = None
-    active_resolver: Optional[OktaUserSummary] = None
+    requester: OktaUserSummary | None = None
+    active_requester: OktaUserSummary | None = None
+    requested_group: _RichRequestedGroupRef | None = None
+    active_requested_group: GroupRef | None = None
+    resolver: OktaUserSummary | None = None
+    active_resolver: OktaUserSummary | None = None
 
 
 class AccessRequestSummary(BaseModel):
@@ -156,24 +156,24 @@ class AccessRequestSummary(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
     id: str
-    requester_user_id: Optional[str] = None
-    requested_group_id: Optional[str] = None
+    requester_user_id: str | None = None
+    requested_group_id: str | None = None
     request_ownership: bool = False
-    request_reason: Optional[str] = ""
-    request_ending_at: Optional[FlexibleDatetime] = None
+    request_reason: str | None = ""
+    request_ending_at: FlexibleDatetime | None = None
     status: str
-    resolver_user_id: Optional[str] = None
-    resolution_reason: Optional[str] = ""
-    resolved_at: Optional[FlexibleDatetime] = None
-    approval_ending_at: Optional[FlexibleDatetime] = None
+    resolver_user_id: str | None = None
+    resolution_reason: str | None = ""
+    resolved_at: FlexibleDatetime | None = None
+    approval_ending_at: FlexibleDatetime | None = None
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
-    requester: Optional[OktaUserSummary] = None
-    active_requester: Optional[OktaUserSummary] = None
-    requested_group: Optional[GroupRef] = None
-    active_requested_group: Optional[GroupRef] = None
-    resolver: Optional[OktaUserSummary] = None
-    active_resolver: Optional[OktaUserSummary] = None
+    requester: OktaUserSummary | None = None
+    active_requester: OktaUserSummary | None = None
+    requested_group: GroupRef | None = None
+    active_requested_group: GroupRef | None = None
+    resolver: OktaUserSummary | None = None
+    active_resolver: OktaUserSummary | None = None
 
 
 class CreateAccessRequestBody(BaseModel):
@@ -181,7 +181,7 @@ class CreateAccessRequestBody(BaseModel):
     group_id: str
     group_owner: bool = False
     reason: ReasonStr = ""
-    ending_at: Optional[FlexibleDatetime] = None
+    ending_at: FlexibleDatetime | None = None
 
 
 class ResolveAccessRequestBody(BaseModel):
@@ -193,7 +193,7 @@ class ResolveAccessRequestBody(BaseModel):
     # turns "false" into an APPROVED outcome.
     approved: StrictBool
     reason: ReasonStr = ""
-    ending_at: Optional[FlexibleDatetime] = None
+    ending_at: FlexibleDatetime | None = None
 
 
 # --- Role requests ----------------------------------------------------------
@@ -211,32 +211,32 @@ class RoleRequestDetail(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
     id: str
-    requester_user_id: Optional[str] = None
-    requester_role_id: Optional[str] = None
-    requested_group_id: Optional[str] = None
+    requester_user_id: str | None = None
+    requester_role_id: str | None = None
+    requested_group_id: str | None = None
     request_ownership: bool = False
-    request_reason: Optional[str] = ""
-    request_ending_at: Optional[FlexibleDatetime] = None
+    request_reason: str | None = ""
+    request_ending_at: FlexibleDatetime | None = None
     status: str
-    resolver_user_id: Optional[str] = None
-    resolution_reason: Optional[str] = ""
-    resolved_at: Optional[FlexibleDatetime] = None
-    approval_ending_at: Optional[FlexibleDatetime] = None
+    resolver_user_id: str | None = None
+    resolution_reason: str | None = ""
+    resolved_at: FlexibleDatetime | None = None
+    approval_ending_at: FlexibleDatetime | None = None
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
-    requester: Optional[OktaUserSummary] = None
-    requester_role: Optional[RoleRequestRequesterRoleRef] = None
+    requester: OktaUserSummary | None = None
+    requester_role: RoleRequestRequesterRoleRef | None = None
     # `active_requester_role` and `active_requested_group` use the lenient
     # polymorphic `GroupRef` because `active_requester_role`'s SQLAlchemy
     # primaryjoin currently mirrors `active_requested_group` (joins on
     # `requested_group_id`), so the value at runtime is the requested group,
     # not the requester role. Tightening the type to a role-only literal
     # would surface that model-side defect as a 500.
-    active_requester_role: Optional[GroupRef] = None
-    requested_group: Optional[RoleRequestRequestedGroupRef] = None
-    active_requested_group: Optional[GroupRef] = None
-    resolver: Optional[OktaUserSummary] = None
-    active_resolver: Optional[OktaUserSummary] = None
+    active_requester_role: GroupRef | None = None
+    requested_group: RoleRequestRequestedGroupRef | None = None
+    active_requested_group: GroupRef | None = None
+    resolver: OktaUserSummary | None = None
+    active_resolver: OktaUserSummary | None = None
 
 
 class RoleRequestSummary(BaseModel):
@@ -247,26 +247,26 @@ class RoleRequestSummary(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
     id: str
-    requester_user_id: Optional[str] = None
-    requester_role_id: Optional[str] = None
-    requested_group_id: Optional[str] = None
+    requester_user_id: str | None = None
+    requester_role_id: str | None = None
+    requested_group_id: str | None = None
     request_ownership: bool = False
-    request_reason: Optional[str] = ""
-    request_ending_at: Optional[FlexibleDatetime] = None
+    request_reason: str | None = ""
+    request_ending_at: FlexibleDatetime | None = None
     status: str
-    resolver_user_id: Optional[str] = None
-    resolution_reason: Optional[str] = ""
-    resolved_at: Optional[FlexibleDatetime] = None
-    approval_ending_at: Optional[FlexibleDatetime] = None
+    resolver_user_id: str | None = None
+    resolution_reason: str | None = ""
+    resolved_at: FlexibleDatetime | None = None
+    approval_ending_at: FlexibleDatetime | None = None
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
-    requester: Optional[OktaUserSummary] = None
-    requester_role: Optional[GroupRef] = None
-    active_requester_role: Optional[GroupRef] = None
-    requested_group: Optional[GroupRef] = None
-    active_requested_group: Optional[GroupRef] = None
-    resolver: Optional[OktaUserSummary] = None
-    active_resolver: Optional[OktaUserSummary] = None
+    requester: OktaUserSummary | None = None
+    requester_role: GroupRef | None = None
+    active_requester_role: GroupRef | None = None
+    requested_group: GroupRef | None = None
+    active_requested_group: GroupRef | None = None
+    resolver: OktaUserSummary | None = None
+    active_resolver: OktaUserSummary | None = None
 
 
 class CreateRoleRequestBody(BaseModel):
@@ -275,7 +275,7 @@ class CreateRoleRequestBody(BaseModel):
     group_id: str
     group_owner: bool = False
     reason: ReasonStr = ""
-    ending_at: Optional[FlexibleDatetime] = None
+    ending_at: FlexibleDatetime | None = None
 
 
 class ResolveRoleRequestBody(ResolveAccessRequestBody):
@@ -291,28 +291,28 @@ class GroupRequestDetail(BaseModel):
     status: str
     # Column names use `requested_*` and `resolved_*` to mirror the underlying
     # ORM fields the React frontend's apiSchemas already consume.
-    requested_group_name: Optional[str] = None
-    requested_group_description: Optional[str] = ""
-    requested_group_type: Optional[str] = None
-    requested_app_id: Optional[str] = None
+    requested_group_name: str | None = None
+    requested_group_description: str | None = ""
+    requested_group_type: str | None = None
+    requested_app_id: str | None = None
     requested_group_tags: list[str] = Field(default_factory=list)
-    requested_ownership_ending_at: Optional[FlexibleDatetime] = None
-    request_reason: Optional[str] = ""
-    resolved_group_name: Optional[str] = ""
-    resolved_group_description: Optional[str] = ""
-    resolved_group_type: Optional[str] = ""
-    resolved_app_id: Optional[str] = None
+    requested_ownership_ending_at: FlexibleDatetime | None = None
+    request_reason: str | None = ""
+    resolved_group_name: str | None = ""
+    resolved_group_description: str | None = ""
+    resolved_group_type: str | None = ""
+    resolved_app_id: str | None = None
     resolved_group_tags: list[str] = Field(default_factory=list)
-    resolved_ownership_ending_at: Optional[FlexibleDatetime] = None
-    resolution_reason: Optional[str] = ""
-    resolved_at: Optional[FlexibleDatetime] = None
-    approved_group_id: Optional[str] = None
+    resolved_ownership_ending_at: FlexibleDatetime | None = None
+    resolution_reason: str | None = ""
+    resolved_at: FlexibleDatetime | None = None
+    approved_group_id: str | None = None
     requested_plugin_data: dict[str, Any] = Field(default_factory=dict)
     resolved_plugin_data: dict[str, Any] = Field(default_factory=dict)
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
-    requester: Optional[OktaUserSummary] = None
-    resolver: Optional[OktaUserSummary] = None
+    requester: OktaUserSummary | None = None
+    resolver: OktaUserSummary | None = None
 
     @field_validator("requested_group_tags", "resolved_group_tags", mode="before")
     @classmethod
@@ -333,9 +333,9 @@ class _GroupRequestBodyBase(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
     requested_group_name: str = Field(pattern=_GROUP_NAME_PATTERN_STR, min_length=1, max_length=_GROUP_NAME_MAX_LENGTH)
-    requested_group_description: Optional[str] = Field(default="", max_length=_GROUP_DESC_MAX_LENGTH)
+    requested_group_description: str | None = Field(default="", max_length=_GROUP_DESC_MAX_LENGTH)
     requested_group_tags: list[str] = Field(default_factory=list)
-    requested_ownership_ending_at: Optional[FlexibleDatetime] = None
+    requested_ownership_ending_at: FlexibleDatetime | None = None
     request_reason: ReasonStr = ""
 
     @model_validator(mode="after")
@@ -362,7 +362,7 @@ class _AppGroupRequestBody(_GroupRequestBodyBase):
 
 
 CreateGroupRequestBody = Annotated[
-    Union[_OktaGroupRequestBody, _RoleGroupRequestBody, _AppGroupRequestBody],
+    _OktaGroupRequestBody | _RoleGroupRequestBody | _AppGroupRequestBody,
     Field(discriminator="requested_group_type"),
 ]
 
@@ -371,19 +371,19 @@ class ResolveGroupRequestBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
     approved: StrictBool
     reason: ReasonStr = ""
-    resolved_group_name: Optional[str] = None
-    resolved_group_description: Optional[str] = None
-    resolved_group_type: Optional[str] = None
-    resolved_app_id: Optional[str] = None
-    resolved_group_tags: Optional[list[str]] = None
-    resolved_ownership_ending_at: Optional[FlexibleDatetime] = None
-    resolved_plugin_data: Optional[dict[str, Any]] = None
+    resolved_group_name: str | None = None
+    resolved_group_description: str | None = None
+    resolved_group_type: str | None = None
+    resolved_app_id: str | None = None
+    resolved_group_tags: list[str] | None = None
+    resolved_ownership_ending_at: FlexibleDatetime | None = None
+    resolved_plugin_data: dict[str, Any] | None = None
 
 
 # --- Tags -------------------------------------------------------------------
 
 
-def _validate_tag_constraints(v: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+def _validate_tag_constraints(v: dict[str, Any] | None) -> dict[str, Any] | None:
     """Reject unknown constraint keys and constraint values that fail the
     per-key validator. Pydantic-side replacement for the previous
     `_validate_constraints` helper in `api/routers/tags.py`."""
@@ -426,10 +426,10 @@ class CreateTagBody(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
     name: str = Field(min_length=1, max_length=_TAG_NAME_MAX_LENGTH)
-    description: Optional[str] = Field(default=None, max_length=_TAG_DESC_MAX_LENGTH)
-    constraints: Optional[dict[str, Any]] = None
+    description: str | None = Field(default=None, max_length=_TAG_DESC_MAX_LENGTH)
+    constraints: dict[str, Any] | None = None
     enabled: bool = True
-    propagate_to_roles: Optional[bool] = None
+    propagate_to_roles: bool | None = None
 
     @model_validator(mode="after")
     def _check_description_required(self) -> Self:
@@ -439,7 +439,7 @@ class CreateTagBody(BaseModel):
 
     @field_validator("constraints")
     @classmethod
-    def _check_constraints(cls, v: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    def _check_constraints(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
         return _validate_tag_constraints(v)
 
 
@@ -467,8 +467,8 @@ class UpdateTagBody(BaseModel):
     # stay nullable because a null there *is* meaningful -- the handler coerces
     # it to `""` / `{}`.
     name: str = Field(default="", min_length=1, max_length=_TAG_NAME_MAX_LENGTH, json_schema_extra=_hide_default)
-    description: Optional[str] = Field(default=None, max_length=_TAG_DESC_MAX_LENGTH)
-    constraints: Optional[dict[str, Any]] = None
+    description: str | None = Field(default=None, max_length=_TAG_DESC_MAX_LENGTH)
+    constraints: dict[str, Any] | None = None
     enabled: bool = Field(default=True, json_schema_extra=_hide_default)
     propagate_to_roles: bool = Field(default=True, json_schema_extra=_hide_default)
 
@@ -483,7 +483,7 @@ class UpdateTagBody(BaseModel):
 
     @field_validator("constraints")
     @classmethod
-    def _check_constraints(cls, v: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    def _check_constraints(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
         return _validate_tag_constraints(v)
 
 
@@ -495,10 +495,10 @@ class _InitialAppGroupBody(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
     name: str
-    description: Optional[str] = ""
-    type: Optional[str] = "app_group"
-    plugin_data: Optional[dict[str, Any]] = None
-    tags_to_add: Optional[list[str]] = None
+    description: str | None = ""
+    type: str | None = "app_group"
+    plugin_data: dict[str, Any] | None = None
+    tags_to_add: list[str] | None = None
 
 
 class CreateAppBody(BaseModel):
@@ -506,13 +506,13 @@ class CreateAppBody(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
     name: str = Field(min_length=1, max_length=_APP_NAME_MAX_LENGTH)
-    description: Optional[str] = Field(default=None, max_length=_APP_DESC_MAX_LENGTH)
-    initial_owner_id: Optional[str] = None
-    initial_owner_role_ids: Optional[list[str]] = None
-    initial_additional_app_groups: Optional[list[_InitialAppGroupBody]] = None
-    tags_to_add: Optional[list[str]] = None
-    app_group_lifecycle_plugin: Optional[str] = None
-    plugin_data: Optional[dict[str, Any]] = None
+    description: str | None = Field(default=None, max_length=_APP_DESC_MAX_LENGTH)
+    initial_owner_id: str | None = None
+    initial_owner_role_ids: list[str] | None = None
+    initial_additional_app_groups: list[_InitialAppGroupBody] | None = None
+    tags_to_add: list[str] | None = None
+    app_group_lifecycle_plugin: str | None = None
+    plugin_data: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def _check_description_required(self) -> Self:
@@ -543,12 +543,12 @@ class UpdateAppBody(BaseModel):
     """Body for PUT /api/apps/{id}. All fields optional (partial update)."""
 
     model_config = ConfigDict(extra="ignore")
-    name: Optional[str] = Field(default=None, min_length=1, max_length=_APP_NAME_MAX_LENGTH)
-    description: Optional[str] = Field(default=None, max_length=_APP_DESC_MAX_LENGTH)
-    app_group_lifecycle_plugin: Optional[str] = None
-    plugin_data: Optional[dict[str, Any]] = None
-    tags_to_add: Optional[list[str]] = None
-    tags_to_remove: Optional[list[str]] = None
+    name: str | None = Field(default=None, min_length=1, max_length=_APP_NAME_MAX_LENGTH)
+    description: str | None = Field(default=None, max_length=_APP_DESC_MAX_LENGTH)
+    app_group_lifecycle_plugin: str | None = None
+    plugin_data: dict[str, Any] | None = None
+    tags_to_add: list[str] | None = None
+    tags_to_remove: list[str] | None = None
 
     @model_validator(mode="after")
     def _check_description_required(self) -> Self:
@@ -569,7 +569,7 @@ class _GroupCreateBodyShared(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
     name: str = Field(pattern=_GROUP_NAME_PATTERN_STR, min_length=1, max_length=_GROUP_NAME_MAX_LENGTH)
-    description: Optional[str] = Field(default=None, max_length=_GROUP_DESC_MAX_LENGTH)
+    description: str | None = Field(default=None, max_length=_GROUP_DESC_MAX_LENGTH)
     tags_to_add: list[str] = Field(default_factory=list)
     tags_to_remove: list[str] = Field(default_factory=list)
 
@@ -590,12 +590,12 @@ class _RoleGroupCreateBody(_GroupCreateBodyShared):
 
 class _AppGroupCreateBody(_GroupCreateBodyShared):
     type: Literal["app_group"]
-    app_id: Optional[str] = None
-    plugin_data: Optional[dict[str, Any]] = None
+    app_id: str | None = None
+    plugin_data: dict[str, Any] | None = None
 
 
 CreateGroupBody = Annotated[
-    Union[_OktaGroupCreateBody, _RoleGroupCreateBody, _AppGroupCreateBody],
+    _OktaGroupCreateBody | _RoleGroupCreateBody | _AppGroupCreateBody,
     Field(discriminator="type"),
 ]
 
@@ -605,10 +605,10 @@ class _GroupUpdateBodyShared(BaseModel):
     fields optional (partial update)."""
 
     model_config = ConfigDict(extra="ignore")
-    name: Optional[str] = Field(
+    name: str | None = Field(
         default=None, pattern=_GROUP_NAME_PATTERN_STR, min_length=1, max_length=_GROUP_NAME_MAX_LENGTH
     )
-    description: Optional[str] = Field(default=None, max_length=_GROUP_DESC_MAX_LENGTH)
+    description: str | None = Field(default=None, max_length=_GROUP_DESC_MAX_LENGTH)
     tags_to_add: list[str] = Field(default_factory=list)
     tags_to_remove: list[str] = Field(default_factory=list)
 
@@ -633,12 +633,12 @@ class _RoleGroupUpdateBody(_GroupUpdateBodyShared):
 
 class _AppGroupUpdateBody(_GroupUpdateBodyShared):
     type: Literal["app_group"]
-    app_id: Optional[str] = None
-    plugin_data: Optional[dict[str, Any]] = None
+    app_id: str | None = None
+    plugin_data: dict[str, Any] | None = None
 
 
 UpdateGroupBody = Annotated[
-    Union[_OktaGroupUpdateBody, _RoleGroupUpdateBody, _AppGroupUpdateBody],
+    _OktaGroupUpdateBody | _RoleGroupUpdateBody | _AppGroupUpdateBody,
     Field(discriminator="type"),
 ]
 
@@ -668,7 +668,7 @@ class GroupMember(BaseModel):
     owners_to_remove: list[_OktaIdStr]
     members_should_expire: list[int] = Field(default_factory=list)
     owners_should_expire: list[int] = Field(default_factory=list)
-    users_added_ending_at: Optional[FlexibleDatetime] = None
+    users_added_ending_at: FlexibleDatetime | None = None
     created_reason: ReasonStr = ""
 
 
@@ -688,5 +688,5 @@ class RoleMember(BaseModel):
     owner_groups_to_remove: list[_OktaIdStr]
     groups_should_expire: list[int] = Field(default_factory=list)
     owner_groups_should_expire: list[int] = Field(default_factory=list)
-    groups_added_ending_at: Optional[FlexibleDatetime] = None
+    groups_added_ending_at: FlexibleDatetime | None = None
     created_reason: ReasonStr = ""

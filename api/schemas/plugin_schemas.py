@@ -10,7 +10,7 @@ the wire shape (top-level array / dict stays exactly as today).
 
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, RootModel
 
@@ -27,23 +27,23 @@ class PluginConfigProp(BaseModel):
     """Mirrors `AppGroupLifecyclePluginConfigProperty`."""
 
     display_name: str
-    help_text: Optional[str] = None
+    help_text: str | None = None
     type: Literal["text", "number", "boolean"] = "text"
     default_value: Any = None
     required: bool = False
-    validation: Optional[dict[str, Any]] = None
+    validation: dict[str, Any] | None = None
     immutable: bool = False
-    suffix: Optional[str] = None
+    suffix: str | None = None
 
 
 class PluginStatusProp(BaseModel):
     """Mirrors `AppGroupLifecyclePluginStatusProperty`."""
 
     display_name: str
-    help_text: Optional[str] = None
+    help_text: str | None = None
     type: Literal["text", "number", "date", "boolean"] = "text"
     # Declared as a tuple on the dataclass; a list on the wire, which is what JSON has anyway.
-    pending_values: Optional[list[Any]] = None
+    pending_values: list[Any] | None = None
 
 
 class AppGroupLifecyclePlugins(RootModel[list[PluginInfo]]):

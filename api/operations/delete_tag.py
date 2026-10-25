@@ -1,5 +1,3 @@
-from typing import Optional
-
 import logging
 
 from sqlalchemy import func, or_, select, update
@@ -11,7 +9,7 @@ from api.schemas import AuditLogSchema, EventType
 
 
 class DeleteTag:
-    def __init__(self, *, tag: Tag | str, current_user_id: Optional[str] = None):
+    def __init__(self, *, tag: Tag | str, current_user_id: str | None = None):
         self.tag_id = tag if isinstance(tag, str) else tag.id
         self.current_user_id = current_user_id
 

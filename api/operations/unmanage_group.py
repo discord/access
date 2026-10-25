@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from sqlalchemy.orm import selectin_polymorphic
 
@@ -24,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Run this operation when a group becomes unmanaged by Access
 class UnmanageGroup:
-    def __init__(self, *, group: OktaGroup | str, current_user_id: Optional[str] = None):
+    def __init__(self, *, group: OktaGroup | str, current_user_id: str | None = None):
         self.group_id = group if isinstance(group, str) else group.id
         self.current_user_id = current_user_id
 

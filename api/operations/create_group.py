@@ -1,4 +1,4 @@
-from typing import Optional, TypedDict, TypeVar, cast
+from typing import TypedDict, TypeVar, cast
 
 import logging
 
@@ -22,7 +22,7 @@ class GroupDict(TypedDict):
 
 
 class CreateGroup:
-    def __init__(self, *, group: T | GroupDict, tags: list[str] = [], current_user_id: Optional[str] = None):
+    def __init__(self, *, group: T | GroupDict, tags: list[str] = [], current_user_id: str | None = None):
         if isinstance(group, dict):
             group_dict = cast(GroupDict, group)
             self.group = cast(T, OktaGroup(name=group_dict["name"], description=group_dict["description"]))
@@ -32,7 +32,7 @@ class CreateGroup:
         self.tag_ids = tags
         self.current_user_id = current_user_id
 
-    async def execute(self, *, _group: Optional[T] = None) -> T:
+    async def execute(self, *, _group: T | None = None) -> T:
         tags = (
             await db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids)))
         ).all()
@@ -73,9 +73,7 @@ class CreateGroup:
             )
             if not self.group.name.startswith(app_group_name_prefix):
                 raise ValueError(
-                    'App Group name "{}" should be prefixed with App name. For example: "{}"'.format(
-                        self.group.name, app_group_name_prefix
-                    )
+                    f'App Group name "{self.group.name}" should be prefixed with App name. For example: "{app_group_name_prefix}"'
                 )
 
         okta_group = await okta.create_group(self.group.name, self.group.description)

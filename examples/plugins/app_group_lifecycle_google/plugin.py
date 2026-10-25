@@ -9,7 +9,7 @@ import asyncio
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from typing import Any
 
 from google.auth import default
@@ -456,7 +456,7 @@ class GoogleGroupManagerPlugin:
         """
         logger.debug(f"Reconciled {group.name}.")
         self._write_sync_status(ctx, group, SYNC_SYNCED, None)
-        ctx.set_status(group, STATUS_LAST_SYNCED_AT, datetime.now(timezone.utc).isoformat(), durable_on_failure=True)
+        ctx.set_status(group, STATUS_LAST_SYNCED_AT, datetime.now(UTC).isoformat(), durable_on_failure=True)
 
     def _mark_pending(self, ctx: AppGroupLifecycleContext, group: AppGroup, reason: str) -> None:
         """Record that this reconcile is waiting on Okta or Google to converge.

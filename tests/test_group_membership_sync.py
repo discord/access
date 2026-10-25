@@ -1,7 +1,7 @@
 import logging
 from collections import namedtuple
 from datetime import datetime, timedelta
-from typing import Callable, Tuple
+from collections.abc import Callable
 
 import pytest
 from pytest_mock import MockerFixture
@@ -370,7 +370,7 @@ async def test_membership_sync_skips_group_deleted_mid_run_at_warning(
     )
 
 
-async def seed_db(db: Db, users: list[OktaUser], groups: list[OktaGroup]) -> Tuple[list[OktaUser], list[OktaGroup]]:
+async def seed_db(db: Db, users: list[OktaUser], groups: list[OktaGroup]) -> tuple[list[OktaUser], list[OktaGroup]]:
     async with AsyncSession(db.engine) as session:
         session.add_all([Group(g).update_okta_group(OktaGroup(), {}) for g in groups])
         session.add_all([User(u).update_okta_user(OktaUser(), {}) for u in users])

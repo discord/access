@@ -1,7 +1,5 @@
 """Alembic environment configured for plain SQLAlchemy (no Flask-Migrate)."""
 
-from __future__ import with_statement
-
 import logging
 from logging.config import fileConfig
 

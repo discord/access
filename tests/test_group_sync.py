@@ -1,5 +1,4 @@
 import time
-from typing import Optional
 
 from okta.models.group_rule import GroupRule as OktaGroupRuleType
 from okta.models.group_rule_conditions import GroupRuleConditions as OktaGroupRuleConditionsType
@@ -181,7 +180,7 @@ async def run_sync(
         return list((await session.scalars(select(OktaGroup))).all())
 
 
-def get_group_by_id(group_list: list[OktaGroup], group_id: str) -> Optional[OktaGroup]:
+def get_group_by_id(group_list: list[OktaGroup], group_id: str) -> OktaGroup | None:
     ret = None
     for x in group_list:
         if x.id == group_id:
@@ -191,7 +190,7 @@ def get_group_by_id(group_list: list[OktaGroup], group_id: str) -> Optional[Okta
     return ret
 
 
-def okta_groups_are_equal(left: Optional[OktaGroup], right: Optional[OktaGroup]) -> bool:
+def okta_groups_are_equal(left: OktaGroup | None, right: OktaGroup | None) -> bool:
     # Checks if there are property differences between
     # two OktaUser objects without implementing it on the model
     # itself.

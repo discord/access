@@ -1,7 +1,7 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from typing import Any, Optional
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -25,7 +25,7 @@ from api.services.okta_service import (
 from tests.factories import UserFactory
 
 
-def _user_schema(base_properties: dict[str, Any], custom_properties: Optional[dict[str, Any]] = None) -> Any:
+def _user_schema(base_properties: dict[str, Any], custom_properties: dict[str, Any] | None = None) -> Any:
     """Build a real Okta ``UserSchema`` model from a raw schema payload."""
     schema = OktaUserSchemaType.from_dict(
         {

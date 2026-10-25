@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, UTC
 from typing import Any
 
 from sqlalchemy import and_, func, or_, select
@@ -576,7 +576,7 @@ async def expire_access_requests() -> None:
                 select(AccessRequest)
                 .where(AccessRequest.status == AccessRequestStatus.PENDING)
                 .where(AccessRequest.resolved_at.is_(None))
-                .where(AccessRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
+                .where(AccessRequest.created_at < datetime.now(UTC) - timedelta(seconds=max_age_seconds))
             )
         ).all()
         await _expire_each(older_than_max, reject, "access request")
@@ -621,7 +621,7 @@ async def expire_role_requests() -> None:
                 select(RoleRequest)
                 .where(RoleRequest.status == AccessRequestStatus.PENDING)
                 .where(RoleRequest.resolved_at.is_(None))
-                .where(RoleRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
+                .where(RoleRequest.created_at < datetime.now(UTC) - timedelta(seconds=max_age_seconds))
             )
         ).all()
         await _expire_each(older_than_max, reject, "role request")
@@ -677,7 +677,7 @@ async def expire_group_requests() -> None:
                 select(GroupRequest)
                 .where(GroupRequest.status == AccessRequestStatus.PENDING)
                 .where(GroupRequest.resolved_at.is_(None))
-                .where(GroupRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
+                .where(GroupRequest.created_at < datetime.now(UTC) - timedelta(seconds=max_age_seconds))
             )
         ).all()
         await _expire_each(older_than_max, reject, "group request")

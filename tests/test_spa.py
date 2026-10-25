@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import httpx
 import pytest

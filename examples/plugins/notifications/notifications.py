@@ -1,9 +1,6 @@
-from __future__ import print_function
-
 import logging
 import os
 from datetime import date, datetime, timedelta
-from typing import Optional
 
 import pluggy
 
@@ -207,8 +204,8 @@ async def access_expiring_user(
 async def access_expiring_owner(
     owner: OktaUser,
     expiration_datetime: datetime,
-    group_user_associations: Optional[list[OktaUserGroupMember]],
-    role_group_associations: Optional[list[RoleGroupMap]],
+    group_user_associations: list[OktaUserGroupMember] | None,
+    role_group_associations: list[RoleGroupMap] | None,
 ) -> None:
     if group_user_associations is not None and len(group_user_associations) > 0:
         expiring_access_url = get_base_url() + "/expiring-groups?owner_id=@me"

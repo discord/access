@@ -1,7 +1,7 @@
 import logging
 from collections import namedtuple
 from datetime import datetime, timedelta
-from typing import Callable, Tuple
+from collections.abc import Callable
 
 import pytest
 from pytest_mock import MockerFixture
@@ -386,7 +386,7 @@ async def test_ownership_through_multiple_groups_non_authoritative(db: Db, mocke
     assert (await _get_group_ownership(db, pk_2)).expired_at == date_2
 
 
-async def seed_db(db: Db, users: list[OktaUser], groups: list[OktaGroup]) -> Tuple[list[OktaUser], list[OktaGroup]]:
+async def seed_db(db: Db, users: list[OktaUser], groups: list[OktaGroup]) -> tuple[list[OktaUser], list[OktaGroup]]:
     async with AsyncSession(db.engine) as session:
         session.add_all([Group(g).update_okta_group(OktaGroup(), {}) for g in groups])
         session.add_all([User(u).update_okta_user(OktaUser(), {}) for u in users])

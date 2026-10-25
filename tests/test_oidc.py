@@ -12,7 +12,8 @@ import base64
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, AsyncGenerator, Generator
+from typing import Any
+from collections.abc import AsyncGenerator, Generator
 
 import httpx
 import itsdangerous
@@ -152,7 +153,7 @@ def oidc_app(
     seed_oidc_user: OktaUser,
     oidc_mock: SimpleNamespace,
     stub_build_dir: Path,
-) -> Generator[FastAPI, None, None]:
+) -> Generator[FastAPI]:
     saved = (
         settings.ENV,
         settings.SECRET_KEY,
@@ -205,7 +206,7 @@ async def oidc_app_with_docs(
     seed_oidc_user: OktaUser,
     oidc_mock: SimpleNamespace,
     stub_build_dir: Path,
-) -> AsyncGenerator[FastAPI, None]:
+) -> AsyncGenerator[FastAPI]:
     # Same as `oidc_app` (staging), but with ENABLE_API_DOCS flipped on so
     # the OpenAPI docs are mounted outside development.
     saved = (
@@ -244,7 +245,7 @@ async def oidc_app_with_docs(
 
 
 @pytest.fixture
-async def oidc_client(oidc_app: FastAPI) -> AsyncGenerator[httpx.AsyncClient, None]:
+async def oidc_client(oidc_app: FastAPI) -> AsyncGenerator[httpx.AsyncClient]:
     # Use https so the cookie jar will replay a Secure-flagged session cookie
     # back to the server on subsequent requests.
     transport = httpx.ASGITransport(app=oidc_app, raise_app_exceptions=False)
@@ -263,7 +264,7 @@ def dev_oidc_app(
     seed_oidc_user: OktaUser,
     oidc_mock: SimpleNamespace,
     stub_build_dir: Path,
-) -> Generator[FastAPI, None, None]:
+) -> Generator[FastAPI]:
     saved = (
         settings.ENV,
         settings.SECRET_KEY,
@@ -297,7 +298,7 @@ def dev_oidc_app(
 
 
 @pytest.fixture
-async def dev_oidc_client(dev_oidc_app: FastAPI) -> AsyncGenerator[httpx.AsyncClient, None]:
+async def dev_oidc_client(dev_oidc_app: FastAPI) -> AsyncGenerator[httpx.AsyncClient]:
     transport = httpx.ASGITransport(app=dev_oidc_app, raise_app_exceptions=False)
     async with httpx.AsyncClient(
         transport=transport,
@@ -604,7 +605,7 @@ async def test_session_cookie_flags_in_dev_omit_secure(dev_oidc_client: httpx.As
 
 
 @pytest.fixture
-def installed_oidc_mock(oidc_mock: SimpleNamespace) -> Generator[None, None, None]:
+def installed_oidc_mock(oidc_mock: SimpleNamespace) -> Generator[None]:
     # create_app -> register_oidc runs before the TrustedHost guard, so the
     # mock must be installed even for the cases that expect a raise, to keep
     # registration off the network.

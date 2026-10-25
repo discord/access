@@ -11,7 +11,7 @@ Expiring roles pages and the per-user / per-group audit views.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -65,7 +65,7 @@ def _unix_to_utc_naive(ts: int) -> datetime:
     Bare `datetime.fromtimestamp(ts)` returns naive *local* time, so comparing
     it against a naive-UTC column drifts by the server's UTC offset.
     """
-    return datetime.fromtimestamp(ts, tz=timezone.utc).replace(tzinfo=None)
+    return datetime.fromtimestamp(ts, tz=UTC).replace(tzinfo=None)
 
 
 def _resolve_me(value: str | None, current_user_id: str) -> str | None:

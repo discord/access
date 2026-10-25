@@ -7,7 +7,8 @@ import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
+from typing import Any
+from collections.abc import AsyncGenerator, Awaitable, Callable
 
 from okta.client import Client as OktaClient
 from okta.models.add_group_request import AddGroupRequest
@@ -58,7 +59,7 @@ logger = logging.getLogger(__name__)
 # SDK models the field as a strict bool, so deserializing any user schema raises
 # a pydantic ``ValidationError``. Relax the field to match Okta's real payload.
 _unique_field = UserSchemaAttribute.model_fields["unique"]
-_unique_field.annotation = Optional[str]
+_unique_field.annotation = str | None
 _unique_field.metadata = []
 UserSchemaAttribute.model_rebuild(force=True)
 
@@ -213,17 +214,17 @@ class OktaService:
     """For interacting with the Okta API"""
 
     def __init__(self) -> None:
-        self.okta_domain: Optional[str] = None
-        self.okta_api_token: Optional[str] = None
+        self.okta_domain: str | None = None
+        self.okta_api_token: str | None = None
         self.use_group_owners_api = False
         # A server-loop-scoped client for connection pooling (see
         # ``start_pooled_client``). ``None`` on CLI/test loops, where each call
         # builds its own client instead.
-        self._pooled_client: Optional[OktaClient] = None
-        self._pooled_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._pooled_client: OktaClient | None = None
+        self._pooled_loop: asyncio.AbstractEventLoop | None = None
 
     def initialize(
-        self, okta_domain: Optional[str], okta_api_token: Optional[str], use_group_owners_api: bool = False
+        self, okta_domain: str | None, okta_api_token: str | None, use_group_owners_api: bool = False
     ) -> None:
         # Ignore an okta domain and api token when testing
         if okta_domain is None or okta_api_token is None:
@@ -246,7 +247,7 @@ class OktaService:
         )
 
     @asynccontextmanager
-    async def _okta_client(self) -> AsyncGenerator[_WrapperClient, None]:
+    async def _okta_client(self) -> AsyncGenerator[_WrapperClient]:
         """Yield a wrapping proxy over an Okta client bound to the running loop.
 
         The proxy (``_WrapperClient``) routes every async API call through
@@ -340,7 +341,7 @@ class OktaService:
         below; every other error keeps raising the generic ``Exception``.
         """
         results: list[Any] = []
-        after: Optional[str] = None
+        after: str | None = None
         while True:
             # ``list_method`` is a proxied client method, so it already routes
             # through ``_call``.
@@ -718,9 +719,9 @@ class User:
         profile: Any = self.user.profile
         profile_data = profile.model_dump(by_alias=True, exclude={"additional_properties"})
         profile_data.update(profile.additional_properties or {})
-        return dict(((user_attrs_to_titles.get(k, k), v) for (k, v) in profile_data.items()))
+        return dict((user_attrs_to_titles.get(k, k), v) for (k, v) in profile_data.items())
 
-    def get_deleted_at(self) -> Optional[datetime]:
+    def get_deleted_at(self) -> datetime | None:
         user: Any = self.user
         return user.status_changed if user.status in ("SUSPENDED", "DEPROVISIONED") else None
 
@@ -808,7 +809,7 @@ def _group_profile(group: Any) -> Any:
 def is_managed_group(
     group: Group,
     group_ids_with_group_rules: dict[str, list[OktaGroupRuleType]],
-    custom_attr: Optional[str] = OKTA_GROUP_PROFILE_CUSTOM_ATTR,
+    custom_attr: str | None = OKTA_GROUP_PROFILE_CUSTOM_ATTR,
 ) -> bool:
     # Check if OKTA_GROUP_PROFILE_CUSTOM_ATTR attribute exists as a custom Okta Group Profile attribute and retrieve its value
     if custom_attr:

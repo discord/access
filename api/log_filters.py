@@ -1,8 +1,8 @@
 import json
 import logging
 import re
-from datetime import datetime, timezone
-from typing import Iterable
+from datetime import datetime, UTC
+from collections.abc import Iterable
 
 from api.context import get_process_source, get_request_context
 
@@ -112,7 +112,7 @@ class JsonLogFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         entry: dict[str, object] = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "severity": record.levelname,
             "logger": record.name,
             "source": getattr(record, "access_source", None),

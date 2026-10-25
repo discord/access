@@ -1,6 +1,5 @@
 import asyncio
 from datetime import UTC, datetime
-from typing import Dict, Optional
 
 import logging
 
@@ -38,7 +37,7 @@ class ModifyGroupUsers:
         self,
         *,
         group: OktaGroup | str,
-        users_added_ended_at: Optional[datetime] = None,
+        users_added_ended_at: datetime | None = None,
         members_to_add: list[str] = [],
         owners_to_add: list[str] = [],
         members_should_expire: list[int] = [],
@@ -46,7 +45,7 @@ class ModifyGroupUsers:
         members_to_remove: list[str] = [],
         owners_to_remove: list[str] = [],
         sync_to_okta: bool = True,
-        current_user_id: Optional[str] = None,
+        current_user_id: str | None = None,
         created_reason: str = "",
         notify: bool = True,
     ):
@@ -535,7 +534,7 @@ class ModifyGroupUsers:
             if len(members_gaining_first_access_ids) > 0:
                 members_gained_by_group[group] = [m for m in members_to_add if m.id in members_gaining_first_access_ids]
 
-            group_memberships_added: Dict[str, Dict[str, OktaUserGroupMember]] = {group.id: {}}
+            group_memberships_added: dict[str, dict[str, OktaUserGroupMember]] = {group.id: {}}
             for member in members_to_add:
                 if self.sync_to_okta and group.is_managed:
                     # Add user to Access-managed okta group members
@@ -552,7 +551,7 @@ class ModifyGroupUsers:
                 group_memberships_added[group.id][member.id] = membership_to_add
                 db.session.add(membership_to_add)
 
-            group_ownerships_added: Dict[str, Dict[str, OktaUserGroupMember]] = {group.id: {}}
+            group_ownerships_added: dict[str, dict[str, OktaUserGroupMember]] = {group.id: {}}
             for owner in owners_to_add:
                 if self.sync_to_okta and group.is_managed:
                     # Add user to Access-managed okta group owners
@@ -599,7 +598,7 @@ class ModifyGroupUsers:
                 # Check which members being added currently have NO active memberships in role-associated groups
                 role_associated_group_ids = [m.group_id for m in role_associated_groups_mappings]
                 # Build a dict mapping group_id to set of user_ids that already have access
-                existing_access_by_group: Dict[str, set[str]] = {}
+                existing_access_by_group: dict[str, set[str]] = {}
                 if len(role_associated_group_ids) > 0:
                     for group_id in role_associated_group_ids:
                         existing_access_by_group[group_id] = set()
@@ -625,7 +624,7 @@ class ModifyGroupUsers:
                         existing_access_by_group[row.group_id].add(row.user_id)
 
                 for role_associated_group_map in role_associated_groups_mappings:
-                    role_associated_access_added: Dict[str, OktaUserGroupMember] = {}
+                    role_associated_access_added: dict[str, OktaUserGroupMember] = {}
                     if role_associated_group_map.is_owner:
                         group_ownerships_added[role_associated_group_map.group_id] = role_associated_access_added
                     else:

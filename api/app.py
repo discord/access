@@ -15,7 +15,8 @@ import sys
 from contextlib import asynccontextmanager
 from os import environ
 from pathlib import Path
-from typing import Any, AsyncGenerator, Optional
+from typing import Any
+from collections.abc import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
@@ -175,7 +176,7 @@ def _configure_logging(source: str = "server") -> None:
     logging.root.addFilter(token_filter)
 
 
-def _drop_wrapped_ignored_errors(event: dict, hint: dict) -> Optional[dict]:
+def _drop_wrapped_ignored_errors(event: dict, hint: dict) -> dict | None:
     """Sentry before_send: drop events whose cause chain contains a type we
     already list in ``ignore_errors``.
 
@@ -297,7 +298,7 @@ def _configure_threadpool_limit() -> None:
     logger.info("Worker-thread pool limit set to %d", settings.THREADPOOL_MAX_WORKERS)
 
 
-def create_app(testing: Optional[bool] = False) -> FastAPI:
+def create_app(testing: bool | None = False) -> FastAPI:
     _configure_logging()
 
     if testing:
@@ -324,7 +325,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     # the route registration below can grab the session manager, then
     # enter its lifespan in the FastAPI lifespan so the session
     # manager's task group is running while requests are served.
-    mcp_lifespan: Optional[Any] = None
+    mcp_lifespan: Any | None = None
     if settings.ENABLE_MCP:
         from api.mcp.server import create_mcp_server
         from api.mcp.server import mcp_lifespan as mcp_lifespan
@@ -332,7 +333,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         create_mcp_server()
 
     @asynccontextmanager
-    async def lifespan(_fast_app: FastAPI) -> AsyncGenerator[None, None]:
+    async def lifespan(_fast_app: FastAPI) -> AsyncGenerator[None]:
         # Bound the worker-thread pool inside the running event loop (the anyio
         # limiter is loop-scoped, so this can't run at import time).
         _configure_threadpool_limit()

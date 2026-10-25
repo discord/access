@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 import pytest
 
@@ -40,7 +40,7 @@ async def test_no_expire_new_role_request(
 async def test_expire_old_role_request(
     db: Db, role_request: RoleRequest, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
 ) -> None:
-    role_request.created_at = datetime.now(timezone.utc) - timedelta(days=30)
+    role_request.created_at = datetime.now(UTC) - timedelta(days=30)
     role_request_id = await _persist(db, role_request, role_group, okta_group, user)
 
     await expire_role_requests()
@@ -59,8 +59,8 @@ async def test_expire_role_request_with_lapsed_window(
 ) -> None:
     """A role request past its request_ending_at is moot: approving it would
     mint an already-expired RoleGroupMap."""
-    role_request.created_at = datetime.now(timezone.utc) - timedelta(days=1)
-    role_request.request_ending_at = datetime.now(timezone.utc) - timedelta(hours=12)
+    role_request.created_at = datetime.now(UTC) - timedelta(days=1)
+    role_request.request_ending_at = datetime.now(UTC) - timedelta(hours=12)
     role_request_id = await _persist(db, role_request, role_group, okta_group, user)
 
     await expire_role_requests()
@@ -88,14 +88,14 @@ async def test_never_on_the_access_cutoff_also_disables_role_age_expiry(
     closed by the separate, non-disableable requested-window pass.
     """
     monkeypatch.setattr(settings, "MAX_ACCESS_REQUEST_AGE_SECONDS", "never")
-    stale = datetime.now(timezone.utc) - timedelta(days=30)
+    stale = datetime.now(UTC) - timedelta(days=30)
 
     role_request.created_at = stale
     role_request_id = await _persist(db, role_request, role_group, okta_group, user)
 
     lapsed_window = RoleRequestFactory.build()
     lapsed_window.created_at = stale
-    lapsed_window.request_ending_at = datetime.now(timezone.utc) - timedelta(hours=12)
+    lapsed_window.request_ending_at = datetime.now(UTC) - timedelta(hours=12)
     lapsed_window.requester_user_id = user.id
     lapsed_window.requester_role_id = role_group.id
     lapsed_window.requested_group_id = okta_group.id

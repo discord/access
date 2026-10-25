@@ -1,5 +1,3 @@
-from typing import Optional, Tuple
-
 from sqlalchemy.orm import (
     selectin_polymorphic,
     selectinload,
@@ -17,7 +15,7 @@ class CheckForSelfAdd:
     def __init__(
         self,
         group: OktaGroup | str,
-        current_user: Optional[OktaUser | str],
+        current_user: OktaUser | str | None,
         members_to_add: list[str] = [],
         owners_to_add: list[str] = [],
     ):
@@ -32,7 +30,7 @@ class CheckForSelfAdd:
         self.members_to_add = members_to_add
         self.owners_to_add = owners_to_add
 
-    async def execute_for_group(self) -> Tuple[bool, str]:
+    async def execute_for_group(self) -> tuple[bool, str]:
         group = (
             await db.session.scalars(
                 select(OktaGroup)
@@ -81,7 +79,7 @@ class CheckForSelfAdd:
                 )
         return True, ""
 
-    async def execute_for_role(self) -> Tuple[bool, str]:
+    async def execute_for_role(self) -> tuple[bool, str]:
         group = (
             await db.session.scalars(
                 select(OktaGroup)

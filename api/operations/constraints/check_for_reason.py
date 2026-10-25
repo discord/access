@@ -1,5 +1,3 @@
-from typing import Optional, Tuple
-
 from sqlalchemy import select
 from sqlalchemy.orm import (
     selectin_polymorphic,
@@ -16,7 +14,7 @@ class CheckForReason:
     def __init__(
         self,
         group: OktaGroup | str,
-        reason: Optional[str],
+        reason: str | None,
         members_to_add: list[str] = [],
         owners_to_add: list[str] = [],
     ):
@@ -31,10 +29,10 @@ class CheckForReason:
         self.owners_to_add = owners_to_add
 
     @staticmethod
-    def invalid_reason(reason: Optional[str]) -> bool:
+    def invalid_reason(reason: str | None) -> bool:
         return reason is None or reason.strip() == ""
 
-    async def execute_for_group(self) -> Tuple[bool, str]:
+    async def execute_for_group(self) -> tuple[bool, str]:
         group = (
             await db.session.scalars(
                 select(OktaGroup)
@@ -61,7 +59,7 @@ class CheckForReason:
                     return False, f"Reason for adding members to {group.name} group is required {clause}"
         return True, ""
 
-    async def execute_for_role(self) -> Tuple[bool, str]:
+    async def execute_for_role(self) -> tuple[bool, str]:
         group = (
             await db.session.scalars(
                 select(OktaGroup)

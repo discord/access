@@ -1,12 +1,10 @@
-from typing import List
-
 from sqlalchemy import func, or_, select
 
 from api.extensions import db
 from api.models.core_models import OktaGroup, OktaUser, OktaUserGroupMember
 
 
-async def get_group_managers(group_id: str) -> List[OktaUser]:
+async def get_group_managers(group_id: str) -> list[OktaUser]:
     # A user can hold two concurrent active OktaUserGroupMember owner rows for
     # the same group at once (a direct grant plus one via a role mapping,
     # per the access-grant-precedence rules) -- distinct() so such a user is

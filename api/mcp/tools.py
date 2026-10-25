@@ -53,7 +53,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from mcp.types import ToolAnnotations
 from pydantic import TypeAdapter, ValidationError
@@ -179,7 +179,7 @@ def _validation_error(exc: ValidationError) -> str:
     return _error(f"{loc}: {err['msg']}")
 
 
-def _clamp_pagination(page: int, size: int) -> tuple[int, int, Optional[str]]:
+def _clamp_pagination(page: int, size: int) -> tuple[int, int, str | None]:
     """Validate the (page, size) pair an MCP client sent. Returns the
     sanitized pair plus an optional error string."""
     if page < 0:
@@ -348,7 +348,7 @@ def _tag_load_options() -> tuple:
 # ---------------------------------------------------------------------------
 
 
-def register_tools(mcp: "FastMCP") -> None:
+def register_tools(mcp: FastMCP) -> None:
     """Register every v1 tool on the given FastMCP instance.
 
     Pattern:
@@ -377,7 +377,7 @@ def register_tools(mcp: "FastMCP") -> None:
 # --- Groups -----------------------------------------------------------------
 
 
-def _register_group_tools(mcp: "FastMCP") -> None:
+def _register_group_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="list_groups",
         title="List groups",
@@ -391,7 +391,7 @@ def _register_group_tools(mcp: "FastMCP") -> None:
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
     async def list_groups(
-        q: str = "", managed: Optional[bool] = None, page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE
+        q: str = "", managed: bool | None = None, page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE
     ) -> str:
         page, size, err = _clamp_pagination(page, size)
         if err:
@@ -512,7 +512,7 @@ def _register_group_tools(mcp: "FastMCP") -> None:
 # --- Roles ------------------------------------------------------------------
 
 
-def _register_role_tools(mcp: "FastMCP") -> None:
+def _register_role_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="list_roles",
         title="List roles",
@@ -604,7 +604,7 @@ def _register_role_tools(mcp: "FastMCP") -> None:
 # --- Apps -------------------------------------------------------------------
 
 
-def _register_app_tools(mcp: "FastMCP") -> None:
+def _register_app_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="list_apps",
         title="List apps",
@@ -669,7 +669,7 @@ def _register_app_tools(mcp: "FastMCP") -> None:
 # --- Users ------------------------------------------------------------------
 
 
-def _register_user_tools(mcp: "FastMCP") -> None:
+def _register_user_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="list_users",
         title="List users",
@@ -747,7 +747,7 @@ def _register_user_tools(mcp: "FastMCP") -> None:
 # --- Tags -------------------------------------------------------------------
 
 
-def _register_tag_tools(mcp: "FastMCP") -> None:
+def _register_tag_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="list_tags",
         title="List tags",
@@ -806,7 +806,7 @@ def _register_tag_tools(mcp: "FastMCP") -> None:
 # --- Access requests --------------------------------------------------------
 
 
-def _register_access_request_tools(mcp: "FastMCP") -> None:
+def _register_access_request_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="list_access_requests",
         title="List access requests",
@@ -897,7 +897,7 @@ def _register_access_request_tools(mcp: "FastMCP") -> None:
 # --- Role requests ----------------------------------------------------------
 
 
-def _register_role_request_tools(mcp: "FastMCP") -> None:
+def _register_role_request_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="list_role_requests",
         title="List role requests",
@@ -976,7 +976,7 @@ def _register_role_request_tools(mcp: "FastMCP") -> None:
 # --- Group requests ---------------------------------------------------------
 
 
-def _register_group_request_tools(mcp: "FastMCP") -> None:
+def _register_group_request_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="list_group_requests",
         title="List group requests",
@@ -1053,7 +1053,7 @@ def _register_group_request_tools(mcp: "FastMCP") -> None:
 # --- Audit ------------------------------------------------------------------
 
 
-def _register_audit_tool(mcp: "FastMCP") -> None:
+def _register_audit_tool(mcp: FastMCP) -> None:
     @mcp.tool(
         name="list_audit_entries",
         title="List access history",
@@ -1071,7 +1071,7 @@ def _register_audit_tool(mcp: "FastMCP") -> None:
     async def list_audit_entries(
         user_id: str = "",
         group_id: str = "",
-        is_owner: Optional[bool] = None,
+        is_owner: bool | None = None,
         active_only: bool = True,
         page: int = 0,
         size: int = MCP_DEFAULT_PAGE_SIZE,
@@ -1152,7 +1152,7 @@ def _register_audit_tool(mcp: "FastMCP") -> None:
 # --- Write tools ------------------------------------------------------------
 
 
-def _register_write_tools(mcp: "FastMCP") -> None:
+def _register_write_tools(mcp: FastMCP) -> None:
     @mcp.tool(
         name="create_access_request",
         title="Submit access request",
@@ -1415,7 +1415,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
         group_type: str,
         description: str = "",
         app_id: str = "",
-        tags_to_apply: Optional[list[str]] = None,
+        tags_to_apply: list[str] | None = None,
         ownership_ending_at: str = "",
         reason: str = "",
     ) -> str:
@@ -1444,7 +1444,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
 
         from api.operations import CreateGroupRequest, RejectGroupRequest
 
-        requested_app_id: Optional[str] = body.requested_app_id if isinstance(body, _AppGroupRequestBody) else None
+        requested_app_id: str | None = body.requested_app_id if isinstance(body, _AppGroupRequestBody) else None
 
         async with mcp_db_session() as db:
             # Same gate as POST /api/group-requests: an active OktaUser

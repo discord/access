@@ -12,7 +12,8 @@ This includes tests for:
 from dataclasses import asdict
 from unittest.mock import MagicMock
 from datetime import UTC, datetime, timedelta
-from typing import Any, Generator
+from typing import Any
+from collections.abc import Generator
 
 import pytest
 from fastapi import FastAPI
@@ -313,7 +314,7 @@ class DummyPlugin:
 
 
 @pytest.fixture
-def test_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[DummyPlugin, None, None]:
+def test_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[DummyPlugin]:
     """Register the test plugin for testing."""
     import pluggy
 

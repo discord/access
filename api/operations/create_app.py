@@ -1,6 +1,6 @@
 import random
 import string
-from typing import Optional, TypedDict, cast
+from typing import TypedDict, cast
 
 import logging
 
@@ -30,10 +30,10 @@ class CreateApp:
         *,
         app: App | AppDict,
         tags: list[str] = [],
-        owner_id: Optional[str] = None,
-        owner_role_ids: Optional[list[str]] = None,
-        additional_app_groups: Optional[list[AppGroup] | list[GroupDict]] = None,
-        current_user_id: Optional[str] = None,
+        owner_id: str | None = None,
+        owner_role_ids: list[str] | None = None,
+        additional_app_groups: list[AppGroup] | list[GroupDict] | None = None,
+        current_user_id: str | None = None,
     ):
         id = self.__generate_id()
         if isinstance(app, dict):
@@ -89,7 +89,7 @@ class CreateApp:
             "id",
             None,
         )
-        owner_role_ids: Optional[list[str]] = None
+        owner_role_ids: list[str] | None = None
         if self.owner_role_ids is not None:
             owner_roles = (
                 await db.session.scalars(

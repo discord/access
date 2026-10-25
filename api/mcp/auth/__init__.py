@@ -20,7 +20,8 @@ import contextvars
 import functools
 import json
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Optional, TypeVar, cast
+from typing import Any, TypeVar, cast
+from collections.abc import Awaitable, Callable
 
 # Scope strings used by the v1 tool surface. Tools declare a required
 # scope via ``@require_scope(MCP_SCOPE_READ_ALL)`` etc.; the
@@ -74,20 +75,18 @@ class MCPScopeError(Exception):
 
 # ContextVar set by the ASGI auth middleware before FastMCP dispatch and
 # cleared on the way out. Per-tool helpers read it.
-_mcp_identity: contextvars.ContextVar[Optional[MCPIdentity]] = contextvars.ContextVar(
-    "access_mcp_identity", default=None
-)
+_mcp_identity: contextvars.ContextVar[MCPIdentity | None] = contextvars.ContextVar("access_mcp_identity", default=None)
 
 
-def set_mcp_identity(identity: Optional[MCPIdentity]) -> contextvars.Token[Optional[MCPIdentity]]:
+def set_mcp_identity(identity: MCPIdentity | None) -> contextvars.Token[MCPIdentity | None]:
     return _mcp_identity.set(identity)
 
 
-def reset_mcp_identity(token: contextvars.Token[Optional[MCPIdentity]]) -> None:
+def reset_mcp_identity(token: contextvars.Token[MCPIdentity | None]) -> None:
     _mcp_identity.reset(token)
 
 
-def get_mcp_identity() -> Optional[MCPIdentity]:
+def get_mcp_identity() -> MCPIdentity | None:
     return _mcp_identity.get()
 
 

@@ -22,17 +22,16 @@ import uuid
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime
-from typing import Any, Callable, TypeVar, cast
+from typing import Any, cast
+from collections.abc import Callable
 
 import click
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import joinedload
 
-F = TypeVar("F", bound=Callable[..., Any])
-
 
 @asynccontextmanager
-async def app_context(*, scope: str | None = None, log_source: str = "cli") -> AsyncGenerator[None, None]:
+async def app_context(*, scope: str | None = None, log_source: str = "cli") -> AsyncGenerator[None]:
     """Bootstrap the application context an out-of-request entrypoint needs.
 
     Binds the SQLAlchemy async engine, mirrors `create_app()`'s logging /
@@ -93,7 +92,7 @@ async def app_context(*, scope: str | None = None, log_source: str = "cli") -> A
             await db.engine.dispose()
 
 
-def _with_app_context(func: F) -> F:
+def _with_app_context[F: Callable[..., Any]](func: F) -> F:
     """Run a Click command body inside its own `app_context`.
 
     This decorator is the sync/async boundary for the CLI: Click commands

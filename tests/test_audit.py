@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from httpx import AsyncClient
 from sqlalchemy import select
 
@@ -445,7 +445,7 @@ async def test_audit_users_default_order_is_newest_first(client: AsyncClient, db
         sync_to_okta=False,
     ).execute()
 
-    base = datetime.now(timezone.utc) - timedelta(days=10)
+    base = datetime.now(UTC) - timedelta(days=10)
     pinned = {
         u_old.id: base,
         u_mid.id: base + timedelta(days=2),
@@ -479,7 +479,7 @@ async def test_audit_groups_default_order_is_newest_first(client: AsyncClient, d
         sync_to_okta=False,
     ).execute()
 
-    base = datetime.now(timezone.utc) - timedelta(days=10)
+    base = datetime.now(UTC) - timedelta(days=10)
     pinned = {
         g_old.id: base,
         g_mid.id: base + timedelta(days=2),
@@ -743,7 +743,7 @@ async def test_users_audit_returns_rows_when_user_is_soft_deleted(client: AsyncC
     user = await OktaUserFactory.create_async()
     await ModifyGroupUsers(group=group, members_to_add=[user.id], sync_to_okta=False).execute()
 
-    user.deleted_at = datetime.now(timezone.utc)
+    user.deleted_at = datetime.now(UTC)
     await db.session.commit()
 
     rep = await client.get(url_for("api-audit.users_and_groups"), params={"group_id": group.id})
@@ -770,7 +770,7 @@ async def test_groups_audit_returns_rows_when_role_group_is_soft_deleted(
     group = await OktaGroupFactory.create_async()
     await ModifyRoleGroups(role_group=role, groups_to_add=[group.id], sync_to_okta=False).execute()
 
-    role.deleted_at = datetime.now(timezone.utc)
+    role.deleted_at = datetime.now(UTC)
     await db.session.commit()
 
     rep = await client.get(url_for("api-audit.groups_and_roles"), params={"group_id": group.id})
@@ -801,7 +801,7 @@ async def test_users_audit_order_is_total_for_member_and_owner_rows(client: Asyn
         sync_to_okta=False,
     ).execute()
 
-    pinned = datetime.now(timezone.utc) - timedelta(days=1)
+    pinned = datetime.now(UTC) - timedelta(days=1)
     rows = (await db.session.scalars(select(OktaUserGroupMember).where(OktaUserGroupMember.group_id == group.id))).all()
     # Rewrite the rows newest-id first. On Postgres an UPDATE writes a fresh
     # tuple, so this flips the physical order the rows sit in on disk, and a
@@ -842,7 +842,7 @@ async def test_groups_audit_order_is_total_for_member_and_owner_rows(client: Asy
         sync_to_okta=False,
     ).execute()
 
-    pinned = datetime.now(timezone.utc) - timedelta(days=1)
+    pinned = datetime.now(UTC) - timedelta(days=1)
     rows = (await db.session.scalars(select(RoleGroupMap).where(RoleGroupMap.group_id == group.id))).all()
     # Same physical-order flip as the users test above.
     for rgm in sorted(rows, key=lambda r: r.id, reverse=True):

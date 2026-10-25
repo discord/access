@@ -1,5 +1,6 @@
 import logging
-from typing import Any, Callable, Generator
+from typing import Any
+from collections.abc import Callable, Generator
 
 import pytest
 from fastapi import FastAPI
@@ -25,7 +26,7 @@ UNREGISTERED_PLUGIN_ID = "unregistered_plugin"
 
 
 @pytest.fixture
-def test_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[DummyPlugin, None, None]:
+def test_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[DummyPlugin]:
     """Register DummyPlugin (id 'test_plugin') as the app group lifecycle plugin."""
     import pluggy
 
@@ -99,7 +100,7 @@ class _StatusWritingPlugin(DummyPlugin):
 
 
 @pytest.fixture
-def mutating_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[_StatusWritingPlugin, None, None]:
+def mutating_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[_StatusWritingPlugin]:
     """Register _StatusWritingPlugin under the test plugin id."""
     import pluggy
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
 
 import pluggy
 import pytest
@@ -25,7 +24,7 @@ def test_accepts_impl_without_defaults() -> None:
     class GoodPlugin:
         @hookimpl
         def record_counter(
-            self, metric_name: str, value: float, tags: Optional[dict[str, str]], monotonic: bool = True
+            self, metric_name: str, value: float, tags: dict[str, str] | None, monotonic: bool = True
         ) -> None:
             pass
 
@@ -36,7 +35,7 @@ def test_raises_when_tags_has_default() -> None:
     class BadPlugin:
         @hookimpl
         def record_counter(
-            self, metric_name: str, value: float, tags: Optional[dict[str, str]] = None, monotonic: bool = True
+            self, metric_name: str, value: float, tags: dict[str, str] | None = None, monotonic: bool = True
         ) -> None:
             pass
 
@@ -48,7 +47,7 @@ def test_verify_async_impls_rejects_sync_hook() -> None:
     class SyncPlugin:
         @hookimpl
         def record_counter(
-            self, metric_name: str, value: float, tags: Optional[dict[str, str]], monotonic: bool = True
+            self, metric_name: str, value: float, tags: dict[str, str] | None, monotonic: bool = True
         ) -> None:
             pass
 
@@ -60,7 +59,7 @@ def test_verify_async_impls_accepts_async_hook() -> None:
     class AsyncPlugin:
         @hookimpl
         async def record_counter(
-            self, metric_name: str, value: float, tags: Optional[dict[str, str]], monotonic: bool = True
+            self, metric_name: str, value: float, tags: dict[str, str] | None, monotonic: bool = True
         ) -> None:
             pass
 

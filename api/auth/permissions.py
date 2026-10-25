@@ -8,7 +8,7 @@ if the target object isn't found).
 
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import Depends, HTTPException
 from sqlalchemy import func, or_, select
@@ -43,8 +43,8 @@ async def is_app_owner_group_owner(
     *,
     # Any group may be passed (callers hold an `OktaGroup`); the `type(...) is
     # AppGroup` guard below returns False for non-app groups.
-    app_group: Optional[OktaGroup] = None,
-    app: Optional[App] = None,
+    app_group: OktaGroup | None = None,
+    app: App | None = None,
 ) -> bool:
     if app is not None:
         app_id = app.id

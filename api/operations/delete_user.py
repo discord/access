@@ -1,5 +1,4 @@
 import asyncio
-from typing import Optional
 
 from sqlalchemy.orm import (
     joinedload,
@@ -22,7 +21,7 @@ from api.services import okta
 
 
 class DeleteUser:
-    def __init__(self, *, user: OktaUser | str, sync_to_okta: bool = True, current_user_id: Optional[str] = None):
+    def __init__(self, *, user: OktaUser | str, sync_to_okta: bool = True, current_user_id: str | None = None):
         self.user_id = user if isinstance(user, str) else user.id
 
         self.sync_to_okta = sync_to_okta

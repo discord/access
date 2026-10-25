@@ -1,7 +1,6 @@
 import random
 import string
 from datetime import datetime
-from typing import Optional
 
 import logging
 
@@ -36,7 +35,7 @@ class CreateAccessRequest:
         requested_group: OktaGroup | str,
         request_ownership: bool = False,
         request_reason: str = "",
-        request_ending_at: Optional[datetime] = None,
+        request_ending_at: datetime | None = None,
     ):
         self.id = self.__generate_id()
 
@@ -49,7 +48,7 @@ class CreateAccessRequest:
 
         self.request_approvers = select()
 
-    async def execute(self) -> Optional[AccessRequest]:
+    async def execute(self) -> AccessRequest | None:
         requester = await db.session.get(OktaUser, self.requester_user_id)
         assert requester is not None
 

@@ -1,5 +1,3 @@
-from typing import Optional
-
 import logging
 
 from sqlalchemy import func, or_, select, update
@@ -19,7 +17,7 @@ class ModifyGroupTags:
         group: OktaGroup | str,
         tags_to_add: list[str] = [],
         tags_to_remove: list[str] = [],
-        current_user_id: Optional[str],
+        current_user_id: str | None,
     ):
         self.group_id = group if isinstance(group, str) else group.id
         self.tag_ids_to_add = tags_to_add

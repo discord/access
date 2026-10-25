@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, Final, Literal, Optional, Union, cast
+from typing import Any, Final, Literal, cast
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,15 +24,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 NEVER_EXPIRE: Final = "never"
 
 
-def _read_secret_key() -> Optional[str]:
+def _read_secret_key() -> str | None:
     secret_key_file = os.getenv("SECRET_KEY_FILE")
     if secret_key_file is None:
         return os.getenv("SECRET_KEY")
-    with open(secret_key_file, "r") as f:
+    with open(secret_key_file) as f:
         return f.read().strip()
 
 
-def _parse_oidc_client_secrets(value: Optional[str]) -> Union[None, str, dict[str, Any]]:
+def _parse_oidc_client_secrets(value: str | None) -> None | str | dict[str, Any]:
     if value is None:
         return None
     if value.startswith("{") and value.endswith("}"):
@@ -70,7 +70,7 @@ class Settings(BaseSettings):
         Always on in development; otherwise gated behind `ENABLE_API_DOCS`."""
         return self.DEBUG or self.ENABLE_API_DOCS
 
-    CLIENT_ORIGIN_URL: Optional[str] = None
+    CLIENT_ORIGIN_URL: str | None = None
 
     # Comma-separated Host header allowlist for TrustedHostMiddleware
     # (wildcards like "*.example.com" supported). Guards Host-derived URLs such
@@ -79,14 +79,14 @@ class Settings(BaseSettings):
     ALLOWED_HOSTS: str = ""
 
     # Okta
-    OKTA_DOMAIN: Optional[str] = None
-    OKTA_API_TOKEN: Optional[str] = None
+    OKTA_DOMAIN: str | None = None
+    OKTA_API_TOKEN: str | None = None
     OKTA_USE_GROUP_OWNERS_API: bool = False
     CURRENT_OKTA_USER_EMAIL: str = "wumpus@discord.com"
-    OKTA_GROUP_PROFILE_CUSTOM_ATTR: Optional[str] = None
+    OKTA_GROUP_PROFILE_CUSTOM_ATTR: str | None = None
 
     # Database
-    SQLALCHEMY_DATABASE_URI: Optional[str] = Field(default_factory=lambda: os.getenv("DATABASE_URI"))
+    SQLALCHEMY_DATABASE_URI: str | None = Field(default_factory=lambda: os.getenv("DATABASE_URI"))
     SQLALCHEMY_TRACK_MODIFICATIONS: bool = False
     SQLALCHEMY_ECHO: bool = False
 
@@ -123,7 +123,7 @@ class Settings(BaseSettings):
     THREADPOOL_MAX_WORKERS: int = 16
     # User attributes
     USER_DISPLAY_CUSTOM_ATTRIBUTES: str = "Title,Manager"
-    USER_SEARCH_CUSTOM_ATTRIBUTES: Optional[str] = None
+    USER_SEARCH_CUSTOM_ATTRIBUTES: str | None = None
     # How long a pending request may sit before the sync cronjob closes it.
     # Access and role requests share one cutoff: both are a yes/no on granting
     # access, so they get the same fuse. Group requests get their own because
@@ -133,12 +133,12 @@ class Settings(BaseSettings):
     # Set either to NEVER_EXPIRE ("never") to switch its age-based sweep off.
     # That does NOT stop the separate requested-window sweep: an access or role
     # request whose own `request_ending_at` has passed is still closed.
-    MAX_ACCESS_REQUEST_AGE_SECONDS: Union[int, Literal["never"]] = 7 * 24 * 60 * 60
-    MAX_GROUP_REQUEST_AGE_SECONDS: Union[int, Literal["never"]] = 7 * 24 * 60 * 60
+    MAX_ACCESS_REQUEST_AGE_SECONDS: int | Literal["never"] = 7 * 24 * 60 * 60
+    MAX_GROUP_REQUEST_AGE_SECONDS: int | Literal["never"] = 7 * 24 * 60 * 60
 
     @field_validator("MAX_ACCESS_REQUEST_AGE_SECONDS", "MAX_GROUP_REQUEST_AGE_SECONDS")
     @classmethod
-    def _reject_non_positive_age(cls, v: Union[int, str]) -> Union[int, str]:
+    def _reject_non_positive_age(cls, v: int | str) -> int | str:
         # Short-circuit on the sentinel: a Field(ge=...) bound cannot be used
         # here because it is applied to the union rather than to its int branch
         # and rejects "never" itself.
@@ -152,19 +152,19 @@ class Settings(BaseSettings):
         return v
 
     # Cloudflare Access
-    CLOUDFLARE_APPLICATION_AUDIENCE: Optional[str] = None
-    CLOUDFLARE_TEAM_DOMAIN: Optional[str] = None
+    CLOUDFLARE_APPLICATION_AUDIENCE: str | None = None
+    CLOUDFLARE_TEAM_DOMAIN: str | None = None
 
     # OIDC
-    OIDC_CLIENT_SECRETS: Union[None, str, dict[str, Any]] = None
+    OIDC_CLIENT_SECRETS: None | str | dict[str, Any] = None
     OIDC_INTROSPECTION_AUTH_METHOD: str = "client_secret_post"
     OIDC_CLOCK_SKEW: int = 60
     # Fixed IdP callback URL. When unset, it is derived from the request Host
     # header (poisonable if the IdP's redirect-URI allowlist is loose).
     # Recommended behind a proxy; complements ALLOWED_HOSTS.
-    OIDC_OVERWRITE_REDIRECT_URI: Optional[str] = None
+    OIDC_OVERWRITE_REDIRECT_URI: str | None = None
     OIDC_SCOPES: str = "openid email"
-    OIDC_SERVER_METADATA_URL: Optional[str] = None
+    OIDC_SERVER_METADATA_URL: str | None = None
     # Required `aud` claim for MCP-bound OIDC bearer tokens. When the OIDC
     # provider is active for MCP (``OIDC_SERVER_METADATA_URL`` set and
     # ``ENABLE_MCP=true``), every incoming token's ``aud`` claim must match
@@ -173,26 +173,26 @@ class Settings(BaseSettings):
     # server authenticate to Access MCP (the classic confused-deputy /
     # token-confusion attack). Typically the OAuth client identifier for
     # the MCP application registered with the IdP, e.g. ``access-mcp``.
-    OIDC_MCP_AUDIENCE: Optional[str] = None
+    OIDC_MCP_AUDIENCE: str | None = None
 
     # Session
-    SECRET_KEY: Optional[str] = Field(default_factory=_read_secret_key)
+    SECRET_KEY: str | None = Field(default_factory=_read_secret_key)
 
     # App metadata
     # APP_CREATOR_ID accepts a comma-separated list of identifiers permitted
     # to create new apps via POST /api/apps (in addition to Access admins). A
     # single value (no commas) keeps the original single-creator behavior.
-    APP_CREATOR_ID: Optional[str] = None
+    APP_CREATOR_ID: str | None = None
     # APP_GROUP_DELETER_ID accepts a comma-separated list of identifiers
     # permitted to delete managed AppGroups (in addition to the existing
     # group-owner / app-owner / access-admin paths).
-    APP_GROUP_DELETER_ID: Optional[str] = None
+    APP_GROUP_DELETER_ID: str | None = None
     APP_VERSION: str = "Not Defined"
     APP_NAME: str = "Access"
 
     # Sentry
-    FASTAPI_SENTRY_DSN: Optional[str] = None
-    REACT_SENTRY_DSN: Optional[str] = None
+    FASTAPI_SENTRY_DSN: str | None = None
+    REACT_SENTRY_DSN: str | None = None
 
     # Behavior toggles
     REQUIRE_DESCRIPTIONS: bool = False
@@ -235,7 +235,7 @@ class Settings(BaseSettings):
     # document and the 401 ``resource_metadata`` pointer for client
     # discovery. When unset, derived from the request (forwarded scheme +
     # Host + ``/mcp``); set explicitly behind a proxy that rewrites Host.
-    MCP_RESOURCE_URL: Optional[str] = None
+    MCP_RESOURCE_URL: str | None = None
 
     # DNS-rebinding protection for the FastMCP transport layer. Comma-
     # separated Host header allowlist (wildcards like ``"localhost:*"``
@@ -272,7 +272,7 @@ class Settings(BaseSettings):
         return [s.strip() for s in self.APP_GROUP_DELETER_ID.split(",") if s.strip()]
 
     @property
-    def max_access_request_age_seconds(self) -> Optional[int]:
+    def max_access_request_age_seconds(self) -> int | None:
         """Seconds after which a pending access or role request is closed for age.
 
         None when the operator disabled the age-based sweep. This does not affect
@@ -283,7 +283,7 @@ class Settings(BaseSettings):
         return self.MAX_ACCESS_REQUEST_AGE_SECONDS
 
     @property
-    def max_group_request_age_seconds(self) -> Optional[int]:
+    def max_group_request_age_seconds(self) -> int | None:
         """Seconds after which a pending group request is closed for age.
 
         None when the operator disabled the age-based sweep. Independent of

@@ -11,7 +11,7 @@ pages}`. Page numbers are 1-indexed (the standard).
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from functools import lru_cache
+from functools import cache
 from typing import Any, TypeVar, overload
 
 from fastapi import Query
@@ -52,16 +52,13 @@ AppGroupsPage = CustomizedPage[
 ]
 
 
-M = TypeVar("M", bound=BaseModel)
-
-
-@lru_cache(maxsize=None)
-def _adapter(model: type[M]) -> TypeAdapter[M]:
+@cache
+def _adapter[M: BaseModel](model: type[M]) -> TypeAdapter[M]:
     return TypeAdapter(model)
 
 
 @overload
-def validated(model: type[M]) -> Callable[[Sequence[Any]], list[M]]: ...
+def validated[M: BaseModel](model: type[M]) -> Callable[[Sequence[Any]], list[M]]: ...
 
 
 @overload

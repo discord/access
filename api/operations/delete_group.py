@@ -1,5 +1,4 @@
 import asyncio
-from typing import Optional
 
 import logging
 
@@ -34,7 +33,7 @@ from api.schemas import AuditLogSchema, EventType
 
 
 class DeleteGroup:
-    def __init__(self, *, group: OktaGroup | str, sync_to_okta: bool = True, current_user_id: Optional[str] = None):
+    def __init__(self, *, group: OktaGroup | str, sync_to_okta: bool = True, current_user_id: str | None = None):
         self.group_id = group if isinstance(group, str) else group.id
 
         self.sync_to_okta = sync_to_okta

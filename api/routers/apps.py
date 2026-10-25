@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi_pagination.ext.sqlalchemy import apaginate
@@ -81,8 +81,8 @@ async def get_app_groups(
     app_id: str,
     db: DbSession,
     current_user_id: CurrentUserId,
-    owner: Annotated[Optional[bool], Query()] = None,
-    q: Annotated[Optional[str], Query()] = None,
+    owner: Annotated[bool | None, Query()] = None,
+    q: Annotated[str | None, Query()] = None,
 ) -> AppGroupsPage[AppGroupForAppDetail]:
     """Paginated app-groups for an app, owners first then by name. Members are
     NOT inlined — each item carries `member_count` / `owner_count` only, so the

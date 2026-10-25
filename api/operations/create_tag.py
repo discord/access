@@ -1,6 +1,6 @@
 import random
 import string
-from typing import Any, Optional, TypedDict, cast
+from typing import Any, TypedDict, cast
 
 import logging
 
@@ -20,7 +20,7 @@ class TagDict(TypedDict):
 
 
 class CreateTag:
-    def __init__(self, *, tag: Tag | TagDict, current_user_id: Optional[str] = None):
+    def __init__(self, *, tag: Tag | TagDict, current_user_id: str | None = None):
         id = self.__generate_id()
         if isinstance(tag, dict):
             tag_dict = cast(TagDict, tag)

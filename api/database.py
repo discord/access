@@ -118,7 +118,7 @@ def build_async_engine() -> AsyncEngine:
     return create_async_engine(url, **kwargs)
 
 
-async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
+async def get_db(request: Request) -> AsyncGenerator[AsyncSession]:
     """FastAPI dependency that yields the request-scoped AsyncSession.
 
     `RequestIdMiddleware` is responsible for setting the `_session_scope`

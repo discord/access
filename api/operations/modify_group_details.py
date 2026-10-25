@@ -82,9 +82,7 @@ class ModifyGroupDetails:
             )
             if not self.name.startswith(app_group_name_prefix):
                 raise ValueError(
-                    'App Group name "{}" should be prefixed with App name. For example: "{}"'.format(
-                        self.name, app_group_name_prefix
-                    )
+                    f'App Group name "{self.name}" should be prefixed with App name. For example: "{app_group_name_prefix}"'
                 )
 
         if self.name is not None:

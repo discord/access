@@ -24,7 +24,8 @@ import asyncio
 import gc
 import json
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Generator, Optional
+from typing import Any
+from collections.abc import AsyncIterator, Generator
 
 import httpx
 import pytest
@@ -64,7 +65,7 @@ async def _mcp_client(a: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
 
 
 @pytest.fixture
-def with_mcp_enabled() -> Generator[None, None, None]:
+def with_mcp_enabled() -> Generator[None]:
     """Flip ENABLE_MCP for the test, clearing the cached server singleton
     on both sides so create_app rebuilds it cleanly."""
     prev = settings.ENABLE_MCP
@@ -80,14 +81,14 @@ def with_mcp_enabled() -> Generator[None, None, None]:
 
 
 @pytest.fixture
-def override_mcp_auth(with_mcp_enabled: None, monkeypatch: pytest.MonkeyPatch) -> Generator[Any, None, None]:
+def override_mcp_auth(with_mcp_enabled: None, monkeypatch: pytest.MonkeyPatch) -> Generator[Any]:
     """Stub every built-in provider so the middleware sees exactly what
     the test sets. Returns a setter — tests call it with an
     ``MCPIdentity`` (or ``None`` to simulate the 401 path).
     """
-    holder: dict[str, Optional[MCPIdentity]] = {"identity": None}
+    holder: dict[str, MCPIdentity | None] = {"identity": None}
 
-    async def _stub(_scope: Any) -> Optional[MCPIdentity]:
+    async def _stub(_scope: Any) -> MCPIdentity | None:
         return holder["identity"]
 
     # Patch all three providers as the middleware imports them. Any of
@@ -98,7 +99,7 @@ def override_mcp_auth(with_mcp_enabled: None, monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("api.mcp.auth.cloudflare.resolve_identity", _stub)
     monkeypatch.setattr("api.mcp.auth.oidc.resolve_identity", _stub)
 
-    def _set(identity: Optional[MCPIdentity]) -> None:
+    def _set(identity: MCPIdentity | None) -> None:
         holder["identity"] = identity
 
     yield _set
@@ -171,10 +172,10 @@ async def test_provider_chain_first_non_none_wins(
     cf_id = MCPIdentity(user_id="cf-user", scopes=ALL_V1_SCOPES)
     oidc_id = MCPIdentity(user_id="oidc-user", scopes=ALL_V1_SCOPES)
 
-    def _resolves_to(identity: Optional[MCPIdentity]) -> Any:
+    def _resolves_to(identity: MCPIdentity | None) -> Any:
         # The middleware awaits each provider's resolve_identity, so the
         # stubs must be coroutine functions.
-        async def _resolve(_scope: Any) -> Optional[MCPIdentity]:
+        async def _resolve(_scope: Any) -> MCPIdentity | None:
             return identity
 
         return _resolve
@@ -199,7 +200,7 @@ async def test_provider_chain_first_non_none_wins(
     async def _async_receive() -> Any:
         return {"type": "http.request"}
 
-    async def _run() -> Optional[MCPIdentity]:
+    async def _run() -> MCPIdentity | None:
         captured.clear()
         await middleware({"type": "http", "path": "/mcp", "headers": []}, _async_receive, _async_send)
         return captured.get("identity")

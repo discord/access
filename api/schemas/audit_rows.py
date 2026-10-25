@@ -22,7 +22,7 @@ those keys when they're `None` so the wire shape stays identical.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
@@ -36,19 +36,19 @@ class _UserSummaryForAudit(BaseModel):
 
     id: str
     email: str
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    display_name: Optional[str] = None
-    deleted_at: Optional[FlexibleDatetime] = None
-    created_at: Optional[FlexibleDatetime] = None
+    first_name: str | None = None
+    last_name: str | None = None
+    display_name: str | None = None
+    deleted_at: FlexibleDatetime | None = None
+    created_at: FlexibleDatetime | None = None
 
 
 class _AppRefForAudit(BaseModel):
     """Mirrors `_app_ref` at audit.py:120-127."""
 
     id: str
-    name: Optional[str] = None
-    deleted_at: Optional[FlexibleDatetime] = None
+    name: str | None = None
+    deleted_at: FlexibleDatetime | None = None
 
 
 class _RoleGroupRefForAudit(BaseModel):
@@ -57,8 +57,8 @@ class _RoleGroupRefForAudit(BaseModel):
     id: str
     type: str
     name: str
-    is_managed: Optional[bool] = None
-    deleted_at: Optional[FlexibleDatetime] = None
+    is_managed: bool | None = None
+    deleted_at: FlexibleDatetime | None = None
 
 
 class _GroupRefForAudit(BaseModel):
@@ -69,16 +69,16 @@ class _GroupRefForAudit(BaseModel):
     id: str
     type: str
     name: str
-    is_owner: Optional[bool] = None
-    is_managed: Optional[bool] = None
-    deleted_at: Optional[FlexibleDatetime] = None
+    is_owner: bool | None = None
+    is_managed: bool | None = None
+    deleted_at: FlexibleDatetime | None = None
     # `app` is only injected for AppGroup rows.
-    app: Optional[_AppRefForAudit] = None
+    app: _AppRefForAudit | None = None
     active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
     # Only injected for RoleGroup rows AND only when neither `user_id` nor
     # `group_id` is set on the request.
-    active_role_associated_group_member_mappings: Optional[list["_RoleAssociatedMappingForAudit"]] = None
-    active_role_associated_group_owner_mappings: Optional[list["_RoleAssociatedMappingForAudit"]] = None
+    active_role_associated_group_member_mappings: list[_RoleAssociatedMappingForAudit] | None = None
+    active_role_associated_group_owner_mappings: list[_RoleAssociatedMappingForAudit] | None = None
 
     @model_serializer(mode="wrap")
     def _drop_conditional_keys(self, handler: Any) -> dict[str, Any]:
@@ -106,17 +106,17 @@ class _RoleAssociatedMappingForAudit(BaseModel):
 
     id: int
     is_owner: bool
-    created_at: Optional[FlexibleDatetime] = None
-    ended_at: Optional[FlexibleDatetime] = None
-    active_group: Optional[_GroupRefForAudit] = None
+    created_at: FlexibleDatetime | None = None
+    ended_at: FlexibleDatetime | None = None
+    active_group: _GroupRefForAudit | None = None
 
 
 class _RoleGroupMappingForAudit(BaseModel):
     """Mirrors `_role_group_mapping_ref` at audit.py:158-165."""
 
-    created_at: Optional[FlexibleDatetime] = None
-    ended_at: Optional[FlexibleDatetime] = None
-    role_group: Optional[_RoleGroupRefForAudit] = None
+    created_at: FlexibleDatetime | None = None
+    ended_at: FlexibleDatetime | None = None
+    role_group: _RoleGroupRefForAudit | None = None
 
 
 class AuditUserGroupRow(BaseModel):
@@ -125,19 +125,19 @@ class AuditUserGroupRow(BaseModel):
     id: int
     user_id: str
     group_id: str
-    role_group_map_id: Optional[int] = None
+    role_group_map_id: int | None = None
     is_owner: bool
-    should_expire: Optional[bool] = None
+    should_expire: bool | None = None
     created_reason: str = ""
-    created_at: Optional[FlexibleDatetime] = None
-    updated_at: Optional[FlexibleDatetime] = None
-    ended_at: Optional[FlexibleDatetime] = None
-    user: Optional[_UserSummaryForAudit] = None
-    group: Optional[_GroupRefForAudit] = None
-    role_group_mapping: Optional[_RoleGroupMappingForAudit] = None
-    access_request: Optional[_AccessRequestRef] = None
-    created_actor: Optional[_UserSummaryForAudit] = None
-    ended_actor: Optional[_UserSummaryForAudit] = None
+    created_at: FlexibleDatetime | None = None
+    updated_at: FlexibleDatetime | None = None
+    ended_at: FlexibleDatetime | None = None
+    user: _UserSummaryForAudit | None = None
+    group: _GroupRefForAudit | None = None
+    role_group_mapping: _RoleGroupMappingForAudit | None = None
+    access_request: _AccessRequestRef | None = None
+    created_actor: _UserSummaryForAudit | None = None
+    ended_actor: _UserSummaryForAudit | None = None
 
 
 class AuditGroupRoleRow(BaseModel):
@@ -147,14 +147,14 @@ class AuditGroupRoleRow(BaseModel):
     role_group_id: str
     group_id: str
     is_owner: bool
-    should_expire: Optional[bool] = None
+    should_expire: bool | None = None
     created_reason: str = ""
-    created_at: Optional[FlexibleDatetime] = None
-    ended_at: Optional[FlexibleDatetime] = None
-    group: Optional[_GroupRefForAudit] = None
-    role_group: Optional[_RoleGroupRefForAudit] = None
-    created_actor: Optional[_UserSummaryForAudit] = None
-    ended_actor: Optional[_UserSummaryForAudit] = None
+    created_at: FlexibleDatetime | None = None
+    ended_at: FlexibleDatetime | None = None
+    group: _GroupRefForAudit | None = None
+    role_group: _RoleGroupRefForAudit | None = None
+    created_actor: _UserSummaryForAudit | None = None
+    ended_actor: _UserSummaryForAudit | None = None
 
 
 _GroupRefForAudit.model_rebuild()

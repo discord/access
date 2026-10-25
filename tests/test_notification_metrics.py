@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,7 +12,7 @@ from api.plugins.notifications import NotificationHook
 # hook -> (metric name, tags) — mirrors notifications._SENT_METRICS. The
 # "sent" counter is recorded by send_notification after the async hook fans out
 # successfully (the async replacement for the old @hookimpl(wrapper=True) set).
-HOOKS: list[tuple[NotificationHook, str, Optional[dict[str, str]]]] = [
+HOOKS: list[tuple[NotificationHook, str, dict[str, str] | None]] = [
     (NotificationHook.ACCESS_REQUEST_CREATED, "notifications.access_request_created.sent", None),
     (NotificationHook.ACCESS_REQUEST_COMPLETED, "notifications.access_request_completed.sent", None),
     (NotificationHook.ACCESS_EXPIRING_USER, "notifications.expiring_access.sent", {"kind": "user"}),
@@ -56,7 +56,7 @@ async def test_send_notification_emits_counter_on_success(
     monkeypatch: pytest.MonkeyPatch,
     hook: NotificationHook,
     metric: str,
-    tags: Optional[dict[str, str]],
+    tags: dict[str, str] | None,
 ) -> None:
     async def ok() -> None:
         return None

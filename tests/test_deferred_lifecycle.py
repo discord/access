@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Any, Generator
+from typing import Any
+from collections.abc import Generator
 
 import pytest
 from fastapi import BackgroundTasks, FastAPI
@@ -124,7 +125,7 @@ class RecordingPlugin:
 
 
 @pytest.fixture
-def recording_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[RecordingPlugin, None, None]:
+def recording_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[RecordingPlugin]:
     import pluggy
 
     import api.plugins.app_group_lifecycle as plugin_module
@@ -146,7 +147,7 @@ def recording_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[Recording
 
 
 @pytest.fixture
-def collector() -> Generator[list[_DeferredFire], None, None]:
+def collector() -> Generator[list[_DeferredFire]]:
     """Bind a lifecycle collector, as the `defer_fan_out` router dependency does per request."""
     collected, token = begin_deferred_lifecycle()
     try:

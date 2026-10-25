@@ -26,14 +26,14 @@ a `datetime` before passing it to operations or SQLAlchemy columns.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, UTC
 from email.utils import parsedate_to_datetime
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 from pydantic import BeforeValidator, PlainSerializer
 
 
-def parse_datetime_value(value: Any) -> Optional[datetime]:
+def parse_datetime_value(value: Any) -> datetime | None:
     """Coerce an incoming wire value into a `datetime`.
 
     Accepts None, an existing `datetime` (returned as-is), a `date` (promoted
@@ -70,20 +70,20 @@ def _to_naive_utc(value: datetime) -> datetime:
     Normalizing here makes the stored value identical on both backends.
     """
     if value.tzinfo is not None:
-        value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        value = value.astimezone(UTC).replace(tzinfo=None)
     return value
 
 
-def _to_iso_utc(value: Optional[datetime]) -> Optional[str]:
+def _to_iso_utc(value: datetime | None) -> str | None:
     """Serialize a (naive-UTC) datetime as an explicit-UTC ISO 8601 string
     with a trailing `Z`, so clients parse it as UTC rather than browser-local
     time."""
     if value is None:
         return None
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
+        value = value.replace(tzinfo=UTC)
     else:
-        value = value.astimezone(timezone.utc)
+        value = value.astimezone(UTC)
     return value.isoformat().replace("+00:00", "Z")
 
 

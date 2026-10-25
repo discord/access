@@ -1,6 +1,5 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import Dict, Optional
 
 import logging
 
@@ -42,7 +41,7 @@ class ModifyRoleGroups:
     def __init__(
         self,
         role_group: RoleGroup | str,
-        groups_added_ended_at: Optional[datetime] = None,
+        groups_added_ended_at: datetime | None = None,
         groups_to_add: list[str] = [],
         owner_groups_to_add: list[str] = [],
         groups_should_expire: list[int] = [],
@@ -50,7 +49,7 @@ class ModifyRoleGroups:
         groups_to_remove: list[str] = [],
         owner_groups_to_remove: list[str] = [],
         sync_to_okta: bool = True,
-        current_user_id: Optional[str] = None,
+        current_user_id: str | None = None,
         created_reason: str = "",
         notify: bool = True,
     ):
@@ -388,7 +387,7 @@ class ModifyRoleGroups:
 
         # Add new groups to role and owner groups to role
         if len(groups_to_add) > 0 or len(owner_groups_to_add) > 0:
-            role_memberships_added: Dict[str, RoleGroupMap] = {}
+            role_memberships_added: dict[str, RoleGroupMap] = {}
             for group in groups_to_add:
                 # Handle group time limit constraints when roles are added to groups
                 # with tagged time limits as members
@@ -407,7 +406,7 @@ class ModifyRoleGroups:
                 role_memberships_added[group.id] = membership_to_add
                 db.session.add(membership_to_add)
 
-            role_ownerships_added: Dict[str, RoleGroupMap] = {}
+            role_ownerships_added: dict[str, RoleGroupMap] = {}
             for owner_group in owner_groups_to_add:
                 # Handle group time limit constraints when roles are added to groups
                 # with tagged time limits as owners
@@ -447,7 +446,7 @@ class ModifyRoleGroups:
                 )
             ).all()
             groups_added_by_id = {group.id: group for group in groups_to_add}
-            group_memberships_added: Dict[str, Dict[str, OktaUserGroupMember]] = {}
+            group_memberships_added: dict[str, dict[str, OktaUserGroupMember]] = {}
             for role_associated_group_map in role_memberships_added.values():
                 group_memberships_added[role_associated_group_map.group_id] = role_associated_membership_added = {}
 
@@ -520,7 +519,7 @@ class ModifyRoleGroups:
                     role_associated_membership_added[member.user_id] = membership_to_add
                     db.session.add(membership_to_add)
 
-            group_ownerships_added: Dict[str, Dict[str, OktaUserGroupMember]] = {}
+            group_ownerships_added: dict[str, dict[str, OktaUserGroupMember]] = {}
             for role_associated_group_map in role_ownerships_added.values():
                 group_ownerships_added[role_associated_group_map.group_id] = role_associated_ownership_added = {}
                 for member in active_role_memberships:

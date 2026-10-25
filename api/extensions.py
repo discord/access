@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
+from collections.abc import Awaitable, Callable
 
 import anyio
 from sqlalchemy import MetaData
@@ -47,7 +48,7 @@ from sqlalchemy.orm import DeclarativeBase
 # task, and context copies propagate to child tasks while task identity does
 # not — task-scoping would register the handler's session under a key the
 # middleware teardown could never remove.
-_session_scope: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+_session_scope: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "access_session_scope", default="__default__"
 )
 
@@ -100,9 +101,9 @@ class _DB:
     `db.session`, plus startup/teardown plumbing (`init_app`, `remove`)."""
 
     def __init__(self) -> None:
-        self._engine: Optional[AsyncEngine] = None
-        self._sessionmaker: Optional[async_sessionmaker[AsyncSession]] = None
-        self._scoped: Optional[async_scoped_session[AsyncSession]] = None
+        self._engine: AsyncEngine | None = None
+        self._sessionmaker: async_sessionmaker[AsyncSession] | None = None
+        self._scoped: async_scoped_session[AsyncSession] | None = None
 
     def init_app(self, *, engine: AsyncEngine) -> None:
         """Bind the session facade to a SQLAlchemy engine. Must be called
@@ -174,9 +175,9 @@ Db = _DB
 
 def get_cloudsql_async_conn(
     cloudsql_connection_name: str,
-    db_user: Optional[str] = "root",
-    db_name: Optional[str] = "access",
-    uses_public_ip: Optional[bool] = False,
+    db_user: str | None = "root",
+    db_name: str | None = "access",
+    uses_public_ip: bool | None = False,
 ) -> Callable[[], Awaitable[Any]]:
     """Build an `async_creator` for `create_async_engine` that connects to
     Cloud SQL over the Cloud SQL Python Connector with asyncpg + IAM auth.
@@ -192,7 +193,7 @@ def get_cloudsql_async_conn(
     """
     from google.cloud.sql.connector import Connector, IPTypes
 
-    connector: Optional[Connector] = None
+    connector: Connector | None = None
 
     async def _get_conn() -> Any:
         nonlocal connector

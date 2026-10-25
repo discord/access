@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Any, Dict, Protocol, cast
+from typing import Any, Protocol, cast
 from unittest.mock import Mock
 
 import pytest
@@ -367,7 +367,7 @@ async def _update_group_type(
     okta_group: OktaGroup,
     update_group_spy: Mock,
     group_type: str,
-    extra_data: Dict[str, Any] = {},
+    extra_data: dict[str, Any] = {},
     expected_tags_count: int = 0,
     url_for: Any = None,
 ) -> None:

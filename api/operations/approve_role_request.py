@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 import logging
 
@@ -21,9 +20,9 @@ class ApproveRoleRequest:
         self,
         *,
         role_request: RoleRequest | str,
-        approver_user: Optional[OktaUser | str] = None,
+        approver_user: OktaUser | str | None = None,
         approval_reason: str = "",
-        ending_at: Optional[datetime] = None,
+        ending_at: datetime | None = None,
         notify: bool = True,
     ):
         self.role_request_id = role_request if isinstance(role_request, str) else role_request.id

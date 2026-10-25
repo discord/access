@@ -18,10 +18,9 @@ re-entries.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, Optional, Union
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing_extensions import TypeAliasType
 
 from api.models.tag import ConstraintOrigin
 from api.schemas.datetimes import FlexibleDatetime
@@ -34,20 +33,20 @@ class TagDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     constraints: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
     propagate_to_roles: bool = True
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
-    deleted_at: Optional[FlexibleDatetime] = None
+    deleted_at: FlexibleDatetime | None = None
     # Resolved post-class via model_rebuild() — OktaGroupTagMapDetail is defined
     # below.
-    active_group_tags: list["OktaGroupTagMapDetail"] = Field(default_factory=list)
+    active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
     # Tag detail also lists the apps this tag is attached to. Flask
     # `TagResource.get()` `exclude=("all_group_tags", "all_app_tags")`
     # retains the `active_app_tags` projection.
-    active_app_tags: list["AppTagMapDetail"] = Field(default_factory=list)
+    active_app_tags: list[AppTagMapDetail] = Field(default_factory=list)
 
 
 class TagSummary(BaseModel):
@@ -67,7 +66,7 @@ class TagListItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     constraints: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
     propagate_to_roles: bool = True
@@ -78,22 +77,22 @@ class TagListItem(BaseModel):
 class OktaGroupTagMapDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     created_at: FlexibleDatetime
-    ended_at: Optional[FlexibleDatetime] = None
-    active_tag: Optional[TagSummary] = None
+    ended_at: FlexibleDatetime | None = None
+    active_tag: TagSummary | None = None
     # Populated when the row is reached from the Tag side (`tag.active_group_tags`):
-    active_group: Optional["_GroupRefForMembership"] = None
-    active_app_tag_mapping: Optional["AppTagMapDetail"] = None
+    active_group: _GroupRefForMembership | None = None
+    active_app_tag_mapping: AppTagMapDetail | None = None
 
 
 class AppTagMapDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     created_at: FlexibleDatetime
-    ended_at: Optional[FlexibleDatetime] = None
-    active_tag: Optional[TagSummary] = None
+    ended_at: FlexibleDatetime | None = None
+    active_tag: TagSummary | None = None
     # Populated when the row is reached from the Tag side
     # (`tag.active_app_tags`). Flask emitted `active_app.{id, name, description}`
     # via the legacy AppTagMapSchema only-list.
-    active_app: Optional["AppSummary"] = None
+    active_app: AppSummary | None = None
 
 
 # --- Apps -------------------------------------------------------------------
@@ -109,19 +108,19 @@ class AppIdRef(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
     id: str
-    name: Optional[str] = None
-    deleted_at: Optional[FlexibleDatetime] = None
-    app_group_lifecycle_plugin: Optional[str] = None
+    name: str | None = None
+    deleted_at: FlexibleDatetime | None = None
+    app_group_lifecycle_plugin: str | None = None
 
 
 class AppSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
-    deleted_at: Optional[FlexibleDatetime] = None
+    deleted_at: FlexibleDatetime | None = None
 
 
 class AppDetail(AppSummary):
@@ -134,8 +133,8 @@ class AppDetail(AppSummary):
     endpoint (`AppGroupForAppDetail`) so the cost is bounded per page.
     """
 
-    app_group_lifecycle_plugin: Optional[str] = None
-    plugin_data: Optional[dict[str, Any]] = None
+    app_group_lifecycle_plugin: str | None = None
+    plugin_data: dict[str, Any] | None = None
     active_app_tags: list[AppTagMapDetail] = Field(default_factory=list)
 
 
@@ -146,15 +145,15 @@ class OktaUserSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     email: str
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    display_name: Optional[str] = None
+    first_name: str | None = None
+    last_name: str | None = None
+    display_name: str | None = None
     # The list endpoint includes timestamps so the frontend can sort/group by
     # creation time. Flask exposed these via Marshmallow's `only=(...)` tuple;
     # leaving them off the Pydantic summary loses that capability.
-    created_at: Optional[FlexibleDatetime] = None
-    updated_at: Optional[FlexibleDatetime] = None
-    deleted_at: Optional[FlexibleDatetime] = None
+    created_at: FlexibleDatetime | None = None
+    updated_at: FlexibleDatetime | None = None
+    deleted_at: FlexibleDatetime | None = None
 
 
 def _filter_profile_attrs(value: Any) -> dict[str, Any]:
@@ -190,15 +189,15 @@ class OktaUserManagerRef(OktaUserSummary):
 
 class OktaUserDetail(OktaUserSummary):
     profile: dict[str, Any] = Field(default_factory=dict)
-    manager: Optional[OktaUserManagerRef] = None
+    manager: OktaUserManagerRef | None = None
     # Membership / ownership lists. The aggregated
     # `*_group_memberships_and_ownerships` pair Flask's `UserResource.get()`
     # excluded — they duplicate the data already in `active_group_memberships`
     # and `active_group_ownerships` and bloat the response. Resolved
     # post-class via model_rebuild() because OktaUserGroupMemberDetail is
     # defined further down.
-    active_group_memberships: list["OktaUserGroupMemberDetail"] = Field(default_factory=list)
-    active_group_ownerships: list["OktaUserGroupMemberDetail"] = Field(default_factory=list)
+    active_group_memberships: list[OktaUserGroupMemberDetail] = Field(default_factory=list)
+    active_group_ownerships: list[OktaUserGroupMemberDetail] = Field(default_factory=list)
 
     @field_validator("profile", mode="before")
     @classmethod
@@ -216,11 +215,11 @@ class _GroupRefForMembership(BaseModel):
     id: str
     type: str
     name: str
-    description: Optional[str] = None
-    is_owner: Optional[bool] = None
-    is_managed: Optional[bool] = None
-    deleted_at: Optional[FlexibleDatetime] = None
-    app: Optional[AppIdRef] = None
+    description: str | None = None
+    is_owner: bool | None = None
+    is_managed: bool | None = None
+    deleted_at: FlexibleDatetime | None = None
+    app: AppIdRef | None = None
 
 
 class _RoleGroupMembershipRef(BaseModel):
@@ -228,16 +227,16 @@ class _RoleGroupMembershipRef(BaseModel):
     id: str
     type: str
     name: str
-    is_managed: Optional[bool] = None
-    deleted_at: Optional[FlexibleDatetime] = None
+    is_managed: bool | None = None
+    deleted_at: FlexibleDatetime | None = None
 
 
 class _RoleGroupMappingForMembership(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     created_at: FlexibleDatetime
-    ended_at: Optional[FlexibleDatetime] = None
-    active_role_group: Optional[_RoleGroupMembershipRef] = None
-    role_group: Optional[_RoleGroupMembershipRef] = None
+    ended_at: FlexibleDatetime | None = None
+    active_role_group: _RoleGroupMembershipRef | None = None
+    role_group: _RoleGroupMembershipRef | None = None
 
 
 class OktaUserGroupMemberDetail(BaseModel):
@@ -248,20 +247,20 @@ class OktaUserGroupMemberDetail(BaseModel):
     # `lazy="raise_on_sql"`, so any route emitting this schema must eager-load
     # them — see `user_group_member_options` in `api/routers/_eager.py`.
     id: int
-    is_owner: Optional[bool] = None
+    is_owner: bool | None = None
     created_at: FlexibleDatetime
-    updated_at: Optional[FlexibleDatetime] = None
-    ended_at: Optional[FlexibleDatetime] = None
-    created_reason: Optional[str] = ""
-    should_expire: Optional[bool] = None
-    created_actor: Optional[OktaUserSummary] = None
-    ended_actor: Optional[OktaUserSummary] = None
-    user: Optional[OktaUserSummary] = None
-    active_user: Optional[OktaUserSummary] = None
-    group: Optional[_GroupRefForMembership] = None
-    active_group: Optional[_GroupRefForMembership] = None
-    role_group_mapping: Optional[_RoleGroupMappingForMembership] = None
-    active_role_group_mapping: Optional[_RoleGroupMappingForMembership] = None
+    updated_at: FlexibleDatetime | None = None
+    ended_at: FlexibleDatetime | None = None
+    created_reason: str | None = ""
+    should_expire: bool | None = None
+    created_actor: OktaUserSummary | None = None
+    ended_actor: OktaUserSummary | None = None
+    user: OktaUserSummary | None = None
+    active_user: OktaUserSummary | None = None
+    group: _GroupRefForMembership | None = None
+    active_group: _GroupRefForMembership | None = None
+    role_group_mapping: _RoleGroupMappingForMembership | None = None
+    active_role_group_mapping: _RoleGroupMappingForMembership | None = None
 
 
 # --- Role group mappings ----------------------------------------------------
@@ -274,17 +273,17 @@ class RoleGroupMapDetail(BaseModel):
     # relationships are `lazy="raise_on_sql"` and must be eager-loaded — see
     # `role_group_map_options` in `api/routers/_eager.py`.
     id: int
-    is_owner: Optional[bool] = None
+    is_owner: bool | None = None
     created_at: FlexibleDatetime
-    ended_at: Optional[FlexibleDatetime] = None
-    created_reason: Optional[str] = ""
-    should_expire: Optional[bool] = None
-    created_actor: Optional[OktaUserSummary] = None
-    ended_actor: Optional[OktaUserSummary] = None
-    role_group: Optional[_RoleGroupMembershipRef] = None
-    active_role_group: Optional[_RoleGroupMembershipRef] = None
-    group: Optional[_GroupRefForMembership] = None
-    active_group: Optional[_GroupRefForMembership] = None
+    ended_at: FlexibleDatetime | None = None
+    created_reason: str | None = ""
+    should_expire: bool | None = None
+    created_actor: OktaUserSummary | None = None
+    ended_actor: OktaUserSummary | None = None
+    role_group: _RoleGroupMembershipRef | None = None
+    active_role_group: _RoleGroupMembershipRef | None = None
+    group: _GroupRefForMembership | None = None
+    active_group: _GroupRefForMembership | None = None
 
 
 # --- Polymorphic groups -----------------------------------------------------
@@ -300,8 +299,8 @@ class EffectiveConstraintSourceDetail(BaseModel):
     # The site where the source tag was directly applied, from which the
     # constraint is inherited: an app, another group, or None if applied
     # directly.
-    source_id: Optional[str] = None
-    source_name: Optional[str] = None
+    source_id: str | None = None
+    source_name: str | None = None
 
 
 class EffectiveConstraintDetail(BaseModel):
@@ -334,12 +333,12 @@ class _GroupBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     name: str
-    description: Optional[str] = ""
+    description: str | None = ""
     is_managed: bool = True
-    externally_managed_data: Optional[dict[str, Any]] = None
+    externally_managed_data: dict[str, Any] | None = None
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
-    deleted_at: Optional[FlexibleDatetime] = None
+    deleted_at: FlexibleDatetime | None = None
     # Members are intentionally NOT inlined: a group can have thousands, and
     # inlining them made the detail response (and, via the app endpoint, every
     # group of an app) materialize unbounded member rows. They are served by
@@ -356,7 +355,7 @@ class _GroupBase(BaseModel):
     # `carriedConstraints` fails its gates closed on null and open on `[]`, so
     # defaulting to `[]` here would have a mutation response quietly assert
     # that a constrained group has no constraints.
-    effective_constraints: Optional[list[EffectiveConstraintDetail]] = None
+    effective_constraints: list[EffectiveConstraintDetail] | None = None
 
 
 class OktaGroupDetail(_GroupBase):
@@ -373,10 +372,10 @@ class RoleGroupDetail(_GroupBase):
 
 class AppGroupDetail(_GroupBase):
     type: Literal["app_group"] = "app_group"
-    app_id: Optional[str] = None
+    app_id: str | None = None
     is_owner: bool = False
-    plugin_data: Optional[dict[str, Any]] = None
-    app: Optional[AppIdRef] = None
+    plugin_data: dict[str, Any] | None = None
+    app: AppIdRef | None = None
     active_role_member_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
     active_role_owner_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
 
@@ -394,31 +393,28 @@ class AppGroupForAppDetail(BaseModel):
     id: str
     type: Literal["app_group"] = "app_group"
     name: str
-    description: Optional[str] = ""
+    description: str | None = ""
     is_managed: bool = True
-    externally_managed_data: Optional[dict[str, Any]] = None
+    externally_managed_data: dict[str, Any] | None = None
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
-    deleted_at: Optional[FlexibleDatetime] = None
-    app_id: Optional[str] = None
+    deleted_at: FlexibleDatetime | None = None
+    app_id: str | None = None
     is_owner: bool = False
-    plugin_data: Optional[dict[str, Any]] = None
-    app: Optional[AppIdRef] = None
+    plugin_data: dict[str, Any] | None = None
+    app: AppIdRef | None = None
     member_count: int = 0
     owner_count: int = 0
 
 
-# Named via `TypeAliasType` so FastAPI emits a single `GroupDetail` schema
+# Declared as a `type` alias so FastAPI emits a single `GroupDetail` schema
 # (a `$ref`) instead of an inline `anyOf`; this gives the OpenAPI→TypeScript
 # codegen a clean reusable union type. Purely a naming hint — validation and
-# wire shape are identical to the bare `Annotated[Union[...]]`.
-GroupDetail = TypeAliasType(
-    "GroupDetail",
-    Annotated[
-        Union[OktaGroupDetail, RoleGroupDetail, AppGroupDetail],
-        Field(discriminator="type"),
-    ],
-)
+# wire shape are identical to the bare `Annotated` union.
+type GroupDetail = Annotated[
+    OktaGroupDetail | RoleGroupDetail | AppGroupDetail,
+    Field(discriminator="type"),
+]
 
 
 # --- Group summaries (list endpoints) --------------------------------------
@@ -428,7 +424,7 @@ class _GroupSummaryBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     name: str
-    description: Optional[str] = ""
+    description: str | None = ""
     is_managed: bool = True
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
@@ -447,16 +443,13 @@ class RoleGroupSummary(_GroupSummaryBase):
 
 class AppGroupSummary(_GroupSummaryBase):
     type: Literal["app_group"] = "app_group"
-    app: Optional[AppIdRef] = None
+    app: AppIdRef | None = None
 
 
-GroupSummary = TypeAliasType(
-    "GroupSummary",
-    Annotated[
-        Union[OktaGroupSummary, RoleGroupSummary, AppGroupSummary],
-        Field(discriminator="type"),
-    ],
-)
+type GroupSummary = Annotated[
+    OktaGroupSummary | RoleGroupSummary | AppGroupSummary,
+    Field(discriminator="type"),
+]
 
 
 class RoleGroupListItem(BaseModel):
@@ -471,7 +464,7 @@ class RoleGroupListItem(BaseModel):
     id: str
     type: Literal["role_group"] = "role_group"
     name: str
-    description: Optional[str] = ""
+    description: str | None = ""
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
 
@@ -486,9 +479,9 @@ class _GroupRefBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     name: str
-    description: Optional[str] = ""
+    description: str | None = ""
     is_managed: bool = True
-    deleted_at: Optional[FlexibleDatetime] = None
+    deleted_at: FlexibleDatetime | None = None
 
 
 class OktaGroupRef(_GroupRefBase):
@@ -501,18 +494,15 @@ class RoleGroupRef(_GroupRefBase):
 
 class AppGroupRef(_GroupRefBase):
     type: Literal["app_group"] = "app_group"
-    app_id: Optional[str] = None
+    app_id: str | None = None
     is_owner: bool = False
-    app: Optional[AppIdRef] = None
+    app: AppIdRef | None = None
 
 
-GroupRef = TypeAliasType(
-    "GroupRef",
-    Annotated[
-        Union[OktaGroupRef, RoleGroupRef, AppGroupRef],
-        Field(discriminator="type"),
-    ],
-)
+type GroupRef = Annotated[
+    OktaGroupRef | RoleGroupRef | AppGroupRef,
+    Field(discriminator="type"),
+]
 
 
 # Wider polymorphic refs surfaced inside `RoleRequestDetail`. The role-request
@@ -532,19 +522,16 @@ class RoleRequestRequestedOktaGroupRef(_GroupRefBase):
 
 class RoleRequestRequestedAppGroupRef(_GroupRefBase):
     type: Literal["app_group"] = "app_group"
-    app_id: Optional[str] = None
+    app_id: str | None = None
     is_owner: bool = False
-    app: Optional[AppIdRef] = None
+    app: AppIdRef | None = None
     active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
 
 
-RoleRequestRequestedGroupRef = TypeAliasType(
-    "RoleRequestRequestedGroupRef",
-    Annotated[
-        Union[RoleRequestRequestedOktaGroupRef, RoleRequestRequestedAppGroupRef],
-        Field(discriminator="type"),
-    ],
-)
+type RoleRequestRequestedGroupRef = Annotated[
+    RoleRequestRequestedOktaGroupRef | RoleRequestRequestedAppGroupRef,
+    Field(discriminator="type"),
+]
 
 
 # --- Members views (list-of-IDs response shapes) ----------------------------
@@ -571,10 +558,10 @@ class ProblemDetailError(BaseModel):
     """One entry in the non-standard `errors` extension that validation
     problems carry (see `_validation_errors` in `api/exception_handlers.py`)."""
 
-    type: Optional[str] = None
-    loc: Optional[list[Union[str, int]]] = None
-    msg: Optional[str] = None
-    ctx: Optional[dict[str, Any]] = None
+    type: str | None = None
+    loc: list[str | int] | None = None
+    msg: str | None = None
+    ctx: dict[str, Any] | None = None
 
 
 class ProblemDetail(BaseModel):
@@ -588,10 +575,10 @@ class ProblemDetail(BaseModel):
     default, the rest are populated per error)."""
 
     type: str = "about:blank"
-    title: Optional[str] = None
-    status: Optional[int] = None
-    detail: Optional[str] = None
-    errors: Optional[list[ProblemDetailError]] = None
+    title: str | None = None
+    status: int | None = None
+    detail: str | None = None
+    errors: list[ProblemDetailError] | None = None
 
 
 # Manage forward refs after all classes are defined

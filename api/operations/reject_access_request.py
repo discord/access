@@ -1,5 +1,3 @@
-from typing import Optional
-
 import logging
 
 from api.context import get_request_context
@@ -23,7 +21,7 @@ class RejectAccessRequest:
         rejection_reason: str = "",
         notify: bool = True,
         notify_requester: bool = True,
-        current_user_id: Optional[str | OktaUser] = None,
+        current_user_id: str | OktaUser | None = None,
     ):
         self.access_request_id = access_request if isinstance(access_request, str) else access_request.id
         self.current_user_id = (

@@ -1,4 +1,4 @@
-from typing import Optional, cast
+from typing import cast
 
 import logging
 
@@ -35,7 +35,7 @@ class ModifyGroupType:
         *,
         group: OktaGroup | str,
         group_changes: OktaGroup,
-        current_user_id: Optional[str],
+        current_user_id: str | None,
         fire_created_hook: bool = True,
     ):
         self.group_id = group if isinstance(group, str) else group.id

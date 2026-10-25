@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from typing import Any, Protocol, cast
 
 import pytest
@@ -230,7 +230,7 @@ async def test_get_app_groups_counts_exclude_deleted_users(client: AsyncClient, 
     app = await AppFactory.create_async()
     app_group = await AppGroupFactory.create_async(app_id=app.id)
     active = await OktaUserFactory.create_async()
-    deleted = await OktaUserFactory.create_async(deleted_at=datetime.now(timezone.utc))
+    deleted = await OktaUserFactory.create_async(deleted_at=datetime.now(UTC))
 
     await ModifyGroupUsers(group=app_group, members_to_add=[active.id], sync_to_okta=False).execute()
     await OktaUserGroupMemberFactory.create_async(user_id=deleted.id, group_id=app_group.id, is_owner=False)
