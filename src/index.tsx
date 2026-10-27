@@ -46,6 +46,9 @@ if (['production', 'staging'].includes(import.meta.env.MODE)) {
     replaysSessionSampleRate: 0,
     replaysOnErrorSampleRate: 1.0,
     tunnel: '/api/bugs/sentry',
+    // Keep Sentry from inferring an IP address for events and sessions. Behind the tunnel
+    // the address Sentry sees is the Access server's, not the user's.
+    dataCollection: {userInfo: false},
   });
 }
 
