@@ -234,7 +234,7 @@ class GoogleGroupManagerPlugin:
                 display_name="Google Group Email Prefix",
                 help_text=(
                     f"The local part of the address; the group will be prefix@{self._domain}. "
-                    "Cannot be changed after the group is created."
+                    "Cannot be changed once set."
                 ),
                 type="text",
                 required=True,
