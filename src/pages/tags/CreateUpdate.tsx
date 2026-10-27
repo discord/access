@@ -549,7 +549,7 @@ function TagDialog(props: TagDialogProps) {
           // so an absent value must prefill the wider scope -- otherwise
           // opening and saving an older tag silently narrows it.
           propagateToRoles: props.tag
-            ? props.tag.propagate_to_roles ?? true
+            ? (props.tag.propagate_to_roles ?? true)
               ? SCOPE_ROLES
               : SCOPE_GROUPS_ONLY
             : SCOPE_ROLES,

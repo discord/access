@@ -32,7 +32,7 @@ from __future__ import annotations
 import logging
 import uuid
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Optional
+from typing import AsyncGenerator, Optional
 
 from urllib.parse import urlsplit, urlunsplit
 
@@ -146,7 +146,7 @@ def get_mcp_route() -> Route:
 
 
 @asynccontextmanager
-async def mcp_lifespan() -> AsyncIterator[None]:
+async def mcp_lifespan() -> AsyncGenerator[None, None]:
     """Run the FastMCP session manager alongside the parent app.
 
     Entered from ``api.app.create_app``'s lifespan when ``ENABLE_MCP`` is

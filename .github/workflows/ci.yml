@@ -120,7 +120,7 @@ jobs:
         # install-plugins`. `uv pip install` ignores the app's own requirements, so a
         # plugin requirement that excludes a locked version silently re-resolves it
         # *after* the sync, where `uv sync --locked --check` above cannot see it (e.g. a
-        # plugin pinning pluggy==1.5.0 downgrading the locked 1.6.0). UV_CONSTRAINT
+        # plugin pinning pluggy==1.5.0 downgrading the locked pluggy). UV_CONSTRAINT
         # should make such an install fail outright; this is the backstop that proves
         # it did. It compares against uv.lock rather than pyproject.toml, whose
         # specifiers are ranges, and so covers transitive dependencies too.

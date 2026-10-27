@@ -13,7 +13,7 @@
     "@mui/material": "^6.5.0",
     "@mui/x-data-grid": "^7.29.13",
     "@mui/x-date-pickers": "^7.29.4",
-    "@sentry/react": "^8.34.0",
+    "@sentry/react": "^11.9.0",
     "@tanstack/react-query": "^5.101.0",
     "confetti-cannon": "^2.3.2",
     "dayjs": "^1.11.10",
@@ -33,10 +33,10 @@
     "preview": "vite preview",
     "test": "vitest",
     "typecheck": "tsc --noEmit --project .",
-    "prepare": "husky install"
+    "prepare": "husky"
   },
   "engines": {
-    "node": ">=22.12.0",
+    "node": ">=22.22.1",
     "npm": ">=11.16.0"
   },
   "allowScripts": {
@@ -69,11 +69,11 @@
     "@types/react-dom": "^18.2.24",
     "@vitejs/plugin-react": "^6.1.0",
     "@vitest/ui": "^4.1.8",
-    "husky": "^8.0.3",
+    "husky": "^9.1.7",
     "jsdom": "^26.1.0",
-    "lint-staged": "^15.2.10",
-    "prettier": "^3.2.5",
-    "typescript": "^4.9.5",
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.9.10",
+    "typescript": "~5.3.3",
     "vite": "^8.3.4",
     "vitest": "^4.1.11"
   },

@@ -1153,6 +1153,53 @@ async def test_reconcile_creates_when_no_group_exists(
     assert group.plugin_data[PLUGIN_ID]["status"][STATUS_GOOGLE_GROUP_ID] == "ggid-new"
 
 
+async def test_reconcile_create_failure_names_leftover_okta_target_group(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    # Okta answers a create against a leftover target group of the same name with an opaque 400.
+    # The recorded error must name that target group and what to do about it.
+    group = _group(mocker, group_config={"email": "sec", "display_name": "Security"})
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value=None)
+    ctx_mock.create_push_mapping_and_new_group.side_effect = Exception(
+        "Okta HTTP 400 E0000001 Api validation failed: Error during group push API operation"
+    )
+
+    with pytest.raises(Exception, match="E0000001"):
+        await plugin_instance._reconcile(ctx_mock, group)
+
+    status = group.plugin_data[PLUGIN_ID]["status"]
+    assert status[STATUS_SYNC_STATUS] == SYNC_ERROR
+    assert "E0000001" in status[STATUS_SYNC_ERROR]
+    assert "target group named 'sec'" in status[STATUS_SYNC_ERROR]
+    assert STATUS_PUSH_MAPPING_ID not in status
+
+
+async def test_group_deleted_removes_okta_target_group_with_mapping(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    # Okta keeps a mapping's target group unless told to delete it, and a leftover target group
+    # blocks recreating a Google group at the same address.
+    group = _group(mocker, status={STATUS_GOOGLE_GROUP_ID: "ggid-1", STATUS_PUSH_MAPPING_ID: "map-1"})
+    delete_google = mocker.patch.object(plugin_instance, "_delete_google_group")
+
+    await plugin_instance.group_deleted(ctx_mock, group, PLUGIN_ID)
+
+    ctx_mock.delete_push_mapping.assert_awaited_once_with("test-okta-app-123", "map-1", delete_target_group=True)
+    delete_google.assert_awaited_once_with("ggid-1")
+
+
+async def test_group_deleted_deletes_google_group_when_unlink_fails(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    group = _group(mocker, status={STATUS_GOOGLE_GROUP_ID: "ggid-1", STATUS_PUSH_MAPPING_ID: "map-1"})
+    ctx_mock.delete_push_mapping.side_effect = Exception("okta down")
+    delete_google = mocker.patch.object(plugin_instance, "_delete_google_group")
+
+    await plugin_instance.group_deleted(ctx_mock, group, PLUGIN_ID)
+
+    delete_google.assert_awaited_once_with("ggid-1")
+
+
 async def test_reconcile_creates_when_lookup_403s_for_absent_group(
     plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, mock_groups_api: MagicMock, ctx_mock: Any
 ) -> None:
