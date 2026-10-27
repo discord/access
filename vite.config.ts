@@ -118,6 +118,10 @@ export default defineConfig(({mode}) => {
       // them to Node's CJS loader, which resolves their `main` build and skips the
       // config's resolution and transform rules.
       server: {deps: {inline: [/@mui/, /react-hook-form-mui/]}},
+      // Node 25+ defines its own `localStorage` global, which is undefined unless Node is
+      // started with --localstorage-file and shadows jsdom's Storage. Turning Node's off
+      // in the test workers leaves `localStorage` to jsdom.
+      execArgv: ['--no-experimental-webstorage'],
     },
   };
 });
