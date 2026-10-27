@@ -196,6 +196,10 @@ class Settings(BaseSettings):
 
     # Behavior toggles
     REQUIRE_DESCRIPTIONS: bool = False
+    # Reject access, role, and group requests submitted without a reason,
+    # regardless of the target group's tags. The frontend reads the same
+    # variable at build time to mark the reason field required.
+    REQUIRE_REQUEST_REASONS: bool = False
 
     # Expose the auto-generated OpenAPI docs (`/api/docs`) and schema
     # (`/api/openapi.json`) outside development. These are always served in
@@ -405,5 +409,6 @@ APP_NAME = settings.APP_NAME
 FASTAPI_SENTRY_DSN = settings.FASTAPI_SENTRY_DSN
 REACT_SENTRY_DSN = settings.REACT_SENTRY_DSN
 REQUIRE_DESCRIPTIONS = settings.REQUIRE_DESCRIPTIONS
+REQUIRE_REQUEST_REASONS = settings.REQUIRE_REQUEST_REASONS
 ENABLE_MCP = settings.ENABLE_MCP
 MCP_FALLBACK_SCOPES = settings.MCP_FALLBACK_SCOPES
