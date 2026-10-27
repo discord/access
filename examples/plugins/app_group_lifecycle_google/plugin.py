@@ -782,9 +782,21 @@ class GoogleGroupManagerPlugin:
                     # You can't specify all the group config (description, email) when creating it via
                     # Okta, so we give the email prefix which is immutable and then reconcile the other
                     # properties later.
-                    mapping_id = await ctx.create_push_mapping_and_new_group(
-                        group, self._okta_app_id, configured_email_prefix
-                    )
+                    try:
+                        mapping_id = await ctx.create_push_mapping_and_new_group(
+                            group, self._okta_app_id, configured_email_prefix
+                        )
+                    except Exception as e:
+                        # Okta answers with an opaque validation error when a target group of this
+                        # name already exists in the app, typically left behind by a deleted group
+                        # whose mapping was removed without it. Name that cause in the recorded error;
+                        # the handler below writes it as the sync status.
+                        raise Exception(
+                            f"Okta could not create a push mapping for a new Google group "
+                            f"'{configured_email_prefix}': {e}. If the Okta app already has a target "
+                            f"group named '{configured_email_prefix}' that no push mapping uses, delete "
+                            "it in Okta and re-sync this group."
+                        ) from e
                     ctx.set_status(group, STATUS_PUSH_MAPPING_ID, mapping_id)
 
                 # Retrieve Google's ID for the group in order to claim it.
@@ -937,11 +949,14 @@ class GoogleGroupManagerPlugin:
 
         mapping_id = ctx.get_status(group, STATUS_PUSH_MAPPING_ID)
         if mapping_id:
-            # Best-effort unlink: a failure here must not block deleting the Google group, which is
-            # the authoritative cleanup when the Access group is deleted. A leftover mapping points
-            # at a now-deleted group, which is harmless and separately cleanable.
+            # Delete the Okta target group along with the mapping. Okta otherwise keeps it, still
+            # named after the email prefix, and a later create for that prefix fails against it.
+            # The target group stands in for the Google group deleted below, so nothing else needs
+            # it. Best-effort: a failure here must not block deleting the Google group, which is
+            # the authoritative cleanup when the Access group is deleted. A leftover target group is
+            # reported, with what to do about it, by the create path's error.
             try:
-                await ctx.delete_push_mapping(self._okta_app_id, mapping_id)
+                await ctx.delete_push_mapping(self._okta_app_id, mapping_id, delete_target_group=True)
                 logger.info(f"Unlinked Okta push mapping {mapping_id} for Access group {group.name}")
             except Exception:
                 logger.exception(
