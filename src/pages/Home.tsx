@@ -577,7 +577,7 @@ export default function Home() {
                 {rowStats.map((stat, i) => {
                   const color = stat.isAction
                     ? theme.palette.text.accent
-                    : statColors[stat.id] ?? stat.color ?? theme.palette.text.secondary;
+                    : (statColors[stat.id] ?? stat.color ?? theme.palette.text.secondary);
                   return (
                     <React.Fragment key={stat.id}>
                       {i > 0 && <Divider orientation="vertical" flexItem sx={{my: 1.5}} />}
@@ -618,7 +618,7 @@ export default function Home() {
                                 {statCounts[stat.id] ?? 0}
                               </Typography>
                               <Typography variant="caption" color="text.secondary" sx={{mt: 0.5, display: 'block'}}>
-                                {statCounts[stat.id] === 1 ? stat.singularLabel ?? stat.label : stat.label}
+                                {statCounts[stat.id] === 1 ? (stat.singularLabel ?? stat.label) : stat.label}
                               </Typography>
                             </Box>
                           )}
