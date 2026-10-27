@@ -134,6 +134,10 @@ asyncio_default_fixture_loop_scope = "function"
 asyncio_default_test_loop_scope = "function"
 filterwarnings = [
     "error:coroutine .* was never awaited:RuntimeWarning",
+    # authlib warns when it falls back to a dependency path it plans to remove,
+    # such as building its OAuth clients on httpx because httpx2 is missing. The
+    # OIDC tests mock authlib's clients, so this is what surfaces it in CI.
+    "error::authlib.deprecate.AuthlibDeprecationWarning",
 ]
 
 # ----------------------------------------------------------------------
