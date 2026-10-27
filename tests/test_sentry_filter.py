@@ -22,7 +22,7 @@ class _Args(BaseModel):
 
 def _validation_error() -> ValidationError:
     try:
-        _Args(**{"group_id": "00g1423wlai2EMe85698"})
+        _Args.model_validate({"group_id": "00g1423wlai2EMe85698"})
     except ValidationError as exc:
         return exc
     raise AssertionError("expected ValidationError")

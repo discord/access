@@ -894,7 +894,7 @@ class GoogleGroupManagerPlugin:
                 return f"Live Google group email '{google_email}' is not in domain {self._domain}"
             ctx.set_config(group, CONFIG_EMAIL, inferred_email_prefix)
             ctx.set_config(group, CONFIG_DISPLAY_NAME, google_group.get("displayName", "") or "")
-            if not (group.description or "") and google_description:
+            if not group.description and google_description:
                 logger.info(f"Backfilling group description from Google to Access for {group.name}...")
                 # Route the Access-side description change through the plugin interface, which
                 # updates the ORM and syncs to Okta without committing or re-firing this hook.
