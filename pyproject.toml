@@ -43,9 +43,9 @@ dependencies = [
     # Plugins
     "pluggy>=1.6.0,<2",
     # MCP — embedded Model Context Protocol server (gated behind ENABLE_MCP).
-    # Bumping the major (2.x) will break imports — FastMCP's API has
-    # historically reshaped between majors.
-    "mcp[cli]>=1.28.1,<3",
+    # The SDK reshapes its server API between majors (1.x's FastMCP is 2.x's
+    # MCPServer), so a 3.x bump needs the migration guide, not just the lock.
+    "mcp[cli]>=2.3.0,<3",
 ]
 
 [project.scripts]
