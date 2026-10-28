@@ -15,7 +15,7 @@ import sys
 from contextlib import asynccontextmanager
 from os import environ
 from pathlib import Path
-from typing import Any, AsyncIterator, Optional
+from typing import Any, AsyncGenerator, Optional
 
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
@@ -332,7 +332,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         create_mcp_server()
 
     @asynccontextmanager
-    async def lifespan(_fast_app: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(_fast_app: FastAPI) -> AsyncGenerator[None, None]:
         # Bound the worker-thread pool inside the running event loop (the anyio
         # limiter is loop-scoped, so this can't run at import time).
         _configure_threadpool_limit()

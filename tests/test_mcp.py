@@ -464,6 +464,32 @@ async def test_write_tool_requires_create_requests_scope(
     assert payload["status"] == "PENDING"
 
 
+async def test_create_access_request_requires_reason_when_configured(
+    with_mcp_enabled: None,
+    db: Db,
+    okta_group: OktaGroup,
+    user: OktaUser,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REQUIRE_REQUEST_REASONS applies to MCP request creation as it does to the REST route."""
+    db.session.add_all([user, okta_group])
+    await db.session.commit()
+    monkeypatch.setattr(settings, "REQUIRE_REQUEST_REASONS", True)
+    from api.mcp.auth import reset_mcp_identity
+    from api.mcp.server import create_mcp_server
+
+    mcp = create_mcp_server()
+    token = set_mcp_identity(
+        MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_READ_ALL, MCP_SCOPE_CREATE_REQUESTS}))
+    )
+    try:
+        result = await _call_tool(mcp, "create_access_request", group_id=okta_group.id)
+    finally:
+        reset_mcp_identity(token)
+    payload = json.loads(result)
+    assert "A reason is required" in payload["error"]
+
+
 async def _make_access_admin(db: Db) -> OktaUser:
     """Return the bootstrap Access admin (seeded by the `db` fixture).
     Conftest's setup adds them as a *member* (not owner) of

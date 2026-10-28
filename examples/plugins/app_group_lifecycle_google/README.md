@@ -8,7 +8,7 @@ When an Access group is created or deleted or its plugin configuration is modifi
 
 1. On create, creates an Okta group push mapping with a new target group named after the email prefix. Okta creates the downstream Google Group *and* links it in one step, so the plugin never has to wait for Okta to import a group created directly in Google (which requires a manual trigger). It then updates that Google Group's display name and description from Access.
 2. On modify, updates the corresponding Google Group's properties (display name, description) in the configured Google Workspace domain. The email is immutable.
-3. On delete, removes the Okta group push mapping and the Google Group.
+3. On delete, removes the Okta group push mapping together with the Okta target group it pushed to, and the Google Group. Removing the target group lets a later Access group reuse the same email prefix.
 
 Membership is kept in sync automatically by Okta group push. A Google Group linked out-of-band is adopted rather than recreated; if Okta hasn't yet pushed a newly-created group to Google, the group is marked pending and finalized on a later reconcile. Groups are also periodically reconciled to ensure eventual alignment to the source of truth in Access.
 
@@ -31,7 +31,7 @@ Membership is kept in sync automatically by Okta group push. A Google Group link
 
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
-| `email` | text | yes | The local-part (prefix) of the Google Group email address. The full address is `{email}@{GOOGLE_WORKSPACE_DOMAIN}`. Immutable after the group is created (the Cloud Identity `groupKey` cannot be changed). |
+| `email` | text | yes | The local-part (prefix) of the Google Group email address. The full address is `{email}@{GOOGLE_WORKSPACE_DOMAIN}`. Immutable once set (the Cloud Identity `groupKey` cannot be changed); a group that predates the plugin can set it on its first edit. |
 | `display_name` | text | yes | The display name for the Google Group. |
 
 ### Group-Level Status

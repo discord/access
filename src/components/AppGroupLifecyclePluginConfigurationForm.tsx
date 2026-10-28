@@ -24,8 +24,8 @@ import {
 } from '../api/apiComponents';
 import {PluginConfigProp, PluginInfo} from '../api/apiSchemas';
 
-// Helper-text note appended to a locked (immutable, edit-mode) config field.
-const LOCKED_NOTE = 'Cannot be changed after creation.';
+// Helper-text note appended to a locked (immutable, already-set) config field.
+const LOCKED_NOTE = 'Cannot be changed once set.';
 
 // Whether a plugin declares any config properties to render. Group-level config
 // with none of these should render nothing rather than an empty header.
@@ -59,7 +59,7 @@ interface AppGroupLifecyclePluginConfigurationFormProps {
   onPluginChange?: (pluginId: string | null) => void;
 
   /**
-   * Whether the entity being configured already exists (edit mode); immutable fields lock when true.
+   * Whether the entity being configured already exists (edit mode); immutable fields that hold a value lock when true.
    */
   isExistingEntity?: boolean;
 
@@ -79,11 +79,14 @@ interface AppGroupLifecyclePluginConfigurationFormProps {
 // match every pattern; emptiness is left to the `required` rule, and a malformed
 // regex is ignored client-side since the backend validation is authoritative.
 
-// An immutable config field may be set freely at create time and must lock on edit.
-// Rendered read-only (not disabled) so its value is still submitted — a disabled input
-// is omitted from the form payload, which the backend would read as a change and reject.
-export function isFieldLocked(property: PluginConfigProp, isExistingEntity: boolean): boolean {
-  return !!property.immutable && isExistingEntity;
+// An immutable config field locks on edit once it holds a value; until then (at create, or on
+// a group that predates the plugin) it may be set freely. Mirrors the backend's check in
+// validate_app_group_lifecycle_plugin_group_config. Rendered read-only (not disabled) so its
+// value is still submitted — a disabled input is omitted from the form payload, which the
+// backend would read as a change and reject.
+export function isFieldLocked(property: PluginConfigProp, isExistingEntity: boolean, currentValue: unknown): boolean {
+  const isSet = currentValue !== undefined && currentValue !== null && currentValue !== '';
+  return !!property.immutable && isExistingEntity && isSet;
 }
 
 function patternValidators(property: PluginConfigProp): Record<string, (value: any) => true | string> {
@@ -321,7 +324,7 @@ export default function AppGroupLifecyclePluginConfigurationForm({
                       property={property as PluginConfigProp}
                       value={currentConfig[propertyId]}
                       fieldName={fieldName}
-                      locked={isFieldLocked(property as PluginConfigProp, isExistingEntity)}
+                      locked={isFieldLocked(property as PluginConfigProp, isExistingEntity, currentConfig[propertyId])}
                     />
                   );
                 })}

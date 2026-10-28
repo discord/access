@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import uuid
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,7 +41,7 @@ from api.extensions import _session_scope, db as _db_shim
 
 
 @asynccontextmanager
-async def tool_session_scope() -> AsyncIterator[None]:
+async def tool_session_scope() -> AsyncGenerator[None, None]:
     """Bind a fresh DB session scope for one MCP tool call and tear it
     down in the calling task.
 
@@ -67,7 +67,7 @@ async def tool_session_scope() -> AsyncIterator[None]:
 
 
 @asynccontextmanager
-async def mcp_db_session() -> AsyncIterator[AsyncSession]:
+async def mcp_db_session() -> AsyncGenerator[AsyncSession, None]:
     """Yield the request-scoped DB session, committing on success and
     rolling back on exception. Matches the contract of
     ``api/database.py::get_db`` so write tools behave the same way as
