@@ -32,6 +32,7 @@
     "build": "env-cmd -f .env.production vite build",
     "preview": "vite preview",
     "test": "vitest",
+    "typecheck": "tsc --noEmit --project .",
     "prepare": "husky"
   },
   "engines": {
