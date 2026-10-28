@@ -9,7 +9,7 @@ from sqlalchemy.orm import joinedload, selectin_polymorphic
 from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequest, AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup
-from api.models.access_request import get_all_possible_request_approvers
+from api.models.request_reviewers import get_assigned_reviewers
 from api.operations._fan_out import defer_notification
 from api.plugins import NotificationHook
 from api.schemas import AuditLogSchema, EventType
@@ -24,7 +24,24 @@ class RejectAccessRequest:
         notify: bool = True,
         notify_requester: bool = True,
         current_user_id: Optional[str | OktaUser] = None,
+        assigned_reviewers: Optional[list[OktaUser]] = None,
     ):
+        """Reject a pending access request.
+
+        Args:
+            access_request: The request, or its id.
+            rejection_reason: Recorded as the request's resolution reason.
+            notify: Send the close notification.
+            notify_requester: Include the requester in the close notification.
+            current_user_id: The rejecting user, or their id; None for a system rejection.
+            assigned_reviewers: The request's assigned reviewers from
+                `snapshot_assigned_reviewers`, for a caller that changes
+                ownership before rejecting. When None, they are computed at
+                rejection time.
+
+        Raises:
+            ConflictError: From `execute`, when the request is no longer pending.
+        """
         self.access_request_id = access_request if isinstance(access_request, str) else access_request.id
         self.current_user_id = (
             current_user_id.id
@@ -35,6 +52,7 @@ class RejectAccessRequest:
         self.rejection_reason = rejection_reason
         self.notify = notify
         self.notify_requester = notify_requester
+        self.assigned_reviewers = assigned_reviewers
 
     async def execute(self) -> AccessRequest:
         # Lock the request row so a reject can't race a concurrent approve/
@@ -107,7 +125,11 @@ class RejectAccessRequest:
         if self.notify:
             requester = await db.session.get(OktaUser, access_request.requester_user_id)
 
-            approvers = await get_all_possible_request_approvers(access_request)
+            approvers = (
+                self.assigned_reviewers
+                if self.assigned_reviewers is not None
+                else await get_assigned_reviewers(access_request)
+            )
 
             await defer_notification(
                 db.session,
