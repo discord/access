@@ -19,7 +19,7 @@ import code
 import functools
 import types
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime
 from typing import Any, Callable, TypeVar, cast
@@ -32,7 +32,7 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 
 @asynccontextmanager
-async def app_context(*, scope: str | None = None, log_source: str = "cli") -> AsyncIterator[None]:
+async def app_context(*, scope: str | None = None, log_source: str = "cli") -> AsyncGenerator[None, None]:
     """Bootstrap the application context an out-of-request entrypoint needs.
 
     Binds the SQLAlchemy async engine, mirrors `create_app()`'s logging /

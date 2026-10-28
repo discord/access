@@ -1401,6 +1401,33 @@ class TestPluginValidation:
         assert response.status_code == 400
         assert "region" in response.json()["detail"]
 
+    async def test_put_group_allows_setting_unset_immutable_field(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
+        """Test that an immutable field with no value yet can be set on update."""
+        test_app = AppFactory.build(name="TestAppImm3", app_group_lifecycle_plugin=DummyPlugin.ID)
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Unsetg",
+            plugin_data={},
+        )
+        db.session.add(test_app)
+        db.session.add(test_group)
+        await db.session.commit()
+        mocker.patch.object(okta, "update_group")
+
+        url = url_for("api-groups.group_by_id", group_id=test_group.id)
+        data = {
+            "type": "app_group",
+            "name": test_group.name,
+            "description": "",
+            "app_id": test_group.app_id,
+            "plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "eu"}}},
+        }
+        response = await client.put(url, json=data)
+        assert response.status_code == 200
+        assert response.json()["plugin_data"][DummyPlugin.ID]["configuration"]["region"] == "eu"
+
     async def test_put_group_allows_mutable_field_change(
         self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
@@ -4244,6 +4271,38 @@ def test_validate_group_config_suppresses_unchanged_immutable_field_error_on_upd
     # But changing the immutable field is still rejected.
     changed = {DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "us"}}}
     errors = validate_app_group_lifecycle_plugin_group_config(changed, DummyPlugin.ID, old_plugin_data=old)
+    assert "region" in errors
+
+
+@pytest.mark.parametrize(
+    "old_configuration",
+    [{}, {"group_id": "g1"}, {"group_id": "g1", "region": None}, {"group_id": "g1", "region": ""}],
+    ids=["no-config", "key-absent", "null", "empty-string"],
+)
+def test_validate_group_config_allows_setting_unset_immutable_field_on_update(
+    test_plugin: DummyPlugin, old_configuration: dict[str, Any]
+) -> None:
+    # An immutable field that was never set (e.g. a group that predates the plugin) locks only
+    # once it holds a value, so the first update to set it is accepted.
+    old = {DummyPlugin.ID: {"configuration": old_configuration}}
+    new = {DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "us"}}}
+    errors = validate_app_group_lifecycle_plugin_group_config(new, DummyPlugin.ID, old_plugin_data=old)
+    assert "region" not in errors
+
+
+def test_validate_group_config_enforces_unset_immutable_field_when_first_set(test_plugin: DummyPlugin) -> None:
+    # Setting a previously-unset immutable field is validated like a create, not suppressed.
+    old = {DummyPlugin.ID: {"configuration": {"group_id": "g1"}}}
+    new = {DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "legacy"}}}
+    errors = validate_app_group_lifecycle_plugin_group_config(new, DummyPlugin.ID, old_plugin_data=old)
+    assert "region" in errors
+
+
+def test_validate_group_config_rejects_clearing_set_immutable_field(test_plugin: DummyPlugin) -> None:
+    # Once set, an immutable field cannot be cleared either; clearing would reopen it for edits.
+    old = {DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "us"}}}
+    new = {DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": ""}}}
+    errors = validate_app_group_lifecycle_plugin_group_config(new, DummyPlugin.ID, old_plugin_data=old)
     assert "region" in errors
 
 

@@ -7,7 +7,7 @@ import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, AsyncIterator, Awaitable, Callable, Optional
+from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
 
 from okta.client import Client as OktaClient
 from okta.models.add_group_request import AddGroupRequest
@@ -246,7 +246,7 @@ class OktaService:
         )
 
     @asynccontextmanager
-    async def _okta_client(self) -> AsyncIterator[_WrapperClient]:
+    async def _okta_client(self) -> AsyncGenerator[_WrapperClient, None]:
         """Yield a wrapping proxy over an Okta client bound to the running loop.
 
         The proxy (``_WrapperClient``) routes every async API call through
