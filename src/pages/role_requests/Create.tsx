@@ -53,6 +53,7 @@ import {useCurrentUser} from '../../authentication';
 import {canManageGroup} from '../../authorization';
 import {timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
+import {requireRequestReasons} from '../../config/accessConfig';
 import {Tooltip} from '@mui/material';
 
 dayjs.extend(IsSameOrBefore);
@@ -502,6 +503,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               }
               return '';
             }}
+            required={requireRequestReasons}
           />
         </FormControl>
       </DialogContent>

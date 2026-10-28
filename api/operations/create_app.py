@@ -181,7 +181,7 @@ class CreateApp:
             # No group_updated fire: the description is part of bringing this group under
             # the app, which the creation and conversion hooks already report, and a group
             # loaded by id here has no eager-loaded `app` for a hook to read.
-            if not (owner_app_group.description or ""):
+            if not owner_app_group.description:
                 await ModifyGroupDetails(
                     group=owner_app_group,
                     description=app_owners_group_description(self.app.name),

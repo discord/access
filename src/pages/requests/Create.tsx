@@ -50,7 +50,7 @@ import {
 import {canManageGroup, isAccessAdmin} from '../../authorization';
 import {carriedConstraints, timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
-import accessConfig from '../../config/accessConfig';
+import accessConfig, {requireRequestReasons} from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
 
@@ -479,6 +479,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               }
               return '';
             }}
+            required={requireRequestReasons}
           />
         </FormControl>
       </DialogContent>
