@@ -33,6 +33,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "typecheck": "tsc --noEmit --project .",
+    "check:engines": "node scripts/check-node-engines.js",
     "prepare": "husky"
   },
   "engines": {
@@ -74,6 +75,7 @@
     "jsdom": "^30.1.3",
     "lint-staged": "^17.6.0",
     "prettier": "^3.9.10",
+    "semver": "^7.8.5",
     "typescript": "~5.3.3",
     "vite": "^8.3.4",
     "vitest": "^5.0.5"
