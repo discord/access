@@ -258,14 +258,16 @@ from api.schemas import AuditLogSchema, EventType
 
 _ctx = get_request_context()
 logging.getLogger("access.audit").info(
-    AuditLogSchema().dumps({
-        "event_type": EventType.your_event,
-        "user_agent": _ctx.user_agent if _ctx else None,
-        "ip": _ctx.ip if _ctx else None,
-        "current_user_id": self.actor_id,
-        "current_user_email": self.actor_email,
-        # ... relevant entities
-    })
+    AuditLogSchema().dumps(
+        {
+            "event_type": EventType.your_event,
+            "user_agent": _ctx.user_agent if _ctx else None,
+            "ip": _ctx.ip if _ctx else None,
+            "current_user_id": self.actor_id,
+            "current_user_email": self.actor_email,
+            # ... relevant entities
+        }
+    )
 )
 ```
 

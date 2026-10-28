@@ -131,7 +131,7 @@ export default function ReadRequest() {
         ? requestedUntilDelta.toString()
         : 'custom';
 
-  const requestedGroupManager = canManageGroup(currentUser, accessRequest.requested_group);
+  const requestedGroupManager = canManageGroup(currentUser, accessRequest.requested_group as GroupDetail | undefined);
 
   const complete = (
     completedAccessRequest: AccessRequestSummary | undefined,
@@ -457,7 +457,7 @@ export default function ReadRequest() {
               }}>
               <TimelineItem>
                 <TimelineOppositeContent sx={{m: 'auto 0'}} align="right">
-                  <span title={accessRequest.created_at}>
+                  <span title={accessRequest.created_at ?? undefined}>
                     {dayjs(accessRequest.created_at).startOf('second').fromNow()}
                   </span>
                 </TimelineOppositeContent>

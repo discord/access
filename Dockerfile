@@ -1,5 +1,5 @@
 # Build step #1: build the React front end
-FROM node:24-alpine AS build-step
+FROM node:26-alpine AS build-step
 WORKDIR /app
 ENV PATH=/app/node_modules/.bin:$PATH
 # Pin npm >= 11.16 so the v12 install defaults in .npmrc are enforced
@@ -20,6 +20,12 @@ ENV NODE_ENV=production
 # are filed under. Empty for a plain `docker build`, which reports events with no release.
 ARG SENTRY_RELEASE=""
 ENV SENTRY_RELEASE=$SENTRY_RELEASE
+# Frontend halves of the REQUIRE_* toggles, which vite.config.ts reads at build time. Declared
+# without defaults so that, when not passed, they stay unset rather than empty: vite.config.ts
+# lets the process environment override .env.production, and an empty value would mask a
+# toggle set there.
+ARG REQUIRE_DESCRIPTIONS
+ARG REQUIRE_REQUEST_REASONS
 # One build produces both the assets that ship and the source maps that explain them. Uploading
 # from a second build would file maps against a bundle nobody serves: @sentry/vite-plugin injects
 # a debug id into every asset, which changes its content hash, so two builds of the same commit

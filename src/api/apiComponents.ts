@@ -129,8 +129,7 @@ export function accessRequestsQuery(variables: AccessRequestsVariables): {
 export function accessRequestsQuery(variables: AccessRequestsVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
   queryFn:
-    | ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAccessRequestSummary>)
-    | reactQuery.SkipToken;
+    ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAccessRequestSummary>) | reactQuery.SkipToken;
 };
 
 export function accessRequestsQuery(variables: AccessRequestsVariables | reactQuery.SkipToken) {
@@ -761,8 +760,7 @@ export function appGroupsByIdQuery(variables: AppGroupsByIdVariables): {
 export function appGroupsByIdQuery(variables: AppGroupsByIdVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
   queryFn:
-    | ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAppGroupForAppDetail>)
-    | reactQuery.SkipToken;
+    ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAppGroupForAppDetail>) | reactQuery.SkipToken;
 };
 
 export function appGroupsByIdQuery(variables: AppGroupsByIdVariables | reactQuery.SkipToken) {
@@ -896,8 +894,7 @@ export function usersAndGroupsQuery(variables: UsersAndGroupsVariables): {
 export function usersAndGroupsQuery(variables: UsersAndGroupsVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
   queryFn:
-    | ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAuditUserGroupRow>)
-    | reactQuery.SkipToken;
+    ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAuditUserGroupRow>) | reactQuery.SkipToken;
 };
 
 export function usersAndGroupsQuery(variables: UsersAndGroupsVariables | reactQuery.SkipToken) {
@@ -1009,8 +1006,7 @@ export function groupsAndRolesQuery(variables: GroupsAndRolesVariables): {
 export function groupsAndRolesQuery(variables: GroupsAndRolesVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
   queryFn:
-    | ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAuditGroupRoleRow>)
-    | reactQuery.SkipToken;
+    ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAuditGroupRoleRow>) | reactQuery.SkipToken;
 };
 
 export function groupsAndRolesQuery(variables: GroupsAndRolesVariables | reactQuery.SkipToken) {
@@ -1277,8 +1273,7 @@ export function groupRequestsQuery(variables: GroupRequestsVariables): {
 export function groupRequestsQuery(variables: GroupRequestsVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
   queryFn:
-    | ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedGroupRequestDetail>)
-    | reactQuery.SkipToken;
+    ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedGroupRequestDetail>) | reactQuery.SkipToken;
 };
 
 export function groupRequestsQuery(variables: GroupRequestsVariables | reactQuery.SkipToken) {
@@ -2811,8 +2806,7 @@ export function roleRequestsQuery(variables: RoleRequestsVariables): {
 export function roleRequestsQuery(variables: RoleRequestsVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
   queryFn:
-    | ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedRoleRequestSummary>)
-    | reactQuery.SkipToken;
+    ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedRoleRequestSummary>) | reactQuery.SkipToken;
 };
 
 export function roleRequestsQuery(variables: RoleRequestsVariables | reactQuery.SkipToken) {
@@ -3140,8 +3134,7 @@ export function rolesQuery(variables: RolesVariables): {
 export function rolesQuery(variables: RolesVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
   queryFn:
-    | ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedRoleGroupListItem>)
-    | reactQuery.SkipToken;
+    ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedRoleGroupListItem>) | reactQuery.SkipToken;
 };
 
 export function rolesQuery(variables: RolesVariables | reactQuery.SkipToken) {

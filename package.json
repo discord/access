@@ -13,7 +13,7 @@
     "@mui/material": "^6.5.0",
     "@mui/x-data-grid": "^7.29.13",
     "@mui/x-date-pickers": "^7.29.4",
-    "@sentry/react": "^8.34.0",
+    "@sentry/react": "^11.9.0",
     "@tanstack/react-query": "^5.101.0",
     "confetti-cannon": "^2.3.2",
     "dayjs": "^1.11.10",
@@ -32,10 +32,11 @@
     "build": "env-cmd -f .env.production vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "prepare": "husky install"
+    "typecheck": "tsc --noEmit --project .",
+    "prepare": "husky"
   },
   "engines": {
-    "node": ">=22.12.0",
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0",
     "npm": ">=11.16.0"
   },
   "allowScripts": {
@@ -60,21 +61,22 @@
     "@openapi-codegen/cli": "^3.1.0",
     "@openapi-codegen/typescript": "^11.1.0",
     "@sentry/vite-plugin": "^4.0.2",
-    "@testing-library/jest-dom": "^6.6.4",
-    "@testing-library/react": "^14.2.2",
-    "@testing-library/user-event": "^14.5.2",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
     "@types/node": "^24.2.0",
     "@types/react": "^18.2.74",
     "@types/react-dom": "^18.2.24",
     "@vitejs/plugin-react": "^6.1.0",
-    "@vitest/ui": "^4.1.8",
-    "husky": "^8.0.3",
-    "jsdom": "^26.1.0",
-    "lint-staged": "^15.2.10",
-    "prettier": "^3.2.5",
-    "typescript": "^4.9.5",
+    "@vitest/ui": "^5.0.5",
+    "husky": "^9.1.7",
+    "jsdom": "^30.1.3",
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.9.10",
+    "typescript": "~5.3.3",
     "vite": "^8.3.4",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.5"
   },
   "lint-staged": {
     "*.{js,ts,jsx,tsx}": "prettier --write"

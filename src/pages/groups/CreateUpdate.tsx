@@ -21,6 +21,7 @@ import {FormContainer, SelectElement, AutocompleteElement, TextFieldElement} fro
 
 import {
   useApps,
+  useAppById,
   useTags,
   useGroupsCreate,
   useGroupByIdPut,
@@ -35,6 +36,8 @@ import {
   GroupDetail,
   AppGroupDetail,
   AppDetail,
+  AppIdRef,
+  AppSummary,
   OktaUserDetail,
   TagSummary,
   OktaGroupTagMapDetail,
@@ -92,7 +95,7 @@ const ROLE_GROUP_PREFIX = 'Role-';
 function GroupDialog(props: GroupDialogProps) {
   const navigate = useNavigate();
 
-  const defaultGroupType = props.app != null ? 'app_group' : props.group?.type ?? props.defaultGroupType;
+  const defaultGroupType = props.app != null ? 'app_group' : (props.group?.type ?? props.defaultGroupType);
   const [groupType, setGroupType] = React.useState(defaultGroupType);
   const defaultTags =
     props.group && props.group.active_group_tags && props.group.active_group_tags.length > 0
@@ -103,20 +106,26 @@ function GroupDialog(props: GroupDialogProps) {
   const [selectedTags, setSelectedTags] = React.useState<Array<TagSummary>>(defaultTags);
   const [appSearchInput, setAppSearchInput] = React.useState('');
   const [tagSearchInput, setTagSearchInput] = React.useState('');
-  const initialAppName = props.app?.name ?? (props.group as AppGroupDetail)?.app?.name ?? '';
-  const [appName, setAppName] = React.useState(initialAppName);
+  const initialApp: AppDetail | AppIdRef | undefined = props.app ?? (props.group as AppGroupDetail)?.app ?? undefined;
+  const initialAppName = initialApp?.name ?? '';
+  const [selectedApp, setSelectedApp] = React.useState<AppDetail | AppIdRef | AppSummary | null>(initialApp ?? null);
+  const appName = selectedApp?.name ?? '';
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
-  const appGroupLifecyclePluginId = React.useMemo(() => {
-    if (groupType !== 'app_group') return null;
-    const app = props.app ?? (props.group as AppGroupDetail)?.app;
-    return (app as any)?.app_group_lifecycle_plugin || null;
-  }, [groupType, props.app, props.group]);
+  // The app handed in (an app page's `AppDetail`, or an existing group's `AppIdRef`) carries its
+  // lifecycle plugin id; an app picked in the App field is an `AppSummary` from search, which
+  // does not, so its detail is fetched for the plugin id.
+  const pickedAppId = selectedApp != null && selectedApp.id !== initialApp?.id ? selectedApp.id : null;
+  const {data: pickedAppDetail} = useAppById({pathParams: {appId: pickedAppId ?? ''}}, {enabled: pickedAppId != null});
+  const appGroupLifecyclePluginId =
+    groupType === 'app_group'
+      ? ((pickedAppId != null ? pickedAppDetail : (selectedApp as AppDetail | AppIdRef | null))
+          ?.app_group_lifecycle_plugin ?? null)
+      : null;
 
   const isAllowedToConfigureAppGroupLifecyclePlugin =
-    isAccessAdmin(props.currentUser) ||
-    isAppOwnerGroupOwner(props.currentUser, props.app?.id ?? (props.group as AppGroupDetail)?.app?.id ?? '');
+    isAccessAdmin(props.currentUser) || isAppOwnerGroupOwner(props.currentUser, selectedApp?.id ?? '');
 
   const complete = (
     completedGroup: GroupDetail | undefined,
@@ -195,6 +204,15 @@ function GroupDialog(props: GroupDialogProps) {
     }
     delete (group as AppGroupDetail).app;
 
+    // Plugin fields stay registered after the App or Type changes, so send only the
+    // configuration for the plugin the group will be created under.
+    const pluginGroup = group as {plugin_data?: Record<string, unknown>};
+    if (appGroupLifecyclePluginId != null && pluginGroup.plugin_data?.[appGroupLifecyclePluginId] != null) {
+      pluginGroup.plugin_data = {[appGroupLifecyclePluginId]: pluginGroup.plugin_data[appGroupLifecyclePluginId]};
+    } else {
+      delete pluginGroup.plugin_data;
+    }
+
     if (props.group == null) {
       createGroup.mutate({body: group as GroupsCreateRequestBody});
     } else {
@@ -226,7 +244,7 @@ function GroupDialog(props: GroupDialogProps) {
                 name:
                   props.group?.type == 'role_group'
                     ? props.group?.name.substring(ROLE_GROUP_PREFIX.length)
-                    : props.group?.name ?? '',
+                    : (props.group?.name ?? ''),
                 description: props.group?.description ?? '',
               }
         }
@@ -277,7 +295,7 @@ function GroupDialog(props: GroupDialogProps) {
                   getOptionLabel: (option) => option.name,
                   isOptionEqualToValue: (option, value) => option.id == value?.id,
                   onInputChange: (event, newInputValue) => setAppSearchInput(newInputValue),
-                  onChange: (event, value) => setAppName(value?.name ?? ''),
+                  onChange: (event, value) => setSelectedApp(value ?? null),
                 }}
               />
             </FormControl>
@@ -389,9 +407,10 @@ function GroupDialog(props: GroupDialogProps) {
               there, so an editable form would only invite a rejected submit. */}
           {appGroupLifecyclePluginId && isAllowedToConfigureAppGroupLifecyclePlugin && !props.app_owner_group && (
             <AppGroupLifecyclePluginConfigurationForm
+              key={appGroupLifecyclePluginId}
               entityType="group"
               selectedPluginId={appGroupLifecyclePluginId}
-              appId={(props.app ?? (props.group as AppGroupDetail)?.app)?.id}
+              appId={selectedApp?.id}
               currentConfig={
                 appGroupLifecyclePluginId && (props.group as any)?.plugin_data
                   ? (props.group as any).plugin_data[appGroupLifecyclePluginId]?.configuration || {}

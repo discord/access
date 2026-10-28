@@ -535,7 +535,7 @@ export default function ReadGroupRequest() {
       resolved_group_description: responseForm.resolved_group_description,
       resolved_group_type: responseForm.resolved_group_type,
       resolved_app_id:
-        responseForm.resolved_group_type === 'app_group' ? responseForm.resolved_app?.id ?? '' : undefined,
+        responseForm.resolved_group_type === 'app_group' ? (responseForm.resolved_app?.id ?? '') : undefined,
       resolved_group_tags: selectedTags.map((t) => t.id),
       reason: responseForm.reason ?? '',
     };
