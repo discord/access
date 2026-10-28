@@ -35,7 +35,7 @@
     "prepare": "husky"
   },
   "engines": {
-    "node": ">=22.22.1",
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0",
     "npm": ">=11.16.0"
   },
   "allowScripts": {
