@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from typing import Any, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ def _merge_override_config(config: dict[str, Any], config_dir: str, override_fil
     override_config_path = os.path.join(config_dir, override_filename)
     if os.path.exists(override_config_path):
         logger.debug(f"Loading access config override from {override_config_path}")
-        with open(override_config_path, "r") as f:
+        with open(override_config_path) as f:
             override_config = json.load(f).get(BACKEND, {})
             _validate_override_config(override_config)
             config.update(override_config)
@@ -62,12 +62,12 @@ def _load_default_config(config_dir: str) -> dict[str, Any]:
     default_config_path = os.path.join(config_dir, "config.default.json")
     if not os.path.exists(default_config_path):
         raise ConfigFileNotFoundError(str(default_config_path))
-    with open(default_config_path, "r") as f:
+    with open(default_config_path) as f:
         config = json.load(f).get(BACKEND, {})
     return config
 
 
-def _resolve_config_paths() -> Tuple[str, Optional[str]]:
+def _resolve_config_paths() -> tuple[str, str | None]:
     """Resolve the directory holding config.default.json and an optional override filename.
 
     ACCESS_CONFIG_FILE accepts either of two shapes:
@@ -110,4 +110,4 @@ def get_access_config() -> AccessConfig:
     return _ACCESS_CONFIG
 
 
-__all__ = ["get_access_config", "AccessConfig"]
+__all__ = ["AccessConfig", "get_access_config"]

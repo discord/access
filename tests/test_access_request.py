@@ -1,10 +1,10 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from httpx import AsyncClient
-from sqlalchemy import select
-from pytest_mock import MockerFixture
 from fastapi import FastAPI
+from httpx import AsyncClient
+from pytest_mock import MockerFixture
+from sqlalchemy import select
 
 from api.config import settings
 from api.extensions import Db
@@ -1035,9 +1035,9 @@ async def test_post_access_request_403_for_deleted_user(
 ) -> None:
     """Flask returned 403 (not 404) when current_user_id resolves to a
     soft-deleted user."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    deleted_user = await OktaUserFactory.create_async(deleted_at=datetime.now(timezone.utc))
+    deleted_user = await OktaUserFactory.create_async(deleted_at=datetime.now(UTC))
     db.session.add(okta_group)
     await db.session.commit()
     mock_user(deleted_user.id)

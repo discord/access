@@ -1,13 +1,11 @@
-from typing import Optional
-
 import logging
 
 from sqlalchemy import func, or_, select, update
-from api.context import get_request_context
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroupTagMap, OktaUser, Tag
-from api.operations import ModifyGroupsTimeLimit
+from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -16,13 +14,13 @@ class ModifyAppTags:
         self,
         *,
         app: App | str,
-        tags_to_add: list[str] = [],
-        tags_to_remove: list[str] = [],
-        current_user_id: Optional[str],
+        tags_to_add: list[str] | None = None,
+        tags_to_remove: list[str] | None = None,
+        current_user_id: str | None,
     ):
         self.app_id = app if isinstance(app, str) else app.id
-        self.tag_ids_to_add = tags_to_add
-        self.tag_ids_to_remove = tags_to_remove
+        self.tag_ids_to_add = tags_to_add or []
+        self.tag_ids_to_remove = tags_to_remove or []
         self.current_user_id = current_user_id
 
     async def execute(self) -> App:
@@ -72,7 +70,7 @@ class ModifyAppTags:
                 )
             ).all()
 
-            new_tag_ids_to_add = set(tag_ids_to_add) - set([m.tag_id for m in existing_tag_maps])
+            new_tag_ids_to_add = set(tag_ids_to_add) - {m.tag_id for m in existing_tag_maps}
 
             for tag_id in new_tag_ids_to_add:
                 db.session.add(

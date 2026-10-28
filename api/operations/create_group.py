@@ -1,17 +1,16 @@
-from typing import Optional, TypedDict, TypeVar, cast
-
 import logging
+from typing import TypedDict, TypeVar, cast
 
-from api.context import get_request_context
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic, with_polymorphic
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
 from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.plugins.app_group_lifecycle import AppGroupLifecycleHook
-from api.services import okta
 from api.schemas import AuditLogSchema, EventType
+from api.services import okta
 
 T = TypeVar("T", bound=OktaGroup)
 
@@ -22,17 +21,17 @@ class GroupDict(TypedDict):
 
 
 class CreateGroup:
-    def __init__(self, *, group: T | GroupDict, tags: list[str] = [], current_user_id: Optional[str] = None):
+    def __init__(self, *, group: T | GroupDict, tags: list[str] | None = None, current_user_id: str | None = None):
         if isinstance(group, dict):
             group_dict = cast(GroupDict, group)
             self.group = cast(T, OktaGroup(name=group_dict["name"], description=group_dict["description"]))
         else:
             self.group = cast(T, group)
 
-        self.tag_ids = tags
+        self.tag_ids = tags or []
         self.current_user_id = current_user_id
 
-    async def execute(self, *, _group: Optional[T] = None) -> T:
+    async def execute(self, *, _group: T | None = None) -> T:
         tags = (
             await db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids)))
         ).all()
@@ -73,9 +72,7 @@ class CreateGroup:
             )
             if not self.group.name.startswith(app_group_name_prefix):
                 raise ValueError(
-                    'App Group name "{}" should be prefixed with App name. For example: "{}"'.format(
-                        self.group.name, app_group_name_prefix
-                    )
+                    f'App Group name "{self.group.name}" should be prefixed with App name. For example: "{app_group_name_prefix}"'
                 )
 
         okta_group = await okta.create_group(self.group.name, self.group.description)

@@ -1,21 +1,21 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from typing import Any, Optional
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from okta.errors.okta_api_error import OktaAPIError
 from okta.models.add_group_request import AddGroupRequest
 from okta.models.group import Group as OktaGroupType
 from okta.models.group_push_mapping import GroupPushMapping
 from okta.models.group_rule import GroupRule as OktaGroupRuleType
 from okta.models.user_schema import UserSchema as OktaUserSchemaType
 
-from okta.errors.okta_api_error import OktaAPIError
-
 from api.services.okta_service import (
     OKTA_TRANSIENT_RETRIES,
     OktaResourceNotFoundError,
+    OktaResponseError,
     OktaService,
     OktaTransientError,
     UserSchema,
@@ -25,7 +25,7 @@ from api.services.okta_service import (
 from tests.factories import UserFactory
 
 
-def _user_schema(base_properties: dict[str, Any], custom_properties: Optional[dict[str, Any]] = None) -> Any:
+def _user_schema(base_properties: dict[str, Any], custom_properties: dict[str, Any] | None = None) -> Any:
     """Build a real Okta ``UserSchema`` model from a raw schema payload."""
     schema = OktaUserSchemaType.from_dict(
         {
@@ -118,7 +118,7 @@ async def test_update_group_preserves_custom_attributes() -> None:
         async def __aenter__(self) -> MagicMock:
             return mock_client
 
-        async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        async def __aexit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
             return None
 
     # Use patch to mock the _okta_client method
@@ -183,7 +183,7 @@ async def test_get_user_schema_resolves_schema_with_unique_attributes() -> None:
         async def __aenter__(self) -> MagicMock:
             return mock_client
 
-        async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        async def __aexit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
             return None
 
     with patch.object(service, "_okta_client", return_value=MockOktaClientContext()):
@@ -260,9 +260,8 @@ async def test_connection_level_error_gives_up_after_bounded_retries() -> None:
 
     get_user = AsyncMock(side_effect=AttributeError("'NoneType' object has no attribute 'status'"))
 
-    with patch("okta.client.Client.get_user", get_user):
-        with pytest.raises(OktaTransientError):
-            await service.get_user("okta_id")
+    with patch("okta.client.Client.get_user", get_user), pytest.raises(OktaTransientError):
+        await service.get_user("okta_id")
 
     assert get_user.call_count == OKTA_TRANSIENT_RETRIES + 1
 
@@ -278,9 +277,8 @@ async def test_definitive_transient_status_is_not_retried(status: int) -> None:
     transient = (None, MagicMock(status_code=status, headers={}), MagicMock(status=status))
     get_user = AsyncMock(return_value=transient)
 
-    with patch("okta.client.Client.get_user", get_user):
-        with pytest.raises(OktaTransientError):
-            await service.get_user("okta_id")
+    with patch("okta.client.Client.get_user", get_user), pytest.raises(OktaTransientError):
+        await service.get_user("okta_id")
 
     assert get_user.call_count == 1
 
@@ -292,9 +290,8 @@ async def test_request_timeout_deadline_is_not_retried() -> None:
 
     get_user = AsyncMock(return_value=(None, None, Exception("Request Timeout exceeded.")))
 
-    with patch("okta.client.Client.get_user", get_user):
-        with pytest.raises(OktaTransientError):
-            await service.get_user("okta_id")
+    with patch("okta.client.Client.get_user", get_user), pytest.raises(OktaTransientError):
+        await service.get_user("okta_id")
 
     assert get_user.call_count == 1
 
@@ -461,7 +458,7 @@ async def test_delete_group_push_mapping_raises_on_non_404(mocker):
     client.update_group_push_mapping = AsyncMock(return_value=(_mapping(id="map-1"), MagicMock(), None))
     client.delete_group_push_mapping = AsyncMock(return_value=(MagicMock(), MagicMock(status=403)))
 
-    with pytest.raises(Exception):
+    with pytest.raises(OktaResponseError):
         await svc.delete_group_push_mapping("app-1", "map-1")
 
 
@@ -535,13 +532,15 @@ async def test_call_404_on_list_endpoint_surfaces_as_resource_not_found() -> Non
         {"errorCode": "E0000007", "errorSummary": "Not found: Resource not found: deleted_group (UserGroup)"},
     )
 
-    with patch("okta.client.Client.list_group_users", AsyncMock(return_value=(None, MagicMock(), not_found))):
-        with pytest.raises(OktaResourceNotFoundError):
-            await service.list_users_for_group("deleted_group")
+    with (
+        patch("okta.client.Client.list_group_users", AsyncMock(return_value=(None, MagicMock(), not_found))),
+        pytest.raises(OktaResourceNotFoundError),
+    ):
+        await service.list_users_for_group("deleted_group")
 
 
 async def test_call_non_404_error_is_not_resource_not_found() -> None:
-    """An error that isn't a 404 keeps raising the generic Exception, so genuine
+    """An error that isn't a 404 raises OktaResponseError, so genuine
     failures stay loud instead of being downgraded to the benign path."""
     service = OktaService()
     service.initialize("fake.domain", "fake.token")
@@ -553,9 +552,11 @@ async def test_call_non_404_error_is_not_resource_not_found() -> None:
         {"errorCode": "E0000006", "errorSummary": "You do not have permission"},
     )
 
-    with patch("okta.client.Client.list_group_users", AsyncMock(return_value=(None, MagicMock(), forbidden))):
-        with pytest.raises(Exception) as exc_info:
-            await service.list_users_for_group("some_group")
+    with (
+        patch("okta.client.Client.list_group_users", AsyncMock(return_value=(None, MagicMock(), forbidden))),
+        pytest.raises(Exception) as exc_info,
+    ):
+        await service.list_users_for_group("some_group")
 
     assert not isinstance(exc_info.value, OktaResourceNotFoundError)
 
@@ -573,9 +574,11 @@ async def test_call_404_on_single_resource_endpoint_surfaces_as_resource_not_fou
         {"errorCode": "E0000007", "errorSummary": "Not found: Resource not found: gone (User)"},
     )
 
-    with patch("okta.client.Client.get_user", AsyncMock(return_value=(None, MagicMock(), not_found))):
-        with pytest.raises(OktaResourceNotFoundError):
-            await service.get_user("gone")
+    with (
+        patch("okta.client.Client.get_user", AsyncMock(return_value=(None, MagicMock(), not_found))),
+        pytest.raises(OktaResourceNotFoundError),
+    ):
+        await service.get_user("gone")
 
 
 async def test_delete_group_push_mapping_tolerance_survives_call_level_classification(mocker) -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi_pagination.ext.sqlalchemy import apaginate
@@ -12,8 +12,8 @@ from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
 from api.auth.permissions import (
+    AppForOwner,
     require_access_admin_or_app_creator,
-    require_app_owner_or_access_admin_for_app,
 )
 from api.database import DbSession
 from api.models import (
@@ -81,8 +81,8 @@ async def get_app_groups(
     app_id: str,
     db: DbSession,
     current_user_id: CurrentUserId,
-    owner: Annotated[Optional[bool], Query()] = None,
-    q: Annotated[Optional[str], Query()] = None,
+    owner: Annotated[bool | None, Query()] = None,
+    q: Annotated[str | None, Query()] = None,
 ) -> AppGroupsPage[AppGroupForAppDetail]:
     """Paginated app-groups for an app, owners first then by name. Members are
     NOT inlined — each item carries `member_count` / `owner_count` only, so the
@@ -277,7 +277,7 @@ async def put_app(
     body: UpdateAppBody,
     db: DbSession,
     current_user_id: CurrentUserId,
-    app_obj=Depends(require_app_owner_or_access_admin_for_app),
+    app_obj: AppForOwner,
 ) -> AppDetail:
     import copy
 
@@ -328,9 +328,8 @@ async def put_app(
             raise HTTPException(400, "App already exists with the same name")
 
     # tags_to_remove gated on admin
-    if body.tags_to_remove and len(body.tags_to_remove) > 0:
-        if not await is_access_admin(db, current_user_id):
-            raise HTTPException(403, "Current user is not an Access Admin and not allowed to remove tags from this app")
+    if body.tags_to_remove and len(body.tags_to_remove) > 0 and not await is_access_admin(db, current_user_id):
+        raise HTTPException(403, "Current user is not an Access Admin and not allowed to remove tags from this app")
 
     tags_to_add = body.tags_to_add or []
     tags_to_remove = body.tags_to_remove or []
@@ -468,7 +467,7 @@ async def delete_app(
     app_id: str,
     db: DbSession,
     current_user_id: CurrentUserId,
-    app_obj=Depends(require_app_owner_or_access_admin_for_app),
+    app_obj: AppForOwner,
 ) -> DeleteMessage:
     from api.operations import DeleteApp
 

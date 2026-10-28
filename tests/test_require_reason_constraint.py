@@ -2,7 +2,8 @@ from typing import Any
 
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
-from sqlalchemy import inspect as sa_inspect, select
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import select
 
 from api.extensions import Db
 from api.models import (

@@ -148,7 +148,7 @@ def _request_access_prompt(group_or_role: str = "") -> str:
     )
 
 
-def register_prompts(mcp: "FastMCP") -> None:
+def register_prompts(mcp: FastMCP) -> None:
     """Register the v1 prompts on the given FastMCP instance."""
 
     @mcp.prompt(name="request_access", description=REQUEST_ACCESS_PROMPT_DESC)

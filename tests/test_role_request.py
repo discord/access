@@ -1,10 +1,10 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from httpx import AsyncClient
-from sqlalchemy import select
-from pytest_mock import MockerFixture
 from fastapi import FastAPI
+from httpx import AsyncClient
+from pytest_mock import MockerFixture
+from sqlalchemy import select
 
 from api.config import settings
 from api.extensions import Db
@@ -1197,8 +1197,8 @@ async def test_time_limit_constraint_tag(
     # Should only be approved for time limit if approved time is higher
     approval = (await db.session.scalars(select(RoleGroupMap).where(RoleGroupMap.role_group == role_group))).first()
     # Make sure approval time is correct (could be a couple milliseconds off from calculated which is okay)
-    approval_time = approval.ended_at.replace(tzinfo=timezone.utc)
-    expected_approval_time = datetime.now(timezone.utc) + timedelta(seconds=THREE_DAYS_IN_SECONDS)
+    approval_time = approval.ended_at.replace(tzinfo=UTC)
+    expected_approval_time = datetime.now(UTC) + timedelta(seconds=THREE_DAYS_IN_SECONDS)
     assert expected_approval_time > approval_time
     assert expected_approval_time - approval_time < timedelta(minutes=1)
 
@@ -1668,7 +1668,7 @@ async def test_put_role_request_pending_check_includes_resolved_at(
     ).execute()
     assert rr is not None
     # Force `resolved_at` to a non-null timestamp while leaving status PENDING.
-    rr.resolved_at = datetime.now(timezone.utc)
+    rr.resolved_at = datetime.now(UTC)
     await db.session.commit()
 
     put_url = url_for("api-role-requests.role_request_by_id_put", role_request_id=rr.id)

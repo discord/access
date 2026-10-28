@@ -48,7 +48,7 @@ def health_command() -> None:
                 row_count = (await db.session.execute(row_count_query)).scalar()
                 table_sizes[table_name] = row_count
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - any failure is reported as a disconnected database
             db_status = "disconnected"
             error = str(e)
             table_sizes = {}

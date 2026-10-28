@@ -31,7 +31,7 @@ import asyncio
 import contextvars
 import logging
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,12 +47,12 @@ _Collected = list[tuple[list["asyncio.Task[Any]"], str]]
 # Set per request by the `defer_fan_out` dependency; `None` outside an opted-in
 # request (CLI/syncer/MCP/direct-execute), where `defer_or_drain_fan_out` drains
 # inline instead.
-_deferred_fan_out: contextvars.ContextVar[Optional[_Collected]] = contextvars.ContextVar(
+_deferred_fan_out: contextvars.ContextVar[_Collected | None] = contextvars.ContextVar(
     "access_deferred_fan_out", default=None
 )
 
 
-async def drain_fan_out_tasks(tasks: list["asyncio.Task[Any]"], context: str) -> None:
+async def drain_fan_out_tasks(tasks: list[asyncio.Task[Any]], context: str) -> None:
     """Await every fan-out task and log each failure with its context.
 
     Failures are logged at ERROR (with the traceback) and swallowed: Access
@@ -87,7 +87,7 @@ async def drain_fan_out_tasks(tasks: list["asyncio.Task[Any]"], context: str) ->
             )
 
 
-def begin_deferred_fan_out() -> tuple[_Collected, "contextvars.Token[Optional[_Collected]]"]:
+def begin_deferred_fan_out() -> tuple[_Collected, contextvars.Token[_Collected | None]]:
     """Open a request-scoped fan-out collector and bind it to the ContextVar.
 
     Returns the (empty) collector list and the reset token. The same list object
@@ -99,12 +99,12 @@ def begin_deferred_fan_out() -> tuple[_Collected, "contextvars.Token[Optional[_C
     return collected, token
 
 
-def end_deferred_fan_out(token: "contextvars.Token[Optional[_Collected]]") -> None:
+def end_deferred_fan_out(token: contextvars.Token[_Collected | None]) -> None:
     """Unbind the collector opened by `begin_deferred_fan_out`."""
     _deferred_fan_out.reset(token)
 
 
-async def defer_or_drain_fan_out(tasks: list["asyncio.Task[Any]"], context: str) -> None:
+async def defer_or_drain_fan_out(tasks: list[asyncio.Task[Any]], context: str) -> None:
     """Hand a fan-out batch to the request's deferred drain, or drain it inline.
 
     If a collector is bound for the current request, append the batch and return
@@ -130,11 +130,11 @@ async def run_deferred_fan_out(collected: _Collected) -> None:
 
 def prepare_notification_task(
     session: AsyncSession,
-    hook_name: "NotificationHook",
+    hook_name: NotificationHook,
     *,
     detach: Iterable[Any] = (),
     **kwargs: Any,
-) -> "asyncio.Task[None]":
+) -> asyncio.Task[None]:
     """Expunge the hook payload (when deferring) and spawn `send_notification`
     as a task, returning it **without draining**.
 
@@ -159,7 +159,7 @@ def prepare_notification_task(
 
 async def defer_notification(
     session: AsyncSession,
-    hook_name: "NotificationHook",
+    hook_name: NotificationHook,
     *,
     detach: Iterable[Any] = (),
     **kwargs: Any,

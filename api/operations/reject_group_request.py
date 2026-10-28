@@ -1,10 +1,8 @@
-from typing import Optional
-
 import logging
 
 from sqlalchemy import func, or_, select
-from api.context import get_request_context
 
+from api.context import get_request_context
 from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, GroupRequest, OktaUser, OktaUserGroupMember
@@ -23,7 +21,7 @@ class RejectGroupRequest:
         rejection_reason: str = "",
         notify: bool = True,
         notify_requester: bool = True,
-        current_user_id: Optional[str | OktaUser] = None,
+        current_user_id: str | OktaUser | None = None,
     ):
         self.group_request_id = group_request if isinstance(group_request, str) else group_request.id
         self.current_user_id = (

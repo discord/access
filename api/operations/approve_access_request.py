@@ -1,14 +1,11 @@
-from datetime import datetime
-from typing import Optional
-
 import logging
+from datetime import datetime
 
-from api.context import get_request_context
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
+from api.context import get_request_context
 from api.exceptions import ConflictError, InvalidRequestError, ResourceGoneError
-
 from api.extensions import db
 from api.models import AccessRequest, AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.operations.constraints import CheckForReason
@@ -21,9 +18,9 @@ class ApproveAccessRequest:
         self,
         *,
         access_request: AccessRequest | str,
-        approver_user: Optional[OktaUser | str] = None,
+        approver_user: OktaUser | str | None = None,
         approval_reason: str = "",
-        ending_at: Optional[datetime] = None,
+        ending_at: datetime | None = None,
         notify: bool = True,
     ):
         self.access_request_id = access_request if isinstance(access_request, str) else access_request.id

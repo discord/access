@@ -3,7 +3,6 @@ from importlib.metadata import entry_points
 import pluggy
 
 from api.log_filters import register_plugin_logger_prefixes
-
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecycleContext,
     AppGroupLifecycleHook,
@@ -26,8 +25,8 @@ from api.plugins.app_group_lifecycle import (
 )
 from api.plugins.conditional_access import (
     ConditionalAccessHook,
-    conditional_access_plugin_name,
     ConditionalAccessResponse,
+    conditional_access_plugin_name,
     evaluate_conditional_access,
     get_conditional_access_hook,
 )
@@ -74,7 +73,7 @@ def _register_plugin_loggers() -> None:
     register_plugin_logger_prefixes(ep.module.partition(".")[0] for group in groups for ep in entry_points(group=group))
 
 
-__all__ = [
+__all__ = [  # noqa: RUF022 - grouped by plugin type
     # App Group Lifecycle Plugin
     "app_group_lifecycle_plugin_name",
     "AppGroupLifecycleContext",

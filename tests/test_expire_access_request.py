@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pytest_mock import MockerFixture
 
 from api.config import settings
-from api.models import AccessRequest, AccessRequestStatus, OktaGroup, OktaUser
 from api.extensions import Db
+from api.models import AccessRequest, AccessRequestStatus, OktaGroup, OktaUser
 from api.syncer import expire_access_requests
 from tests.factories import AccessRequestFactory
 
@@ -36,7 +36,7 @@ async def test_expire_old_access_request(
     db.session.add(user)
     db.session.add(okta_group)
     await db.session.commit()
-    access_request.created_at = datetime.now(timezone.utc) - timedelta(days=30)
+    access_request.created_at = datetime.now(UTC) - timedelta(days=30)
     access_request.requested_group_id = okta_group.id
     access_request.requester_user_id = user.id
     db.session.add(access_request)
@@ -77,7 +77,7 @@ async def test_expire_access_requests_isolates_failures(
     db.session.add(okta_group)
     await db.session.commit()
 
-    stale = datetime.now(timezone.utc) - timedelta(days=30)
+    stale = datetime.now(UTC) - timedelta(days=30)
     ids = []
     for _ in range(3):
         req = AccessRequestFactory.build()
@@ -121,8 +121,8 @@ async def test_expire_old_temporary_access_request(
     db.session.add(user)
     db.session.add(okta_group)
     await db.session.commit()
-    access_request.created_at = datetime.now(timezone.utc) - timedelta(days=1)
-    access_request.request_ending_at = datetime.now(timezone.utc) - timedelta(hours=12)
+    access_request.created_at = datetime.now(UTC) - timedelta(days=1)
+    access_request.request_ending_at = datetime.now(UTC) - timedelta(hours=12)
     access_request.requested_group_id = okta_group.id
     access_request.requester_user_id = user.id
     db.session.add(access_request)
@@ -158,7 +158,7 @@ async def test_never_disables_the_age_cutoff_but_not_the_requested_window(
     db.session.add(okta_group)
     await db.session.commit()
 
-    stale = datetime.now(timezone.utc) - timedelta(days=30)
+    stale = datetime.now(UTC) - timedelta(days=30)
 
     old_only = AccessRequestFactory.build()
     old_only.created_at = stale
@@ -167,7 +167,7 @@ async def test_never_disables_the_age_cutoff_but_not_the_requested_window(
 
     lapsed_window = AccessRequestFactory.build()
     lapsed_window.created_at = stale
-    lapsed_window.request_ending_at = datetime.now(timezone.utc) - timedelta(hours=12)
+    lapsed_window.request_ending_at = datetime.now(UTC) - timedelta(hours=12)
     lapsed_window.requested_group_id = okta_group.id
     lapsed_window.requester_user_id = user.id
 

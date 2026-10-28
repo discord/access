@@ -41,7 +41,6 @@ Scopes:
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import jwt
 from fastapi import HTTPException
@@ -109,7 +108,7 @@ def _parse_scopes(claim: object) -> frozenset[str]:
     return frozenset()
 
 
-async def resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
+async def resolve_identity(scope: Scope) -> MCPIdentity | None:
     """Resolve an ``MCPIdentity`` from a Cloudflare Access JWT.
 
     Returns ``None`` (defers to the next provider) when:

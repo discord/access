@@ -6,7 +6,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-
+from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import func, nullsfirst, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
@@ -16,20 +16,18 @@ from api.auth.permissions import require_access_admin
 from api.context import get_request_context
 from api.database import DbSession
 from api.models import AppTagMap, OktaUser, Tag
-from api.operations import CreateTag, DeleteTag
-from fastapi_pagination.ext.sqlalchemy import apaginate
-
-from api.pagination import Page, validated
 from api.models.tag import validate_constraint_propagation
+from api.operations import CreateTag, DeleteTag
+from api.pagination import Page, validated
 from api.routers._eager import group_tag_map_options
 from api.schemas import (
-    TagListItem,
     AuditLogSchema,
     CreateTagBody,
     DeleteMessage,
     EventType,
     SearchTagQuery,
     TagDetail,
+    TagListItem,
     UpdateTagBody,
 )
 
@@ -175,8 +173,8 @@ async def put_tag(
     # already stored. Runs before the setattr loop so a rejected edit leaves
     # the session unmutated.
     validate_constraint_propagation(
-        payload["constraints"] if "constraints" in payload else tag.constraints,
-        payload["propagate_to_roles"] if "propagate_to_roles" in payload else tag.propagate_to_roles,
+        payload.get("constraints", tag.constraints),
+        payload.get("propagate_to_roles", tag.propagate_to_roles),
     )
 
     for key in ("name", "description", "constraints", "enabled", "propagate_to_roles"):

@@ -1,6 +1,6 @@
 import inspect
 import logging
-from typing import AsyncContextManager, Dict, List, Optional
+from contextlib import AbstractAsyncContextManager
 
 import pluggy
 
@@ -10,7 +10,7 @@ metrics_reporter_plugin_name = "access_metrics_reporter"
 hookspec = pluggy.HookspecMarker(metrics_reporter_plugin_name)
 hookimpl = pluggy.HookimplMarker(metrics_reporter_plugin_name)
 
-_cached_metrics_reporter_hook: Optional[pluggy.HookRelay] = None
+_cached_metrics_reporter_hook: pluggy.HookRelay | None = None
 
 # Hooks whose value/tags carry per-call data. pluggy only forwards a caller
 # argument to an implementation when that parameter has no default, so an impl
@@ -32,7 +32,7 @@ class MetricsReporterPluginSpec:
         self,
         metric_name: str,
         value: float,
-        tags: Optional[Dict[str, str]],
+        tags: dict[str, str] | None,
         monotonic: bool = True,
     ) -> None:
         """
@@ -53,7 +53,7 @@ class MetricsReporterPluginSpec:
         self,
         metric_name: str,
         value: float,
-        tags: Optional[Dict[str, str]],
+        tags: dict[str, str] | None,
     ) -> None:
         """Record a gauge metric value (snapshot/current value)."""
 
@@ -62,8 +62,8 @@ class MetricsReporterPluginSpec:
         self,
         metric_name: str,
         value: float,
-        tags: Optional[Dict[str, str]],
-        buckets: Optional[List[float]] = None,
+        tags: dict[str, str] | None,
+        buckets: list[float] | None = None,
     ) -> None:
         """
         Record a value in a histogram/distribution.
@@ -82,7 +82,7 @@ class MetricsReporterPluginSpec:
         self,
         metric_name: str,
         value: float,
-        tags: Optional[Dict[str, str]],
+        tags: dict[str, str] | None,
     ) -> None:
         """
         Record a value for summary statistics (percentiles, min, max, etc).
@@ -92,7 +92,7 @@ class MetricsReporterPluginSpec:
         """
 
     @hookspec
-    def batch_metrics(self) -> AsyncContextManager[None]:
+    def batch_metrics(self) -> AbstractAsyncContextManager[None]:
         """
         Async context manager for batching multiple metric operations.
 
@@ -112,7 +112,7 @@ class MetricsReporterPluginSpec:
     @hookspec
     async def set_global_tags(
         self,
-        tags: Dict[str, str],
+        tags: dict[str, str],
     ) -> None:
         """Set global tags to be included with all metrics."""
 

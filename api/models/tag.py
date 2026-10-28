@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Any, NamedTuple, Optional, TypedDict
+from typing import Any, NamedTuple, TypedDict
 
 from api.exceptions import InvalidRequestError
 from api.models.core_models import OktaGroup, RoleGroup, RoleGroupMap, Tag, TagConstraint
@@ -10,7 +10,7 @@ from api.models.core_models import OktaGroup, RoleGroup, RoleGroupMap, Tag, TagC
 ConstraintValue = int | bool
 
 
-def coalesce_constraints(constraint_key: str, tags: list[Tag]) -> Optional[ConstraintValue]:
+def coalesce_constraints(constraint_key: str, tags: list[Tag]) -> ConstraintValue | None:
     coalesced_constraint_value = None
     constraint = Tag.CONSTRAINTS[constraint_key]
     for tag in tags:
@@ -25,8 +25,8 @@ def coalesce_constraints(constraint_key: str, tags: list[Tag]) -> Optional[Const
 
 
 def coalesce_ended_at(
-    constraint_key: str, tags: list[Tag], initial_ended_at: Optional[datetime], group_is_managed: bool
-) -> Optional[datetime]:
+    constraint_key: str, tags: list[Tag], initial_ended_at: datetime | None, group_is_managed: bool
+) -> datetime | None:
     # Only apply constraints if the group is managed
     if not group_is_managed:
         return initial_ended_at
@@ -100,8 +100,8 @@ class ConstraintSource(NamedTuple):
     #: The App for an `APP` origin, the source group for an association origin,
     #: and None for a `DIRECT` one. Named without "group" because it is not
     #: always a group.
-    source_id: Optional[str]
-    source_name: Optional[str]
+    source_id: str | None
+    source_name: str | None
 
 
 class ConstraintSourceEntry(TypedDict):
@@ -114,8 +114,8 @@ class ConstraintSourceEntry(TypedDict):
     tag_id: str
     tag_name: str
     origin: ConstraintOrigin
-    source_id: Optional[str]
-    source_name: Optional[str]
+    source_id: str | None
+    source_name: str | None
 
 
 class EffectiveConstraintEntry(TypedDict):
@@ -273,7 +273,7 @@ def constraint_sources(
     return _own_tag_sources(constraint_key, group, include_provenance) + _propagated_sources(constraint_key, group)
 
 
-def effective_constraint(constraint_key: str, group: OktaGroup) -> Optional[ConstraintValue]:
+def effective_constraint(constraint_key: str, group: OktaGroup) -> ConstraintValue | None:
     """Resolve the value of `constraint_key` actually in force on `group`.
 
     Coalesces every contributing tag under that constraint's own rule -- the
@@ -294,9 +294,7 @@ def effective_constraint(constraint_key: str, group: OktaGroup) -> Optional[Cons
     return _fold(Tag.CONSTRAINTS[constraint_key], sources) if sources else None
 
 
-def effective_ended_at(
-    constraint_key: str, group: OktaGroup, initial_ended_at: Optional[datetime]
-) -> Optional[datetime]:
+def effective_ended_at(constraint_key: str, group: OktaGroup, initial_ended_at: datetime | None) -> datetime | None:
     """Apply a time-limit constraint to a proposed access end date.
 
     Caps `initial_ended_at` at the limit `constraint_key` resolves to for
@@ -344,7 +342,7 @@ def _join_phrases(phrases: list[str]) -> str:
     return f"{', '.join(phrases[:-1])} and {phrases[-1]}"
 
 
-def validate_constraint_propagation(constraints: Optional[dict[str, Any]], propagate_to_roles: Optional[bool]) -> None:
+def validate_constraint_propagation(constraints: dict[str, Any] | None, propagate_to_roles: bool | None) -> None:
     """Reject a tag whose constraints cannot survive its propagation setting.
 
     Guards the invariant that a `PROPAGATION_REQUIRED_CONSTRAINT_KEYS`
@@ -426,7 +424,7 @@ def constraint_source_clause(constraint_key: str, group: OktaGroup) -> str:
 
 def _constraint_entry(
     constraint_key: str, constraint: TagConstraint, sources: list[ConstraintSource]
-) -> Optional[EffectiveConstraintEntry]:
+) -> EffectiveConstraintEntry | None:
     """One constraint's coalesced value and the sources that produced it.
 
     A source setting a flag to `False` imposes nothing -- the tag form writes

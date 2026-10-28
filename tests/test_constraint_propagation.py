@@ -16,7 +16,6 @@ from tests.factories import (
     TagFactory,
 )
 
-
 ONE_DAY = 86400
 
 

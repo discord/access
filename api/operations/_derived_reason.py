@@ -16,8 +16,6 @@ here keeps the stored shape identical across all three.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from api.models import OktaUserGroupMember
 
 USER_IN_ROLE_PREFIX = "User in role because: "
@@ -67,7 +65,7 @@ def _fit(user_half: str, role_half: str, budget: int) -> tuple[str, str]:
 
 
 def role_derived_reason(
-    user_in_role_reason: Optional[str], role_in_group_reason: Optional[str], *, is_owner: bool = False
+    user_in_role_reason: str | None, role_in_group_reason: str | None, *, is_owner: bool = False
 ) -> str:
     """Compose the reason stored on a membership or ownership a role confers.
 

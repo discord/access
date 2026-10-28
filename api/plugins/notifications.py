@@ -1,7 +1,7 @@
 import datetime
 import logging
 from enum import StrEnum
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pluggy
 
@@ -45,7 +45,7 @@ class NotificationHook(StrEnum):
 # hook -> (metric name, static tags) recorded once the hook fans out
 # successfully. Kept here (not at call sites) so the "sent" accounting lives
 # next to the spec it measures.
-_SENT_METRICS: dict[NotificationHook, tuple[str, Optional[Dict[str, str]]]] = {
+_SENT_METRICS: dict[NotificationHook, tuple[str, dict[str, str] | None]] = {
     NotificationHook.ACCESS_REQUEST_CREATED: ("notifications.access_request_created.sent", None),
     NotificationHook.ACCESS_REQUEST_COMPLETED: ("notifications.access_request_completed.sent", None),
     NotificationHook.ACCESS_EXPIRING_USER: ("notifications.expiring_access.sent", {"kind": "user"}),
@@ -58,7 +58,7 @@ _SENT_METRICS: dict[NotificationHook, tuple[str, Optional[Dict[str, str]]]] = {
 }
 
 
-async def _record_sent(metric_name: str, tags: Optional[Dict[str, str]] = None) -> None:
+async def _record_sent(metric_name: str, tags: dict[str, str] | None = None) -> None:
     try:
         coros = get_metrics_reporter_hook().record_counter(metric_name=metric_name, value=1, tags=tags)
     except Exception:
@@ -112,7 +112,7 @@ class NotificationPluginSpec:
         self,
         user: OktaUser,
         expiration_datetime: datetime.datetime,
-        okta_user_group_members: Optional[list[OktaUserGroupMember]],
+        okta_user_group_members: list[OktaUserGroupMember] | None,
     ) -> None:
         """Notify individuals that their access to a group is expiring soon"""
 
@@ -121,8 +121,8 @@ class NotificationPluginSpec:
         self,
         owner: OktaUser,
         expiration_datetime: datetime.datetime,
-        group_user_associations: Optional[list[OktaUserGroupMember]],
-        role_group_associations: Optional[list[RoleGroupMap]],
+        group_user_associations: list[OktaUserGroupMember] | None,
+        role_group_associations: list[RoleGroupMap] | None,
     ) -> None:
         """Notify group owners that individuals or roles access to a group is expiring soon"""
 
@@ -171,7 +171,7 @@ class NotificationPluginSpec:
     async def access_group_request_completed(
         self,
         group_request: GroupRequest,
-        group: Optional[OktaGroup],
+        group: OktaGroup | None,
         requester: OktaUser,
         approvers: list[OktaUser],
         notify_requester: bool,

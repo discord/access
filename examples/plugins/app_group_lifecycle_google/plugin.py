@@ -9,13 +9,14 @@ import asyncio
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from google.auth import default
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import HttpRequest
+
 from api.models import AppGroup
 from api.plugins.app_group_lifecycle import (
     AmbiguousOktaTargetError,
@@ -83,6 +84,10 @@ class GoogleGroupSyncError(Exception):
     a run that left groups in SYNC_ERROR would exit 0 and look clean. Conditions the plugin does
     not consider failures -- SYNC_SKIPPED and SYNC_PENDING -- deliberately do not raise.
     """
+
+
+class PushMappingCreationError(Exception):
+    """Raised when Okta rejects creating the push mapping and target group for a new Google group."""
 
 
 class _RetryingHttpRequest(HttpRequest):
@@ -395,7 +400,7 @@ class GoogleGroupManagerPlugin:
                     f"Failed to delete the Google group {google_group_id}, "
                     "possibly because it does not exist or Access lacks permissions"
                 )
-                return None
+                return
             raise
 
     async def _look_up_google_group_id(self, email: str) -> str | None:
@@ -456,7 +461,7 @@ class GoogleGroupManagerPlugin:
         """
         logger.debug(f"Reconciled {group.name}.")
         self._write_sync_status(ctx, group, SYNC_SYNCED, None)
-        ctx.set_status(group, STATUS_LAST_SYNCED_AT, datetime.now(timezone.utc).isoformat(), durable_on_failure=True)
+        ctx.set_status(group, STATUS_LAST_SYNCED_AT, datetime.now(UTC).isoformat(), durable_on_failure=True)
 
     def _mark_pending(self, ctx: AppGroupLifecycleContext, group: AppGroup, reason: str) -> None:
         """Record that this reconcile is waiting on Okta or Google to converge.
@@ -791,7 +796,7 @@ class GoogleGroupManagerPlugin:
                         # name already exists in the app, typically left behind by a deleted group
                         # whose mapping was removed without it. Name that cause in the recorded error;
                         # the handler below writes it as the sync status.
-                        raise Exception(
+                        raise PushMappingCreationError(
                             f"Okta could not create a push mapping for a new Google group "
                             f"'{configured_email_prefix}': {e}. If the Okta app already has a target "
                             f"group named '{configured_email_prefix}' that no push mapping uses, delete "

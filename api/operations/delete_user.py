@@ -1,13 +1,11 @@
 import asyncio
-from typing import Optional
 
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import (
     joinedload,
 )
 
-from sqlalchemy import func, or_, select, update
 from api.extensions import db
-from api.operations._fan_out import defer_or_drain_fan_out
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -17,12 +15,15 @@ from api.models import (
     OktaUserGroupMember,
     RoleRequest,
 )
-from api.operations import RejectAccessRequest, RejectGroupRequest, RejectRoleRequest
+from api.operations._fan_out import defer_or_drain_fan_out
+from api.operations.reject_access_request import RejectAccessRequest
+from api.operations.reject_group_request import RejectGroupRequest
+from api.operations.reject_role_request import RejectRoleRequest
 from api.services import okta
 
 
 class DeleteUser:
-    def __init__(self, *, user: OktaUser | str, sync_to_okta: bool = True, current_user_id: Optional[str] = None):
+    def __init__(self, *, user: OktaUser | str, sync_to_okta: bool = True, current_user_id: str | None = None):
         self.user_id = user if isinstance(user, str) else user.id
 
         self.sync_to_okta = sync_to_okta

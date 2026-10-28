@@ -1,12 +1,11 @@
+import logging
 import random
 import string
-from typing import Any, Optional, TypedDict, cast
+from typing import Any, TypedDict, cast
 
-import logging
-
-from api.context import get_request_context
 from sqlalchemy import func, select
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import OktaUser, Tag
 from api.models.tag import validate_constraint_propagation
@@ -20,7 +19,7 @@ class TagDict(TypedDict):
 
 
 class CreateTag:
-    def __init__(self, *, tag: Tag | TagDict, current_user_id: Optional[str] = None):
+    def __init__(self, *, tag: Tag | TagDict, current_user_id: str | None = None):
         id = self.__generate_id()
         if isinstance(tag, dict):
             tag_dict = cast(TagDict, tag)

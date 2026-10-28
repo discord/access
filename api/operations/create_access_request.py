@@ -1,14 +1,12 @@
+import logging
 import random
 import string
 from datetime import datetime
-from typing import Optional
 
-import logging
-
-from api.context import get_request_context
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import (
     AccessRequest,
@@ -21,9 +19,9 @@ from api.models import (
 )
 from api.models.app_group import get_access_owners, get_app_managers
 from api.models.okta_group import get_group_managers
+from api.operations._fan_out import defer_notification
 from api.operations.approve_access_request import ApproveAccessRequest
 from api.operations.reject_access_request import RejectAccessRequest
-from api.operations._fan_out import defer_notification
 from api.plugins import ConditionalAccessHook, NotificationHook, evaluate_conditional_access
 from api.schemas import AuditLogSchema, EventType
 
@@ -36,7 +34,7 @@ class CreateAccessRequest:
         requested_group: OktaGroup | str,
         request_ownership: bool = False,
         request_reason: str = "",
-        request_ending_at: Optional[datetime] = None,
+        request_ending_at: datetime | None = None,
     ):
         self.id = self.__generate_id()
 
@@ -49,7 +47,7 @@ class CreateAccessRequest:
 
         self.request_approvers = select()
 
-    async def execute(self) -> Optional[AccessRequest]:
+    async def execute(self) -> AccessRequest | None:
         requester = await db.session.get(OktaUser, self.requester_user_id)
         assert requester is not None
 

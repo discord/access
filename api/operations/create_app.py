@@ -1,13 +1,12 @@
+import logging
 import random
 import string
-from typing import Optional, TypedDict, cast
+from typing import TypedDict, cast
 
-import logging
-
-from api.context import get_request_context
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import with_polymorphic
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
 from api.models.app_group import app_owners_group_description
@@ -29,11 +28,11 @@ class CreateApp:
         self,
         *,
         app: App | AppDict,
-        tags: list[str] = [],
-        owner_id: Optional[str] = None,
-        owner_role_ids: Optional[list[str]] = None,
-        additional_app_groups: Optional[list[AppGroup] | list[GroupDict]] = None,
-        current_user_id: Optional[str] = None,
+        tags: list[str] | None = None,
+        owner_id: str | None = None,
+        owner_role_ids: list[str] | None = None,
+        additional_app_groups: list[AppGroup] | list[GroupDict] | None = None,
+        current_user_id: str | None = None,
     ):
         id = self.__generate_id()
         if isinstance(app, dict):
@@ -44,7 +43,7 @@ class CreateApp:
             app_model.id = id
             self.app = app_model
 
-        self.tag_ids = tags
+        self.tag_ids = tags or []
         self.owner_id = owner_id
         self.owner_role_ids = owner_role_ids
 
@@ -89,7 +88,7 @@ class CreateApp:
             "id",
             None,
         )
-        owner_role_ids: Optional[list[str]] = None
+        owner_role_ids: list[str] | None = None
         if self.owner_role_ids is not None:
             owner_roles = (
                 await db.session.scalars(

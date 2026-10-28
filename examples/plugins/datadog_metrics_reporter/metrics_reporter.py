@@ -1,8 +1,9 @@
 import logging
 import os
 import threading
-from contextlib import asynccontextmanager
-from typing import Any, AsyncContextManager, AsyncIterator, Dict, List, Optional
+from collections.abc import AsyncIterator
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from typing import Any
 
 import pluggy
 
@@ -26,7 +27,7 @@ def _init_datadog() -> Any:
         env = os.environ.get("ENV", "development")
 
         statsd_host = statsd_host_ip if statsd_host_ip else os.environ.get("DD_AGENT_HOST", "127.0.0.1")
-        statsd_port = int(os.environ.get("DD_DOGSTATSD_PORT", 8125))
+        statsd_port = int(os.environ.get("DD_DOGSTATSD_PORT", "8125"))
 
         # Determine environment tag
         env_tag = "prd" if env == "production" else "stg" if env == "staging" else "dev"
@@ -45,7 +46,7 @@ def _init_datadog() -> Any:
     except ImportError:
         logger.debug("Datadog package not available, metrics disabled")
         _datadog_client = None
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - metrics are optional; Access runs without them
         logger.warning(f"Failed to initialize Datadog: {e}")
         _datadog_client = None
 
@@ -57,12 +58,12 @@ class DatadogMetricsReporter:
 
     def __init__(self) -> None:
         self.client = _init_datadog()
-        self.global_tags: Dict[str, str] = {}
+        self.global_tags: dict[str, str] = {}
         self.batch_depth = 0
         self.batch_lock = threading.Lock()
-        self.batch_buffer: List[Dict[str, Any]] = []
+        self.batch_buffer: list[dict[str, Any]] = []
 
-    def _format_tags(self, tags: Optional[Dict[str, str]] = None) -> List[str]:
+    def _format_tags(self, tags: dict[str, str] | None = None) -> list[str]:
         """Convert tag dict to Datadog format and merge with global tags."""
         if not tags:
             tags = {}
@@ -77,7 +78,7 @@ class DatadogMetricsReporter:
 
     @metrics_reporter_hookimpl
     async def record_counter(
-        self, metric_name: str, value: float, tags: Optional[Dict[str, str]], monotonic: bool = True
+        self, metric_name: str, value: float, tags: dict[str, str] | None, monotonic: bool = True
     ) -> None:
         if not self.client:
             return
@@ -99,7 +100,7 @@ class DatadogMetricsReporter:
             self.client.increment(metric_name, value=value, tags=formatted_tags)
 
     @metrics_reporter_hookimpl
-    async def record_gauge(self, metric_name: str, value: float, tags: Optional[Dict[str, str]]) -> None:
+    async def record_gauge(self, metric_name: str, value: float, tags: dict[str, str] | None) -> None:
         if not self.client:
             return
 
@@ -118,8 +119,8 @@ class DatadogMetricsReporter:
         self,
         metric_name: str,
         value: float,
-        tags: Optional[Dict[str, str]],
-        buckets: Optional[List[float]] = None,
+        tags: dict[str, str] | None,
+        buckets: list[float] | None = None,
     ) -> None:
         if not self.client:
             return
@@ -140,7 +141,7 @@ class DatadogMetricsReporter:
             self.client.histogram(metric_name, value=value, tags=formatted_tags)
 
     @metrics_reporter_hookimpl
-    async def record_summary(self, metric_name: str, value: float, tags: Optional[Dict[str, str]]) -> None:
+    async def record_summary(self, metric_name: str, value: float, tags: dict[str, str] | None) -> None:
         if not self.client:
             return
 
@@ -156,7 +157,7 @@ class DatadogMetricsReporter:
             self.client.distribution(metric_name, value=value, tags=formatted_tags)
 
     @metrics_reporter_hookimpl
-    def batch_metrics(self) -> AsyncContextManager[None]:
+    def batch_metrics(self) -> AbstractAsyncContextManager[None]:
         @asynccontextmanager
         async def _batch_context() -> AsyncIterator[None]:
             with self.batch_lock:
@@ -193,7 +194,7 @@ class DatadogMetricsReporter:
         self.batch_buffer.clear()
 
     @metrics_reporter_hookimpl
-    async def set_global_tags(self, tags: Dict[str, str]) -> None:
+    async def set_global_tags(self, tags: dict[str, str]) -> None:
         """Set global tags to be included with all metrics."""
         self.global_tags.update(tags)
 

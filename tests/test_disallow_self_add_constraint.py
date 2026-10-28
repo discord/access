@@ -1,11 +1,10 @@
 from typing import Any
 
+from fastapi import FastAPI
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
-
-from fastapi import FastAPI
-
 from sqlalchemy import select
+
 from api.config import settings
 from api.extensions import Db
 from api.models import (
@@ -20,7 +19,6 @@ from api.models import (
 )
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
-from tests.helpers import db_count
 from tests.factories import (
     AppTagMapFactory,
     OktaGroupTagMapFactory,
@@ -28,6 +26,7 @@ from tests.factories import (
     RoleGroupFactory,
     TagFactory,
 )
+from tests.helpers import db_count
 
 
 async def test_disallow_self_add_modify_group_users(

@@ -22,8 +22,8 @@ they create such a row, by taking the minimum of the two. Anything that later
 shortens one of those inputs has to re-establish it.
 """
 
+from collections.abc import Collection
 from datetime import datetime
-from typing import Collection, Optional
 
 from sqlalchemy import func, or_, select, update
 
@@ -190,7 +190,7 @@ async def limit_roles_associated_with_groups(group_ids: Collection[str], *, is_o
     await limit_access_conferred_by_roles(associated_role_ids, end_at=end_at)
 
 
-async def propagating_seconds_limit(group_ids: Collection[str], constraint_key: str) -> Optional[int]:
+async def propagating_seconds_limit(group_ids: Collection[str], constraint_key: str) -> int | None:
     """The limit `group_ids`' tags impose on a role associated with them.
 
     Reads the groups' active tags directly rather than through

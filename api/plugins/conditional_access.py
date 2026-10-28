@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, List, Optional
+from typing import Any
 
 import pluggy
 
@@ -30,20 +30,20 @@ class ConditionalAccessHook(StrEnum):
 class ConditionalAccessResponse:
     approved: bool
     reason: str = ""
-    ending_at: Optional[datetime] = None
+    ending_at: datetime | None = None
 
 
 class ConditionalAccessPluginSpec:
     @hookspec
     async def access_request_created(
-        self, access_request: AccessRequest, group: OktaGroup, group_tags: List[Tag], requester: OktaUser
-    ) -> Optional[ConditionalAccessResponse]:
+        self, access_request: AccessRequest, group: OktaGroup, group_tags: list[Tag], requester: OktaUser
+    ) -> ConditionalAccessResponse | None:
         """Automatically approve, deny, or continue the access request."""
 
     @hookspec
     async def role_request_created(
-        self, role_request: RoleRequest, role: RoleGroup, group: OktaGroup, group_tags: List[Tag], requester: OktaUser
-    ) -> Optional[ConditionalAccessResponse]:
+        self, role_request: RoleRequest, role: RoleGroup, group: OktaGroup, group_tags: list[Tag], requester: OktaUser
+    ) -> ConditionalAccessResponse | None:
         """Automatically approve, deny, or continue the role request."""
 
     @hookspec
@@ -51,8 +51,8 @@ class ConditionalAccessPluginSpec:
         self,
         group_request: GroupRequest,
         requester: OktaUser,
-        app: Optional[App] = None,
-    ) -> Optional[ConditionalAccessResponse]:
+        app: App | None = None,
+    ) -> ConditionalAccessResponse | None:
         """Automatically approve, deny, or continue the group request.
 
         An approval creates the requested group and makes the requester its owner.
@@ -68,7 +68,7 @@ class ConditionalAccessPluginSpec:
 
 async def evaluate_conditional_access(
     hook: ConditionalAccessHook, /, **kwargs: Any
-) -> list[Optional[ConditionalAccessResponse]]:
+) -> list[ConditionalAccessResponse | None]:
     """Run an async conditional-access hook and return each plugin's response.
 
     This is the async replacement for the old ``@hookimpl(wrapper=True)``

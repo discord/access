@@ -1,18 +1,19 @@
 from datetime import datetime, timedelta
-from typing import Any, Dict, Protocol, cast
+from types import SimpleNamespace
+from typing import Any, Protocol, cast
 from unittest.mock import Mock
 
 import pytest
 from faker import Faker
+from fastapi import FastAPI
 from httpx import AsyncClient
 from okta.models.group import Group
 from pytest_mock import MockerFixture
-from fastapi import FastAPI
-
 from sqlalchemy import event, func, or_, select
+
 from api.auth import permissions as AuthorizationHelpers
-from api.extensions import Db, db
 from api.config import settings
+from api.extensions import Db, db
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -26,7 +27,9 @@ from api.models import (
     RoleGroup,
     Tag,
 )
+from api.models.app_group import app_owners_group_description
 from api.operations import CreateAccessRequest, ModifyGroupUsers, ModifyRoleGroups
+from api.routers.groups import _owner_group_plugin_config_changing
 from api.services import okta
 from tests.factories import (
     AppFactory,
@@ -38,10 +41,6 @@ from tests.factories import (
     OktaUserGroupMemberFactory,
     RoleGroupFactory,
 )
-from api.models.app_group import app_owners_group_description
-from types import SimpleNamespace
-
-from api.routers.groups import _owner_group_plugin_config_changing
 from tests.helpers import db_count
 from tests.request_factories import (
     AppGroupCreateBodyFactory,
@@ -367,7 +366,7 @@ async def _update_group_type(
     okta_group: OktaGroup,
     update_group_spy: Mock,
     group_type: str,
-    extra_data: Dict[str, Any] = {},
+    extra_data: dict[str, Any] | None = None,
     expected_tags_count: int = 0,
     url_for: Any = None,
 ) -> None:
@@ -378,7 +377,7 @@ async def _update_group_type(
         "name": "Updated",
         "description": f"new description {group_type}",
     }
-    data.update(extra_data)
+    data.update(extra_data or {})
 
     group_id = okta_group.id
     assert url_for is not None, "_update_group_type requires the url_for fixture"

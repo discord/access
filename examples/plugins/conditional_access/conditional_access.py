@@ -1,8 +1,5 @@
-from __future__ import print_function
-
 import logging
 import os
-from typing import List, Optional
 
 import pluggy
 
@@ -26,8 +23,8 @@ AUTO_APPROVED_TAG_NAMES = os.getenv("AUTO_APPROVED_TAG_NAMES", "Auto-Approve").s
 
 @request_hook_impl
 async def access_request_created(
-    access_request: AccessRequest, group: OktaGroup, group_tags: List[Tag], requester: OktaUser
-) -> Optional[ConditionalAccessResponse]:
+    access_request: AccessRequest, group: OktaGroup, group_tags: list[Tag], requester: OktaUser
+) -> ConditionalAccessResponse | None:
     """Auto-approve memberships to the Auto-Approved-Group group"""
 
     if not access_request.request_ownership:

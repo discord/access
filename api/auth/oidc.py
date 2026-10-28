@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 from authlib.integrations.starlette_client import OAuth
@@ -65,19 +65,19 @@ def register_oidc(app: FastAPI) -> None:
 _router = APIRouter(prefix="/oidc", tags=["oidc"])
 
 
-def _is_safe_next(next_url: Optional[str]) -> bool:
+def _is_safe_next(next_url: str | None) -> bool:
     # Reject absolute URLs and protocol-relative paths so `next` cannot bounce
     # the post-auth redirect to a third-party host.
     if not next_url or not next_url.startswith("/"):
         return False
-    if next_url.startswith("//") or next_url.startswith("/\\"):
+    if next_url.startswith(("//", "/\\")):
         return False
     parsed = urlparse(next_url)
     return not parsed.scheme and not parsed.netloc
 
 
 @_router.get("/login", name="oidc_login")
-async def login(request: Request, next: Optional[str] = None) -> RedirectResponse:
+async def login(request: Request, next: str | None = None) -> RedirectResponse:
     # The url_for fallback derives the callback from the inbound Host header.
     # ALLOWED_HOSTS (TrustedHostMiddleware) guards that surface; set
     # OIDC_OVERWRITE_REDIRECT_URI to pin a fixed callback behind a proxy.
