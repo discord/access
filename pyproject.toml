@@ -10,7 +10,7 @@ version = "2.0"
 requires-python = ">=3.13"
 dependencies = [
     # FastAPI
-    "fastapi>=0.139.0,<0.144",
+    "fastapi>=0.139.0,<0.157",
     "fastapi-pagination>=0.15.15,<0.17",
     "uvicorn[standard]>=0.51.0,<0.52",
     "gunicorn>=26.0.0,<27",
@@ -72,7 +72,7 @@ dev = [
     "ruff>=0.15.21,<0.18",
     # Typing
     # Exact pin: every 0.0.x release of ty may change its diagnostics.
-    "ty==0.0.88",
+    "ty==0.0.90",
     "types-python-dateutil>=2.9.0.20260807,<3",
     "types-cachetools>=7.0.0.20260713,<8",
     { include-group = "test" },
