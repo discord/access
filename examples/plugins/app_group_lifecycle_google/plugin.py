@@ -32,10 +32,15 @@ from api.plugins.app_group_lifecycle import (
 PLUGIN_ID = "google_group_manager"
 
 GOOGLE_GROUP_API_SCOPES = ["https://www.googleapis.com/auth/cloud-identity.groups"]
+GOOGLE_GROUP_SETTINGS_API_SCOPE = "https://www.googleapis.com/auth/apps.groups.settings"
 GOOGLE_API_NUM_RETRIES = 3
 
 ENV_OKTA_APP_ID = "GOOGLE_WORKSPACE_OKTA_APP_ID"
 ENV_DOMAIN = "GOOGLE_WORKSPACE_DOMAIN"
+# Optional. When set, every managed Google group's whoCanViewMembership is enforced to this value on
+# each reconcile, overriding whatever was set in Google. Unset, the plugin leaves the setting alone and
+# never calls the Groups Settings API.
+ENV_MEMBERSHIP_VISIBILITY = "GOOGLE_WORKSPACE_GROUP_MEMBERSHIP_VISIBILITY"
 
 # App config keys
 CONFIG_ENABLED = "enabled"
@@ -66,6 +71,9 @@ SYNC_ERROR = "error"
 SYNC_SKIPPED = "skipped"
 
 OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL = "googleGroupEmail"
+
+# The values the Groups Settings API accepts for whoCanViewMembership.
+GOOGLE_MEMBERSHIP_VISIBILITY_VALUES = ("ALL_IN_DOMAIN_CAN_VIEW", "ALL_MEMBERS_CAN_VIEW", "ALL_MANAGERS_CAN_VIEW")
 
 # Conservative subset of Google group local-part rules: lowercase alphanumerics
 # plus . _ - internally; must start and end alphanumeric.
@@ -123,10 +131,25 @@ class GoogleGroupManagerPlugin:
             raise ValueError(f"{ENV_DOMAIN} environment variable is required")
         self._domain = domain
 
-        credentials, _ = default(scopes=GOOGLE_GROUP_API_SCOPES)
+        membership_visibility = os.environ.get(ENV_MEMBERSHIP_VISIBILITY) or None
+        if membership_visibility is not None and membership_visibility not in GOOGLE_MEMBERSHIP_VISIBILITY_VALUES:
+            raise ValueError(
+                f"{ENV_MEMBERSHIP_VISIBILITY} must be one of {', '.join(GOOGLE_MEMBERSHIP_VISIBILITY_VALUES)}"
+            )
+        self._membership_visibility = membership_visibility
+
+        scopes = GOOGLE_GROUP_API_SCOPES + ([GOOGLE_GROUP_SETTINGS_API_SCOPE] if membership_visibility else [])
+        credentials, _ = default(scopes=scopes)
         self._groups_api = build(
             "cloudidentity", "v1", credentials=credentials, requestBuilder=_RetryingHttpRequest
         ).groups()
+        # Sharing settings such as membership visibility are not part of the Cloud Identity API;
+        # only the Groups Settings API exposes them.
+        self._group_settings_api = (
+            build("groupssettings", "v1", credentials=credentials, requestBuilder=_RetryingHttpRequest).groups()
+            if membership_visibility
+            else None
+        )
 
     # ---- Helpers ----
 
@@ -385,6 +408,48 @@ class GoogleGroupManagerPlugin:
         await self._execute_request(
             self._groups_api.patch(name=self._resource_name(google_group_id), body=body, updateMask=update_mask)
         )
+
+    async def _enforce_membership_visibility(
+        self, ctx: AppGroupLifecycleContext, group: AppGroup, email: str, visibility: str, claimed_this_pass: bool
+    ) -> bool:
+        """Set a Google group's whoCanViewMembership to ``visibility``, if it isn't already.
+
+        The Groups Settings API answers 404 for a group it can't see. Cloud Identity has already found
+        the group by this point, so a 404 on the pass that claimed it may be the settings API catching
+        up on a new group, and is recorded as pending. On any later pass it is not a lag, so it is an
+        error, as is any other failure, such as the API being disabled or the scope not granted.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The Access group being reconciled.
+            email: The Google group's full email, which is how the Groups Settings API keys a group.
+            visibility: The whoCanViewMembership value to enforce.
+            claimed_this_pass: Whether this reconcile is the one that linked the Google group to
+                ``group``.
+
+        Returns:
+            True when the setting is in place; False when a pending or error status was recorded.
+        """
+        try:
+            settings = await self._execute_request(self._group_settings_api.get(groupUniqueId=email))
+            if settings.get("whoCanViewMembership") != visibility:
+                logger.info(f"Setting membership visibility of Google group {email} to {visibility}")
+                await self._execute_request(
+                    self._group_settings_api.patch(groupUniqueId=email, body={"whoCanViewMembership": visibility})
+                )
+        except HttpError as e:
+            if claimed_this_pass and getattr(getattr(e, "resp", None), "status", None) == 404:
+                self._mark_pending(ctx, group, "Awaiting the Google group's settings to become available")
+            else:
+                self._mark_error(
+                    ctx,
+                    group,
+                    f"Could not set the Google group's membership visibility to {visibility}: {e}. Check that "
+                    f"the Groups Settings API is enabled and Access can use the {GOOGLE_GROUP_SETTINGS_API_SCOPE} "
+                    "scope.",
+                )
+            return False
+        return True
 
     async def _delete_google_group(self, google_group_id: str) -> None:
         try:
@@ -650,6 +715,7 @@ class GoogleGroupManagerPlugin:
             # Case 1: Retrieve an existing Google group already claimed by this Access group
             # This should generally be the case in all but the group's first or second reconcile.
             claimed_google_group_id = await self._get_owned_group_id(ctx, group)
+            claimed_this_pass = claimed_google_group_id is None
 
             if claimed_google_group_id is None:
                 # Case 2: Retrieve an existing Google group matching the configured email (created out-of-band)
@@ -824,7 +890,6 @@ class GoogleGroupManagerPlugin:
             if reconcile_error is not None:
                 self._mark_error(ctx, group, reconcile_error)
                 return
-
             # Ensure the push mapping exists; may defer if Okta hasn't imported yet. An ambiguous
             # target (duplicate imports sharing the email) won't self-heal, so it errors rather
             # than deferring forever. The create-via-push path above already recorded a mapping, so
@@ -855,6 +920,13 @@ class GoogleGroupManagerPlugin:
                 except MissingOktaTargetError:
                     self._mark_pending(ctx, group, "Awaiting Okta import of the Google group")
                     return
+
+            # Runs after linking so that a settings failure never keeps a group from being pushed.
+            # Enforced on adopted groups too, not backfilled from Google; see ENV_MEMBERSHIP_VISIBILITY.
+            if self._membership_visibility is not None and not await self._enforce_membership_visibility(
+                ctx, group, google_group["groupKey"]["id"], self._membership_visibility, claimed_this_pass
+            ):
+                return
 
             self._mark_synced(ctx, group)
         except Exception as e:
