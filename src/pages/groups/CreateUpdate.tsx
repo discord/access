@@ -377,9 +377,9 @@ function GroupDialog(props: GroupDialogProps) {
               onChange={(event, newValue) => {
                 setSelectedTags(newValue);
               }}
-              renderTags={(value: TagSummary[], getTagProps) =>
+              renderValue={(value: TagSummary[], getItemProps) =>
                 value.map((option: TagSummary, index: number) => (
-                  <Chip variant="outlined" label={option.name} {...getTagProps({index})} />
+                  <Chip variant="outlined" label={option.name} {...getItemProps({index})} />
                 ))
               }
               renderInput={(params) => <TextField {...params} label="Tags" placeholder="Tags" />}

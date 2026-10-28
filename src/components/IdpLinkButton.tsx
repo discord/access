@@ -30,7 +30,12 @@ export default function IdpLinkButton({url}: IdpLinkButtonProps) {
   }
 
   return (
-    <Tooltip title={`Open in ${idpName}`} placement="top" PopperProps={moveTooltip}>
+    <Tooltip
+      title={`Open in ${idpName}`}
+      placement="top"
+      slotProps={{
+        popper: moveTooltip,
+      }}>
       {button}
     </Tooltip>
   );

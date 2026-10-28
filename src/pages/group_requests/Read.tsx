@@ -1,9 +1,9 @@
 import React from 'react';
 import {Link as RouterLink, useNavigate, useParams} from 'react-router-dom';
 
-import ApprovedIcon from '@mui/icons-material/CheckCircleOutline';
+import ApprovedIcon from '@mui/icons-material/CheckCircleOutlineOutlined';
 import GroupRequestIcon from '@mui/icons-material/GroupAdd';
-import PendingIcon from '@mui/icons-material/HelpOutline';
+import PendingIcon from '@mui/icons-material/HelpOutlineOutlined';
 import RejectedIcon from '@mui/icons-material/HighlightOff';
 import Timeline from '@mui/lab/Timeline';
 import TimelineConnector from '@mui/lab/TimelineConnector';
@@ -573,7 +573,12 @@ export default function ReadGroupRequest() {
       <ChangeTitle title={`Group Request: ${requesterName} — ${titleGroupName}`} />
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
-          <Grid item xs={12} md={5} lg={3}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 5,
+              lg: 3,
+            }}>
             <Paper
               sx={{
                 p: 2,
@@ -606,7 +611,12 @@ export default function ReadGroupRequest() {
               </Avatar>
             </Paper>
           </Grid>
-          <Grid item xs={12} md={7} lg={9}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 7,
+              lg: 9,
+            }}>
             <Paper
               sx={{
                 p: 2,
@@ -616,7 +626,7 @@ export default function ReadGroupRequest() {
                 justifyContent: 'center',
               }}>
               <Grid container>
-                <Grid item xs={8} sx={{textAlign: 'center', wordBreak: 'break-word'}}>
+                <Grid sx={{textAlign: 'center', wordBreak: 'break-word'}} size={8}>
                   <Typography variant="h4">
                     {(groupRequest.requester?.deleted_at ?? null) != null ? (
                       <Link
@@ -652,9 +662,8 @@ export default function ReadGroupRequest() {
                 </Grid>
                 <Divider orientation="vertical" flexItem sx={{mr: '-1px'}} />
                 <Grid
-                  item
-                  xs={4}
-                  sx={{display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center'}}>
+                  sx={{display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center'}}
+                  size={4}>
                   <Typography variant="h6">Status</Typography>
                   <Typography variant="h4">
                     <b>{groupRequest.status}</b>
@@ -663,7 +672,7 @@ export default function ReadGroupRequest() {
               </Grid>
             </Paper>
           </Grid>
-          <Grid item xs={12}>
+          <Grid size={12}>
             <Timeline sx={{[`& .${timelineOppositeContentClasses.root}`]: {flex: 0.1}}}>
               <TimelineItem>
                 <TimelineOppositeContent sx={{m: 'auto 0'}} align="right">
@@ -718,30 +727,38 @@ export default function ReadGroupRequest() {
                       Requested Details
                     </Typography>
                     <Grid container spacing={1}>
-                      <Grid item xs={12}>
+                      <Grid size={12}>
                         <Typography variant="body2">
                           <b>Name:</b> {groupRequest.requested_group_name ?? '—'}
                         </Typography>
                       </Grid>
-                      <Grid item xs={12}>
+                      <Grid size={12}>
                         <Typography variant="body2">
                           <b>Type:</b> {GROUP_TYPE_ID_TO_LABELS[requestedGroupType] ?? requestedGroupType}
                         </Typography>
                       </Grid>
                       {requestedAppData && (
-                        <Grid item xs={12} sm={6}>
+                        <Grid
+                          size={{
+                            xs: 12,
+                            sm: 6,
+                          }}>
                           <Typography variant="body2">
                             <b>App:</b> {requestedAppData.name}
                           </Typography>
                         </Grid>
                       )}
-                      <Grid item xs={12}>
+                      <Grid size={12}>
                         <Typography variant="body2">
                           <b>Description:</b> {groupRequest.requested_group_description ?? '—'}
                         </Typography>
                       </Grid>
                       {groupRequest.requested_ownership_ending_at && (
-                        <Grid item xs={12} sm={6}>
+                        <Grid
+                          size={{
+                            xs: 12,
+                            sm: 6,
+                          }}>
                           <Typography variant="body2">
                             <b>Ownership Ending:</b>{' '}
                             {dayjs(groupRequest.requested_ownership_ending_at).startOf('second').fromNow()}
@@ -749,8 +766,14 @@ export default function ReadGroupRequest() {
                         </Grid>
                       )}
                       {requestedTagNames.length > 0 && (
-                        <Grid item xs={12}>
-                          <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
+                        <Grid size={12}>
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            sx={{
+                              flexWrap: 'wrap',
+                              alignItems: 'center',
+                            }}>
                             <Typography variant="body2">
                               <b>Tags:</b>
                             </Typography>
@@ -761,7 +784,7 @@ export default function ReadGroupRequest() {
                         </Grid>
                       )}
                       {requestPluginId && (
-                        <Grid item xs={12}>
+                        <Grid size={12}>
                           <PluginConfigDisplay
                             label="Plugin Configuration"
                             pluginId={requestPluginId}
@@ -831,8 +854,13 @@ export default function ReadGroupRequest() {
                                 <Typography variant="h6" sx={{mb: 1}}>
                                   Group Details
                                 </Typography>
-                                <Grid container spacing={2} alignItems="center">
-                                  <Grid item xs={6}>
+                                <Grid
+                                  container
+                                  spacing={2}
+                                  sx={{
+                                    alignItems: 'center',
+                                  }}>
+                                  <Grid size={6}>
                                     <FormControl size="small" margin="normal" fullWidth>
                                       <SelectElement
                                         label="Type"
@@ -855,7 +883,7 @@ export default function ReadGroupRequest() {
                                     </FormControl>
                                   </Grid>
                                   {groupType == 'app_group' ? (
-                                    <Grid item xs={6}>
+                                    <Grid size={6}>
                                       <FormControl margin="normal" fullWidth required>
                                         <AutocompleteElement<(typeof appSearchOptions)[number]>
                                           label="App"
@@ -958,24 +986,35 @@ export default function ReadGroupRequest() {
                                 {/* Top-aligned, not centred: the Tags column grows when the
                                     app contributes tags of its own, and centring would drop the
                                     duration field below the field beside it. */}
-                                <Grid container columnSpacing={2} rowSpacing={0} alignItems="flex-start">
+                                <Grid
+                                  container
+                                  columnSpacing={2}
+                                  rowSpacing={0}
+                                  sx={{
+                                    alignItems: 'flex-start',
+                                  }}>
                                   {ownershipTimeLimit != null && (
-                                    <Grid item xs={12}>
-                                      <Typography variant="subtitle2" color="text.accent" sx={{pt: 1}}>
+                                    <Grid size={12}>
+                                      <Typography
+                                        variant="subtitle2"
+                                        sx={{
+                                          color: 'text.accent',
+                                          pt: 1,
+                                        }}>
                                         {'Ownership is limited to ' +
                                           timeLimitLabel(ownershipTimeLimit) +
                                           ' by a tag constraint.'}
                                       </Typography>
                                     </Grid>
                                   )}
-                                  <Grid item xs={6}>
+                                  <Grid size={6}>
                                     <OwnershipEndingField
                                       ownershipTimeLimit={ownershipTimeLimit}
                                       constraintsBlocked={tagConstraints.blocked}
                                       setOwnershipUntil={setOwnershipUntil}
                                     />
                                   </Grid>
-                                  <Grid item xs={6}>
+                                  <Grid size={6}>
                                     <FormControl margin="normal" fullWidth>
                                       <TagsField
                                         options={tagSearchOptions}
@@ -989,7 +1028,7 @@ export default function ReadGroupRequest() {
                                 </Grid>
                                 <Grid>
                                   {ownershipUntil == 'custom' ? (
-                                    <Grid item xs={6} sx={{pr: 1}}>
+                                    <Grid sx={{pr: 1}} size={6}>
                                       <FormControl margin="normal" fullWidth>
                                         <DatePickerElement
                                           label="Custom End Date"
@@ -1116,8 +1155,14 @@ export default function ReadGroupRequest() {
                                   return null;
                                 }
                                 return (
-                                  <Grid item xs={12} key="tags">
-                                    <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
+                                  <Grid key="tags" size={12}>
+                                    <Stack
+                                      direction="row"
+                                      spacing={1}
+                                      sx={{
+                                        flexWrap: 'wrap',
+                                        alignItems: 'center',
+                                      }}>
                                       <Typography variant="body2">
                                         <b>Tags:</b>
                                       </Typography>
@@ -1146,7 +1191,7 @@ export default function ReadGroupRequest() {
                                 );
                               }
                               return (
-                                <Grid item xs={12} key={field.label}>
+                                <Grid key={field.label} size={12}>
                                   <Typography variant="body2">
                                     <b>{field.label}:</b>{' '}
                                     {field.changed ? (

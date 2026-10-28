@@ -8,10 +8,18 @@ export function renderUserOption(props: React.HTMLAttributes<HTMLLIElement>, opt
   const [displayName, email] = option.split(';');
   return (
     <li {...props} key={option}>
-      <Grid container alignItems="center">
-        <Grid item>
+      <Grid
+        container
+        sx={{
+          alignItems: 'center',
+        }}>
+        <Grid>
           <Box>{displayName}</Box>
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+            }}>
             {email}
           </Typography>
         </Grid>
@@ -56,15 +64,27 @@ export default function TableTopBar({title, link, children}: TableTopBarProps) {
   return (
     <Stack
       direction="row"
-      paddingTop={2}
-      paddingBottom={1}
-      paddingX={TABLE_TOP_BAR_PADDING_X}
-      gap={4}
-      justifyContent="space-between"
-      flexWrap="wrap"
-      alignItems="flex-end">
-      <Stack direction="row" gap={1} alignItems="center">
-        <Typography component="h5" variant="h5" color="text.accent">
+      sx={{
+        paddingTop: 2,
+        paddingBottom: 1,
+        paddingX: TABLE_TOP_BAR_PADDING_X,
+        gap: 4,
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        alignItems: 'flex-end',
+      }}>
+      <Stack
+        direction="row"
+        sx={{
+          gap: 1,
+          alignItems: 'center',
+        }}>
+        <Typography
+          component="h5"
+          variant="h5"
+          sx={{
+            color: 'text.accent',
+          }}>
           {title}
         </Typography>
         {link != null && (
@@ -73,7 +93,13 @@ export default function TableTopBar({title, link, children}: TableTopBarProps) {
           </IconButton>
         )}
       </Stack>
-      <Stack direction="row" flexWrap="wrap" gap={1} alignItems="center">
+      <Stack
+        direction="row"
+        sx={{
+          flexWrap: 'wrap',
+          gap: 1,
+          alignItems: 'center',
+        }}>
         {children}
       </Stack>
     </Stack>

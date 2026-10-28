@@ -253,7 +253,11 @@ function AddRolesDialog(props: AddRolesDialogProps) {
         onSuccess={(formData) => submit(formData)}>
         <DialogTitle>Add {addRolesText}</DialogTitle>
         <DialogContent>
-          <Typography variant="subtitle1" color="text.accent">
+          <Typography
+            variant="subtitle1"
+            sx={{
+              color: 'text.accent',
+            }}>
             {timeLimit
               ? (props.owner ? 'Ownership of ' : 'Membership to ') +
                 'this group is limited to ' +
@@ -261,7 +265,11 @@ function AddRolesDialog(props: AddRolesDialogProps) {
                 '.'
               : null}
           </Typography>
-          <Typography variant="subtitle1" color="text.accent">
+          <Typography
+            variant="subtitle1"
+            sx={{
+              color: 'text.accent',
+            }}>
             {disallowOwnerAdd && !isAccessAdmin(currentUser) ? (
               <>
                 Certain roles cannot be added to this group due to the{' '}
@@ -341,10 +349,18 @@ function AddRolesDialog(props: AddRolesDialogProps) {
                         opacity: disabled ? 0.5 : 1,
                         cursor: disabled ? 'not-allowed' : 'pointer',
                       }}>
-                      <Grid container alignItems="center">
-                        <Grid item>
+                      <Grid
+                        container
+                        sx={{
+                          alignItems: 'center',
+                        }}>
+                        <Grid>
                           <Box>{option.name}</Box>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: 'text.secondary',
+                            }}>
                             {GROUP_TYPE_ID_TO_LABELS[option.type]}
                             {disabled &&
                             disallowOwnerAdd &&
