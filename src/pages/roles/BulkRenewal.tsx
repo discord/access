@@ -36,17 +36,17 @@ import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailable
 
 import {useCurrentUser} from '../../authentication';
 
-import {useRoleMembersByIdPut, RoleMembersByIdPutError, RoleMembersByIdPutVariables} from '../../api/apiComponents';
 import {
-  GroupRefForMembership,
-  OktaUserGroupMemberDetail,
-  RoleGroupMapDetail,
-  RoleMember,
-  RoleMembersSummary,
-} from '../../api/apiSchemas';
-import {isAccessAdmin} from '../../authorization';
+  useGroupById,
+  useRoleMembersByIdPut,
+  RoleMembersByIdPutError,
+  RoleMembersByIdPutVariables,
+} from '../../api/apiComponents';
+import {OktaUserGroupMemberDetail, RoleGroupMapDetail, RoleMember, RoleMembersSummary} from '../../api/apiSchemas';
+import {isAccessAdmin, isGroupOwner} from '../../authorization';
 import BulkRenewalDataGrid from '../../components/BulkRenewalDataGrid';
 import accessConfig from '../../config/accessConfig';
+import CreateRoleRequest from '../role_requests/Create';
 
 interface Data {
   id: number;
@@ -105,6 +105,80 @@ interface BulkRenewalDialogProps {
 
 type BlockedPair = [string, string, string]; // role group name, owner/member, group name
 
+function RoleRenewalRequest({row, onClose}: {row: RoleGroupMapDetail; onClose: () => void}) {
+  const currentUser = useCurrentUser();
+  const roleQuery = useGroupById({pathParams: {groupId: row.role_group!.id}});
+  const groupQuery = useGroupById({pathParams: {groupId: row.group!.id}});
+  const role = roleQuery.data;
+  const group = groupQuery.data;
+
+  if (roleQuery.isError || groupQuery.isError || !role || !group) {
+    const failed = roleQuery.isError || groupQuery.isError;
+    return (
+      <Dialog open onClose={onClose}>
+        <DialogTitle>Request renewal</DialogTitle>
+        <DialogContent>
+          {failed ? (
+            <Alert severity="error">Unable to load the role or group. Please try again.</Alert>
+          ) : (
+            <CircularProgress aria-label="Loading renewal request" />
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Cancel</Button>
+          {failed && (
+            <Button
+              onClick={() => {
+                roleQuery.refetch();
+                groupQuery.refetch();
+              }}>
+              Try again
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+    );
+  }
+
+  if (
+    role.type !== 'role_group' ||
+    group.type === 'role_group' ||
+    role.deleted_at != null ||
+    group.deleted_at != null ||
+    group.is_managed === false ||
+    !isGroupOwner(currentUser, role.id)
+  ) {
+    return (
+      <Dialog open onClose={onClose}>
+        <DialogTitle>Request renewal</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning">
+            This renewal request is no longer available. Check that you still own the role and the group is managed by
+            Access.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Back</Button>
+        </DialogActions>
+      </Dialog>
+    );
+  }
+
+  return (
+    <CreateRoleRequest
+      enabled
+      currentUser={currentUser}
+      role={role}
+      group={group}
+      owner={row.is_owner ?? false}
+      renew
+      reason={`Renew existing ${row.is_owner ? 'ownership of' : 'membership to'} ${group.name} for ${role.name}.`}
+      open
+      setOpen={onClose}
+    />
+  );
+}
+
 function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const navigate = useNavigate();
   const currentUser = useCurrentUser();
@@ -112,6 +186,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const [requestError, setRequestError] = React.useState('');
   const [override, setOverride] = React.useState<boolean>(false);
   const [submitting, setSubmitting] = React.useState(false);
+  const [requestRow, setRequestRow] = React.useState<RoleGroupMapDetail | null>(null);
 
   const [numUpdates, setNumUpdates] = React.useState(0);
   const [groupUpdatesCompleted, setGroupUpdatesCompleted] = React.useState(0);
@@ -152,40 +227,36 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const role_memberships = React.useMemo(
     () =>
       currentUser.active_group_memberships?.reduce((out: Set<string>, curr: OktaUserGroupMemberDetail) => {
-        curr.active_group?.type == 'role_group' ? out.add(curr.active_group!.name!) : null;
+        curr.active_group?.type == 'role_group' ? out.add(curr.active_group.id) : null;
         return out;
       }, new Set<string>()) ?? new Set<string>(),
     [currentUser],
   );
 
-  // Per-row rather than coalesced: this marks which individual rows a self-add
-  // restriction blocks, so it reads each group's own entry from `by_group`
-  // instead of the roll-up.
-  // A role can be associated with more groups than one request may name, so
-  // this set is split across requests rather than truncated -- see
-  // `useConstraintsForGroups`. Answering for only the first 200 rows would
-  // drop the self-add warning on exactly the largest roles.
   const allRowGroupIds = React.useMemo(() => props.rows.map((row) => row.group?.id), [props.rows]);
   const rowConstraints = useConstraintsForGroups(allRowGroupIds);
-
-  const rowDisallowsSelfAdd = React.useCallback(
-    (group: GroupRefForMembership | null | undefined, isOwner: boolean) =>
-      rowConstraints.forGroup(group?.id).isSelfAddDisallowed(isOwner),
-    [rowConstraints],
+  const selfAddRestrictedRows = React.useMemo(
+    () =>
+      new Set(
+        props.rows
+          .filter(
+            (row) =>
+              role_memberships.has(row.role_group?.id ?? '') &&
+              rowConstraints.forGroup(row.group?.id).isSelfAddDisallowed(row.is_owner ?? false),
+          )
+          .map((row) => row.id),
+      ),
+    [props.rows, role_memberships, rowConstraints],
   );
-
-  // Memoised on the rows and the answer rather than recomputed per render:
-  // each lookup allocates and scans the group's constraint list, the grid
-  // re-renders on every toggle, and a role can have hundreds of rows.
-  const [groups_cant_add_self_owner, groups_cant_add_self_member] = React.useMemo(() => {
-    const owners = new Set<string>();
-    const members = new Set<string>();
-    for (const row of props.rows) {
-      if (rowDisallowsSelfAdd(row.group, true)) owners.add(row.group!.name);
-      if (rowDisallowsSelfAdd(row.group, false)) members.add(row.group!.name);
-    }
-    return [owners, members];
-  }, [props.rows, rowDisallowsSelfAdd]);
+  const admin = isAccessAdmin(currentUser);
+  const selectedRenewals = React.useMemo(
+    () => selectedYes.filter((row) => admin || !selfAddRestrictedRows.has(row.id)),
+    [selectedYes, admin, selfAddRestrictedRows],
+  );
+  const selectedExpirations = React.useMemo(
+    () => selectedNo.filter((row) => admin || !selfAddRestrictedRows.has(row.id)),
+    [selectedNo, admin, selfAddRestrictedRows],
+  );
 
   // Custom cell renderer for the ToggleButtonGroup
   const renderToggleButtons = (params: GridRenderCellParams) => {
@@ -218,14 +289,41 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 
     const currentValue = toggleStates[params.row.id] || '';
 
-    // Determine if toggle should be disabled based on your conditional
-    const isToggleEnabled = isAccessAdmin(currentUser)
-      ? true
-      : !(
-          role_memberships.has(params.row.roleName) &&
-          ((groups_cant_add_self_owner.has(params.row.groupName) && params.row.memberOrOwner == 'Owner') ||
-            (groups_cant_add_self_member.has(params.row.groupName) && params.row.memberOrOwner == 'Member'))
-        );
+    const row = props.rows.find((row) => row.id === params.row.id)!;
+    const isToggleEnabled = admin || (!rowConstraints.blocked && !selfAddRestrictedRows.has(row.id));
+
+    if (!admin && !rowConstraints.blocked && selfAddRestrictedRows.has(row.id)) {
+      const restriction = `A group tag prevents you from renewing this ${row.is_owner ? 'ownership' : 'membership'} directly because you are a member of the role.`;
+      const ownsRole = isGroupOwner(currentUser, row.role_group?.id ?? '');
+      const canRequest =
+        ownsRole &&
+        row.role_group?.deleted_at == null &&
+        row.group?.deleted_at == null &&
+        row.group?.is_managed !== false &&
+        (row.group?.type === 'okta_group' || row.group?.type === 'app_group');
+
+      return (
+        <Box sx={{whiteSpace: 'normal', py: 1, lineHeight: 'normal'}}>
+          <Typography variant="body2">{restriction}</Typography>
+          {canRequest ? (
+            <Button
+              size="small"
+              disabled={submitting}
+              tabIndex={params.hasFocus ? 0 : -1}
+              aria-label={`Request renewal for ${row.role_group?.name} in ${row.group?.name}`}
+              onClick={() => setRequestRow(row)}>
+              Request renewal
+            </Button>
+          ) : (
+            <Typography variant="body2">
+              {ownsRole
+                ? 'A role request is unavailable for this group. Reach out to another group owner to renew this access.'
+                : 'You do not own this role, so you cannot create a role request. Reach out to another group owner to renew this access.'}
+            </Typography>
+          )}
+        </Box>
+      );
+    }
 
     return (
       <ToggleButtonGroup
@@ -256,28 +354,22 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     {
       field: 'renew',
       headerName: 'Renew?',
-      flex: 1,
+      flex: 2,
+      minWidth: 280,
       renderCell: renderToggleButtons,
       sortable: false,
       filterable: false,
     },
   ];
 
-  const display_owner_add_constraint = React.useMemo(
-    () =>
-      !isAccessAdmin(currentUser) &&
-      props.rows.some(
-        (row) => role_memberships.has(row.role_group?.name!) && rowDisallowsSelfAdd(row.group, row.is_owner!),
-      ),
-    [currentUser, props.rows, role_memberships, rowDisallowsSelfAdd],
-  );
+  const display_owner_add_constraint = !admin && !rowConstraints.blocked && selfAddRestrictedRows.size > 0;
 
   // Which rows are actually being renewed, split by the side each was granted
   // on: a group's owner limit governs only the rows being renewed as
   // ownerships, and its member limit only the rest.
   const renewalMemberships = React.useMemo(
-    () => [...selectedYes, ...selectedNo].filter((m) => toggleStates[m.id!] === 'yes'),
-    [selectedYes, selectedNo, toggleStates],
+    () => [...selectedRenewals, ...selectedExpirations].filter((m) => toggleStates[m.id!] === 'yes'),
+    [selectedRenewals, selectedExpirations, toggleStates],
   );
   const ownerGroupIds = React.useMemo(
     () => renewalMemberships.filter((m) => m.is_owner).map((m) => m.group?.id),
@@ -387,25 +479,12 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   });
 
   const submit = (rolesForm: CreateRequestForm) => {
-    let blockedRoles: Array<BlockedPair> = [];
-    const blockedRoleSelected = selectedYes.reduce((out, roleGroupMap) => {
-      const blockedOwner =
-        role_memberships.has(roleGroupMap.role_group!.name) &&
-        groups_cant_add_self_owner.has(roleGroupMap.group!.name) &&
-        roleGroupMap.is_owner!;
-      const blockedMember =
-        role_memberships.has(roleGroupMap.role_group!.name) &&
-        groups_cant_add_self_member.has(roleGroupMap.group!.name) &&
-        !roleGroupMap.is_owner!;
+    if (submitting || constraintsBlocked) return;
 
-      blockedOwner
-        ? blockedRoles.push([roleGroupMap.role_group!.name, ' ownership of ', roleGroupMap.group!.name])
-        : null;
-      blockedMember
-        ? blockedRoles.push([roleGroupMap.role_group!.name, ' membership to ', roleGroupMap.group!.name])
-        : null;
-      return out || blockedOwner || blockedMember;
-    }, false);
+    const blockedRoles: Array<BlockedPair> = selectedRenewals
+      .filter((row) => selfAddRestrictedRows.has(row.id))
+      .map((row) => [row.role_group!.name, row.is_owner ? ' ownership of ' : ' membership to ', row.group!.name]);
+    const blockedRoleSelected = blockedRoles.length > 0;
 
     if (blockedRoleSelected && !override) {
       let blockedRolesString = '';
@@ -429,8 +508,8 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     setSubmitting(true);
 
     if (
-      selectedYes.length == 0 &&
-      selectedNo.filter((n) => !n.should_expire && dayjs(n.ended_at) >= dayjs()).length == 0
+      selectedRenewals.length == 0 &&
+      selectedExpirations.filter((n) => !n.should_expire && dayjs(n.ended_at) >= dayjs()).length == 0
     ) {
       setSubmitting(false);
       props.setOpen(false);
@@ -440,7 +519,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 
     // group selected RoleGroupMaps by group
     // creates map  { role ids : {'owner' : [group ids], 'member' : [group ids]} }
-    const grouped = selectedYes.reduce(
+    const grouped = selectedRenewals.reduce(
       (groups, item) => {
         (groups[item.role_group!.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(
           item.group!.id!,
@@ -450,10 +529,10 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
       {} as Record<string, Record<string, string[]>>,
     );
 
-    // group selectedNo RoleGroupMaps by group
+    // group selectedExpirations RoleGroupMaps by group
     // creates map { role ids : [RoleGroupMapDetail] }
     // only include if access is active and decision has not already been made
-    const doNotRenew = selectedNo.reduce(
+    const doNotRenew = selectedExpirations.reduce(
       (groups, item) => {
         if (!item.should_expire && dayjs(item.ended_at) >= dayjs()) {
           (groups[item.role_group!.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.id!);
@@ -514,11 +593,11 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
           </Typography>
           <Typography variant="subtitle1" color="text.accent">
             {display_owner_add_constraint
-              ? 'Due to group tag constraints, some roles may not be renewed since you are both a member of the role and an owner of the group. Please reach out to another group owner to renew the role membership to the group or create a role request if you own the role.'
+              ? 'Some rows cannot be renewed directly because of group tag constraints. Use Request renewal on a blocked row if you own the role; otherwise, follow the guidance on that row. Requests require approval and are sent separately from bulk renewals.'
               : null}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{mb: 2}}>
-            Selected for renewal: {selectedYes.length} | Selected to allow expiration: {selectedNo.length}
+            Selected for renewal: {selectedRenewals.length} | Selected to allow expiration: {selectedExpirations.length}
           </Typography>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
           <ConstraintsUnavailableAlert constraints={constraintsError} action="renewal" />
@@ -583,7 +662,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
           </Grid>
           <BulkRenewalDataGrid
             rows={dataRows}
-            rowHeight={45}
+            getRowHeight={(params) => (!admin && selfAddRestrictedRows.has(params.id as number) ? 'auto' : 45)}
             columns={columns}
             columnVisibilityModel={{
               id: false,
@@ -604,6 +683,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
           </Button>
         </DialogActions>
       </FormContainer>
+      {requestRow && <RoleRenewalRequest row={requestRow} onClose={() => setRequestRow(null)} />}
     </Dialog>
   );
 }
