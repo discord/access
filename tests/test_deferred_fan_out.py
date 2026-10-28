@@ -100,7 +100,7 @@ async def test_run_deferred_fan_out_logs_failures_at_error(caplog: pytest.LogCap
     recs = [r for r in caplog.records if "DeferOp ctx-1" in r.getMessage()]
     assert len(recs) == 1
     assert recs[0].levelno == logging.ERROR
-    assert recs[0].exc_info is not None
+    assert isinstance(recs[0].exc_info, tuple)
     assert "deferred task exploded" in str(recs[0].exc_info[1])
 
 
