@@ -72,7 +72,7 @@ def _extract_token(scope: Scope) -> str:
 
     Mirrors ``api.auth.cloudflare.extract_token`` but reads from
     ``scope["headers"]`` directly because we don't have a Starlette
-    ``Request`` object at this point — the FastMCP route runs outside
+    ``Request`` object at this point — the MCP route runs outside
     FastAPI's dependency injection.
     """
     headers = dict(scope.get("headers", []))

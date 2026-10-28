@@ -9,7 +9,7 @@ rollback-on-exception behavior.
 Session-scope lifecycle
 -----------------------
 MCP tool handlers do **not** execute in the ``/mcp`` HTTP request task.
-FastMCP's ``StreamableHTTPSessionManager`` runs the server (and therefore
+The SDK's ``StreamableHTTPSessionManager`` runs the server (and therefore
 the tool) in its own task, inside the session manager's task group. That
 matters for connection lifecycle: ``RequestIdMiddleware`` calls
 ``db.remove()`` from the *request* task, but a connection a tool checks
@@ -47,7 +47,7 @@ async def tool_session_scope() -> AsyncGenerator[None, None]:
 
     Each tool invocation gets its own ``async_scoped_session`` key so the
     session it uses (via ``db.session``) is created and removed within the
-    FastMCP server task, guaranteeing the connection returns to the pool
+    MCP server task, guaranteeing the connection returns to the pool
     from the task that checked it out. See the module docstring for why
     the ``/mcp`` request task's ``db.remove()`` can't do this.
     """
