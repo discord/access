@@ -12,7 +12,7 @@ dependencies = [
     # FastAPI
     "fastapi>=0.139.0,<0.144",
     "fastapi-pagination>=0.15.15,<0.17",
-    "uvicorn[standard]>=0.51.0,<0.52",
+    "uvicorn[standard]>=0.51.0,<0.55",
     "gunicorn>=26.0.0,<27",
     "itsdangerous>=2.2.0,<3",
     "click>=8.4.2,<9",
