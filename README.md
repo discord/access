@@ -586,6 +586,20 @@ ENABLE_MCP=true
 
 Then run `make run-backend` and point an MCP client (Claude Code, mcp-inspector, etc.) at `http://localhost:6060/mcp` with no auth credential. The dev provider grants both `read_all` and `create_requests`, so every tool is reachable.
 
+For a one-off run without editing `.env`, pass the flag to `make` instead:
+
+```
+make run-backend ENABLE_MCP=true
+```
+
+The backend log reports `Access MCP server initialized with 21 tools and 1 prompts` and `MCP session manager started` once `/mcp` is mounted. To connect Claude Code to it:
+
+```
+claude mcp add --transport http access-local http://localhost:6060/mcp
+```
+
+`CURRENT_OKTA_USER_EMAIL` must match an active user in your local database. When it doesn't, the dev provider logs a warning and defers, and every `/mcp` request gets a `401`.
+
 This path is gated on `ENV` and explicitly defers in any production-style environment, so the dev provider is safe to ship alongside the Cloudflare default.
 
 ## Plugins
