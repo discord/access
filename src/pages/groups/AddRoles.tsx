@@ -437,7 +437,3 @@ export default function AddRoles(props: AddRolesProps) {
     </>
   );
 }
-
-AddRoles.defaultProps = {
-  owner: false,
-};
