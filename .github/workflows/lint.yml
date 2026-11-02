@@ -23,6 +23,8 @@ jobs:
         run: npm install -g npm@11.16.0 --engine-strict=false
       - name: Install dependencies
         run: npm ci
+      - name: Check engines.node against locked packages
+        run: npm run check:engines
       - name: Check prettier formatting
         run: npx prettier --check .
       - name: Type check

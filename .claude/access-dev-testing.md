@@ -49,6 +49,11 @@ one-shot CI form. Coverage is partial — a handful of suites under `src/`, conc
 helpers and form logic rather than page rendering — so treat an untested component as normal here
 and add a suite alongside a change rather than assuming one exists to update.
 
+`npm run check:engines` fails when the root `engines.node` admits a Node version that some
+package in `package-lock.json` doesn't support; CI runs it in the `node-lint` job. When a
+dependency bump raises its own floor, narrow `engines.node` to the versions every package
+supports, then refresh the lockfile's root metadata with the npm version CI pins.
+
 ## The generated API client must not drift
 
 `src/api/` is generated from the backend's OpenAPI spec and is checked in. The
