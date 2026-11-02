@@ -190,6 +190,8 @@ export interface EffectiveConstraintsReader {
   isSelfAddDisallowed(isOwner: boolean): boolean;
   /** One group's own answer, for marking individual rows. */
   forGroup(groupId: string | undefined | null): {
+    /** False while unknown, including for an id the response did not answer for. */
+    answered: boolean;
     timeLimit(isOwner: boolean): number | null;
     isReasonRequired(isOwner: boolean): boolean;
     isSelfAddDisallowed(isOwner: boolean): boolean;
@@ -222,7 +224,10 @@ function reader(
     // An id the response did not answer for is unknown too. The endpoint drops
     // ids naming a group that no longer exists, so a row whose group was
     // deleted since the page rendered must not read as unrestricted.
-    forGroup: (groupId) => at(groupId ? (byGroup ?? {})[groupId] : undefined),
+    forGroup: (groupId) => {
+      const constraints = groupId ? (byGroup ?? {})[groupId] : undefined;
+      return {answered: !pending && error == null && constraints != null, ...at(constraints)};
+    },
   };
 }
 

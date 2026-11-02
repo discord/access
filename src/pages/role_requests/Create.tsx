@@ -104,7 +104,6 @@ interface CreateRequestContainerProps {
   group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
-  reason?: string;
 }
 interface CreateRequestForm {
   role: RoleGroupDetail;
@@ -202,7 +201,6 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       group: props.group,
       until: '1209600',
       ownerOrMember: props.owner != null ? (props.owner ? 'owner' : 'member') : undefined,
-      reason: props.reason,
     },
   });
 
@@ -503,7 +501,6 @@ interface CreateRequestDialogProps {
   group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
-  reason?: string;
 }
 
 function CreateRequestDialog(props: CreateRequestDialogProps) {
@@ -524,7 +521,6 @@ interface CreateRequestProps {
   group?: OktaGroupDetail | AppGroupDetail;
   owner?: boolean;
   renew?: boolean;
-  reason?: string;
   open?: boolean;
   setOpen?: (open: boolean) => void;
 }

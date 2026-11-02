@@ -172,7 +172,6 @@ function RoleRenewalRequest({row, onClose}: {row: RoleGroupMapDetail; onClose: (
       group={group}
       owner={row.is_owner ?? false}
       renew
-      reason={`Renew existing ${row.is_owner ? 'ownership of' : 'membership to'} ${group.name} for ${role.name}.`}
       open
       setOpen={onClose}
     />
@@ -249,6 +248,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     [props.rows, role_memberships, rowConstraints],
   );
   const admin = isAccessAdmin(currentUser);
+  const showsRestriction = (rowId: number) => !admin && !rowConstraints.blocked && selfAddRestrictedRows.has(rowId);
   const selectedRenewals = React.useMemo(
     () => selectedYes.filter((row) => admin || !selfAddRestrictedRows.has(row.id)),
     [selectedYes, admin, selfAddRestrictedRows],
@@ -290,9 +290,17 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     const currentValue = toggleStates[params.row.id] || '';
 
     const row = props.rows.find((row) => row.id === params.row.id)!;
-    const isToggleEnabled = admin || (!rowConstraints.blocked && !selfAddRestrictedRows.has(row.id));
+    const isToggleEnabled = admin || !rowConstraints.blocked;
 
-    if (!admin && !rowConstraints.blocked && selfAddRestrictedRows.has(row.id)) {
+    if (showsRestriction(row.id)) {
+      if (!rowConstraints.forGroup(row.group?.id).answered) {
+        return (
+          <Typography variant="body2" sx={{whiteSpace: 'normal', py: 1, lineHeight: 'normal'}}>
+            Unable to load this group's restrictions. It may have been deleted; refresh the page to try again.
+          </Typography>
+        );
+      }
+
       const restriction = `A group tag prevents you from renewing this ${row.is_owner ? 'ownership' : 'membership'} directly because you are a member of the role.`;
       const ownsRole = isGroupOwner(currentUser, row.role_group?.id ?? '');
       const canRequest =
@@ -662,7 +670,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
           </Grid>
           <BulkRenewalDataGrid
             rows={dataRows}
-            getRowHeight={(params) => (!admin && selfAddRestrictedRows.has(params.id as number) ? 'auto' : 45)}
+            getRowHeight={(params) => (showsRestriction(params.id as number) ? 'auto' : 45)}
             columns={columns}
             columnVisibilityModel={{
               id: false,
