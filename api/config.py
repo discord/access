@@ -210,7 +210,7 @@ class Settings(BaseSettings):
     # exposes the docs to authenticated users only, not the public internet.
     ENABLE_API_DOCS: bool = False
 
-    # MCP server. Off-by-default; flipping this to True mounts the FastMCP
+    # MCP server. Off-by-default; flipping this to True mounts the MCP
     # server at /mcp and activates the MCP auth middleware. Most operators
     # of the open-source distribution don't run LLM tooling and shouldn't
     # pay for any of it. See api/mcp/ for the implementation.
@@ -241,7 +241,7 @@ class Settings(BaseSettings):
     # Host + ``/mcp``); set explicitly behind a proxy that rewrites Host.
     MCP_RESOURCE_URL: Optional[str] = None
 
-    # DNS-rebinding protection for the FastMCP transport layer. Comma-
+    # DNS-rebinding protection for the MCP transport layer. Comma-
     # separated Host header allowlist (wildcards like ``"localhost:*"``
     # are supported). Empty (default) disables the check — relies on
     # the auth middleware + CORS + no-browser-client to cover the

@@ -1,16 +1,16 @@
 """Tests for the Sentry `before_send` filter in `api.app`.
 
-The MCP server wraps every exception a tool raises in a `ToolError`, so an
-ignored error raised inside a tool (e.g. a pydantic `ValidationError` from
-argument validation) surfaces as a non-ignored `ToolError` and would leak to
-Sentry. `_drop_wrapped_ignored_errors` closes that gap by walking the cause
+The MCP server wraps every exception a tool raises in a `ToolError` (a crash in
+an `UnexpectedToolError` subclass), so an ignored error raised inside a tool
+(e.g. an `HTTPException` from a helper) surfaces as a non-ignored `ToolError`
+and would leak to Sentry. `_drop_wrapped_ignored_errors` closes that gap by walking the cause
 chain for any type we already list in `ignore_errors`.
 """
 
 from __future__ import annotations
 
 from fastapi import HTTPException
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 from pydantic import BaseModel, ValidationError
 
 from api.app import _drop_wrapped_ignored_errors
@@ -41,9 +41,11 @@ def test_drops_tool_error_wrapping_validation_error() -> None:
 
 
 def test_drops_tool_error_wrapping_other_ignored_error() -> None:
-    """Any ignored type is dropped when wrapped, not just ValidationError."""
+    """Any ignored type is dropped when wrapped, not just ValidationError. The
+    SDK logs a crash (`UnexpectedToolError`) at ERROR, so this is the wrapper
+    Sentry actually sees."""
     try:
-        raise ToolError("Error executing tool") from HTTPException(status_code=403)
+        raise UnexpectedToolError("Error executing tool get_group") from HTTPException(status_code=403)
     except ToolError as exc:
         assert _drop_wrapped_ignored_errors({"event": True}, _hint(exc)) is None
 

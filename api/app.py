@@ -182,8 +182,10 @@ def _drop_wrapped_ignored_errors(event: dict, hint: dict) -> Optional[dict]:
     ``ignore_errors`` only matches the top-level exception type, but the MCP
     server wraps every exception a tool raises in a ToolError via
     ``raise ToolError(...) from e`` — so an ignored error raised inside a tool
-    (today: a pydantic ValidationError from argument validation) surfaces as a
-    non-ignored ToolError and leaks through. Walk the explicit ``__cause__``
+    surfaces as a non-ignored ToolError and leaks through. The SDK logs a
+    crash (any exception other than ToolError, ResourceError or MCPError) at
+    ERROR with that wrapper as ``exc_info``; an argument ValidationError is
+    logged at INFO and never reaches Sentry. Walk the explicit ``__cause__``
     chain — not implicit ``__context__`` — so a genuine failure that merely ran
     while handling an ignored error still alerts. Keep this set in sync with
     ``_configure_sentry``'s ``ignore_errors``.
@@ -428,7 +430,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         # Use a Route (not a Mount) so /mcp without trailing slash works;
         # /mcp/ would 405 some MCP clients. Insert the route at the
         # FastAPI level — it doesn't go through include_router because
-        # the handler is a raw ASGI app from FastMCP.
+        # the handler is a raw ASGI app from the MCP SDK.
         app.routes.append(get_mcp_route())
         # RFC 9728 metadata, served unauthenticated for client discovery.
         # Registered ahead of the SPA catch-all so the well-known path

@@ -510,7 +510,7 @@ Access can embed a [Model Context Protocol](https://modelcontextprotocol.io/) se
 
 ### Enabling
 
-Set `ENABLE_MCP=true` in your `.env.production`. When the flag is on, Access mounts the FastMCP server at `POST /mcp` and activates the MCP auth middleware. When off, the `/mcp` route is not registered and the MCP code path is never imported.
+Set `ENABLE_MCP=true` in your `.env.production`. When the flag is on, Access mounts the MCP server at `POST /mcp` and activates the MCP auth middleware. When off, the `/mcp` route is not registered and the MCP code path is never imported.
 
 `mcp[cli]` is pinned in [`pyproject.toml`](pyproject.toml) and imported unconditionally; only the runtime wiring is gated by the flag.
 

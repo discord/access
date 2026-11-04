@@ -11,11 +11,11 @@ Covers the seams that aren't exercised by the REST test suite:
     ``AuditLogSchema`` payload during a write.
 
 The MCP route is mounted as a Starlette ``Route`` whose handler is the
-FastMCP ``StreamableHTTPASGIApp``. Round-tripping a full Streamable HTTP
+SDK's ``StreamableHTTPASGIApp``. Round-tripping a full Streamable HTTP
 JSON-RPC session against an in-memory TestClient is fragile across MCP
 SDK versions, so most tool-level tests call the registered tool
 function directly with an ``MCPIdentity`` bound on the context — the
-exact code path FastMCP would take, minus the JSON-RPC framing.
+exact code path the SDK would take, minus the JSON-RPC framing.
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ def with_mcp_enabled() -> Generator[None, None, None]:
     prev = settings.ENABLE_MCP
     settings.ENABLE_MCP = True
     # Reset the cached server singleton so subsequent create_app() calls
-    # construct a fresh FastMCP rather than reusing a stale one.
+    # construct a fresh MCPServer rather than reusing a stale one.
     from api.mcp import server as _srv
 
     _srv._mcp_server = None
@@ -152,7 +152,7 @@ async def test_authenticated_request_proceeds_past_middleware(
     a = create_app(testing=True)
     async with _mcp_client(a) as client:
         r = await client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "initialize"})
-        # We accept any non-401 — FastMCP may 400/406 on a malformed
+        # We accept any non-401 — the SDK may 400/406 on a malformed
         # body, but it's past the auth gate, which is what we care about.
         assert r.status_code != 401, f"Auth gate rejected a valid identity: {r.status_code} {r.text}"
 
@@ -164,7 +164,7 @@ async def test_provider_chain_first_non_none_wins(
     """The middleware walks dev → cloudflare → oidc in that order and
     takes the first non-None identity. Exercises the chain logic
     directly against ``MCPAuthMiddleware`` rather than an HTTP client so
-    each iteration is independent of FastMCP's session-manager lifecycle
+    each iteration is independent of the session-manager lifecycle
     (which can only ``.run()`` once per instance).
     """
     dev_id = MCPIdentity(user_id="dev-user", scopes=ALL_V1_SCOPES)
@@ -241,7 +241,7 @@ async def test_read_tool_over_http_returns_its_db_connection(
     return its pooled DB connection to the pool.
 
     Regression test for the connection leak where MCP tools run in the
-    FastMCP session-manager task (not the ``/mcp`` request task), so the
+    SDK's session-manager task (not the ``/mcp`` request task), so the
     request task's ``RequestIdMiddleware`` teardown closes the session
     from the wrong task and the connection is never checked back in —
     surfacing later as SQLAlchemy's "garbage collector is trying to clean

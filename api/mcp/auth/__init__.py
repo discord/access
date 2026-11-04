@@ -60,19 +60,19 @@ class MCPIdentity:
 class MCPAuthenticationError(Exception):
     """Raised by tool helpers when no identity is present on the active
     context — should never happen in production because the ASGI auth
-    middleware short-circuits with a 401 before the FastMCP dispatch
+    middleware short-circuits with a 401 before the MCP dispatch
     runs, but the explicit error makes test failures legible.
     """
 
 
 class MCPScopeError(Exception):
     """Raised by ``require_scope`` when the active identity does not
-    carry the required scope. FastMCP catches this and returns it to the
-    client as a tool error.
+    carry the required scope. ``requires_scope`` catches this and returns
+    it to the client as a JSON error envelope.
     """
 
 
-# ContextVar set by the ASGI auth middleware before FastMCP dispatch and
+# ContextVar set by the ASGI auth middleware before MCP dispatch and
 # cleared on the way out. Per-tool helpers read it.
 _mcp_identity: contextvars.ContextVar[Optional[MCPIdentity]] = contextvars.ContextVar(
     "access_mcp_identity", default=None
@@ -135,7 +135,7 @@ def requires_scope(scope: str) -> Callable[[F], F]:
     tool handler runs. On a missing scope, returns the canonical
     ``{"error": "..."}`` JSON envelope (same shape tool handlers use for
     every other failure) instead of raising — keeps the contract stable
-    across FastMCP versions, which handle exceptions inconsistently.
+    across MCP SDK versions, which handle exceptions inconsistently.
 
     The MCP Python SDK ships a route-level ``RequireAuthMiddleware`` for
     a flat ``required_scopes`` list, but no per-tool decorator — and our
@@ -149,11 +149,11 @@ def requires_scope(scope: str) -> Callable[[F], F]:
         async def list_groups(...): ...
 
     ``functools.wraps`` preserves the wrapped function's signature so
-    FastMCP's schema introspection sees the original parameter list.
+    the SDK's schema introspection sees the original parameter list.
 
     Besides enforcing the scope, the wrapper binds a per-call DB session
     scope (via ``tool_session_scope``) so any connection the tool checks
-    out is returned to the pool from the FastMCP server task that opened
+    out is returned to the pool from the MCP server task that opened
     it — the ``/mcp`` request task's ``db.remove()`` runs in a different
     task and would otherwise leak it (see ``api.mcp.db``).
     """

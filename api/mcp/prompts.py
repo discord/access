@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.mcpserver import MCPServer
 
 # Kept deliberately short — every MCP session re-issues this text to the
 # client. Goal: orient the LLM, point at the most useful tools, signal
@@ -148,8 +148,8 @@ def _request_access_prompt(group_or_role: str = "") -> str:
     )
 
 
-def register_prompts(mcp: "FastMCP") -> None:
-    """Register the v1 prompts on the given FastMCP instance."""
+def register_prompts(mcp: "MCPServer") -> None:
+    """Register the v1 prompts on the given MCPServer instance."""
 
     @mcp.prompt(name="request_access", description=REQUEST_ACCESS_PROMPT_DESC)
     def request_access(group_or_role: str = "") -> str:

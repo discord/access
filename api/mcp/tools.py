@@ -40,11 +40,11 @@ Each tool mirrors the corresponding REST endpoint:
     plugin hooks, and conditional-access flows fire identically.
 
 Returns are JSON strings (the MCP tool result wire shape). Errors are
-returned as ``{"error": "..."}`` strings rather than raised — FastMCP's
+returned as ``{"error": "..."}`` strings rather than raised — the SDK's
 exception-to-tool-error path is non-deterministic across versions and a
 JSON string keeps the error contract stable.
 
-Tool handlers are async (``async def``) — FastMCP runs them natively on
+Tool handlers are async (``async def``) — the SDK runs them natively on
 the event loop, and every DB touch goes through the request-scoped
 AsyncSession exposed by ``api.extensions.db``.
 """
@@ -116,7 +116,7 @@ from api.schemas import (
 from api.schemas.requests_schemas import _AppGroupRequestBody
 
 if TYPE_CHECKING:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.mcpserver import MCPServer
 
 logger = logging.getLogger(__name__)
 
@@ -134,22 +134,22 @@ MCP_DEFAULT_PAGE_SIZE = 50
 # defense remains: writes only file PENDING proposals, and approval is
 # never exposed via MCP.
 #
-# Reads: pure DB reads of Access state. openWorldHint=False because the
+# Reads: pure DB reads of Access state. open_world_hint=False because the
 # tool's domain of interaction is bounded (Access's DB).
 _READ_ANNOTATIONS = ToolAnnotations(
-    readOnlyHint=True,
-    openWorldHint=False,
+    read_only_hint=True,
+    open_world_hint=False,
 )
-# Writes: file PENDING request rows. destructiveHint=False is the honest
+# Writes: file PENDING request rows. destructive_hint=False is the honest
 # framing — these tools do not effect a state change on their own; a
 # human still has to approve through a different surface. Not idempotent
 # (each call creates a fresh request record and emits an audit log entry,
 # even though the supersede-prior-pending logic ends older duplicates).
 _WRITE_PROPOSAL_ANNOTATIONS = ToolAnnotations(
-    readOnlyHint=False,
-    destructiveHint=False,
-    idempotentHint=False,
-    openWorldHint=False,
+    read_only_hint=False,
+    destructive_hint=False,
+    idempotent_hint=False,
+    open_world_hint=False,
 )
 
 
@@ -167,7 +167,7 @@ _group_adapter: TypeAdapter[Any] = TypeAdapter(GroupDetail)
 def _error(message: str) -> str:
     """Build the canonical JSON error envelope. Tool handlers return this
     as a string rather than raising so the contract is stable across
-    FastMCP versions and across clients."""
+    MCP SDK versions and across clients."""
     return json.dumps({"error": message})
 
 
@@ -348,8 +348,8 @@ def _tag_load_options() -> tuple:
 # ---------------------------------------------------------------------------
 
 
-def register_tools(mcp: "FastMCP") -> None:
-    """Register every v1 tool on the given FastMCP instance.
+def register_tools(mcp: "MCPServer") -> None:
+    """Register every v1 tool on the given MCPServer instance.
 
     Pattern:
       - Each handler carries ``@requires_scope(MCP_SCOPE_*)`` between
@@ -377,7 +377,7 @@ def register_tools(mcp: "FastMCP") -> None:
 # --- Groups -----------------------------------------------------------------
 
 
-def _register_group_tools(mcp: "FastMCP") -> None:
+def _register_group_tools(mcp: "MCPServer") -> None:
     @mcp.tool(
         name="list_groups",
         title="List groups",
@@ -512,7 +512,7 @@ def _register_group_tools(mcp: "FastMCP") -> None:
 # --- Roles ------------------------------------------------------------------
 
 
-def _register_role_tools(mcp: "FastMCP") -> None:
+def _register_role_tools(mcp: "MCPServer") -> None:
     @mcp.tool(
         name="list_roles",
         title="List roles",
@@ -604,7 +604,7 @@ def _register_role_tools(mcp: "FastMCP") -> None:
 # --- Apps -------------------------------------------------------------------
 
 
-def _register_app_tools(mcp: "FastMCP") -> None:
+def _register_app_tools(mcp: "MCPServer") -> None:
     @mcp.tool(
         name="list_apps",
         title="List apps",
@@ -669,7 +669,7 @@ def _register_app_tools(mcp: "FastMCP") -> None:
 # --- Users ------------------------------------------------------------------
 
 
-def _register_user_tools(mcp: "FastMCP") -> None:
+def _register_user_tools(mcp: "MCPServer") -> None:
     @mcp.tool(
         name="list_users",
         title="List users",
@@ -747,7 +747,7 @@ def _register_user_tools(mcp: "FastMCP") -> None:
 # --- Tags -------------------------------------------------------------------
 
 
-def _register_tag_tools(mcp: "FastMCP") -> None:
+def _register_tag_tools(mcp: "MCPServer") -> None:
     @mcp.tool(
         name="list_tags",
         title="List tags",
@@ -806,7 +806,7 @@ def _register_tag_tools(mcp: "FastMCP") -> None:
 # --- Access requests --------------------------------------------------------
 
 
-def _register_access_request_tools(mcp: "FastMCP") -> None:
+def _register_access_request_tools(mcp: "MCPServer") -> None:
     @mcp.tool(
         name="list_access_requests",
         title="List access requests",
@@ -897,7 +897,7 @@ def _register_access_request_tools(mcp: "FastMCP") -> None:
 # --- Role requests ----------------------------------------------------------
 
 
-def _register_role_request_tools(mcp: "FastMCP") -> None:
+def _register_role_request_tools(mcp: "MCPServer") -> None:
     @mcp.tool(
         name="list_role_requests",
         title="List role requests",
@@ -976,7 +976,7 @@ def _register_role_request_tools(mcp: "FastMCP") -> None:
 # --- Group requests ---------------------------------------------------------
 
 
-def _register_group_request_tools(mcp: "FastMCP") -> None:
+def _register_group_request_tools(mcp: "MCPServer") -> None:
     @mcp.tool(
         name="list_group_requests",
         title="List group requests",
@@ -1053,7 +1053,7 @@ def _register_group_request_tools(mcp: "FastMCP") -> None:
 # --- Audit ------------------------------------------------------------------
 
 
-def _register_audit_tool(mcp: "FastMCP") -> None:
+def _register_audit_tool(mcp: "MCPServer") -> None:
     @mcp.tool(
         name="list_audit_entries",
         title="List access history",
@@ -1152,7 +1152,7 @@ def _register_audit_tool(mcp: "FastMCP") -> None:
 # --- Write tools ------------------------------------------------------------
 
 
-def _register_write_tools(mcp: "FastMCP") -> None:
+def _register_write_tools(mcp: "MCPServer") -> None:
     @mcp.tool(
         name="create_access_request",
         title="Submit access request",

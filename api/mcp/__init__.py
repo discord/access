@@ -2,7 +2,7 @@
 
 Off by default. ``api.app.create_app`` only constructs / mounts the server
 when ``settings.ENABLE_MCP`` is true. See ``api/mcp/server.py`` for the
-FastMCP construction, ``api/mcp/auth/`` for the pluggable auth layer, and
+``MCPServer`` construction, ``api/mcp/auth/`` for the pluggable auth layer, and
 ``api/mcp/tools.py`` for the tool registrations.
 
 This module deliberately exposes ``__all__`` only — the rest of the

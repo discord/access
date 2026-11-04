@@ -1,11 +1,12 @@
-"""FastMCP server construction, ASGI auth middleware, and lifespan.
+"""MCP server construction, ASGI auth middleware, and lifespan.
 
 Wiring overview:
 
-  1. ``create_mcp_server`` builds the singleton ``FastMCP`` with
-     ``stateless_http=True`` and DNS-rebinding protection off (the
-     deployment's edge — Cloudflare or otherwise — handles that
-     perimeter). All tools and prompts are registered here.
+  1. ``create_mcp_server`` builds the singleton ``MCPServer``, registers
+     every tool and prompt, and builds its Streamable HTTP session
+     manager with ``stateless_http=True`` and DNS-rebinding protection
+     off by default (the deployment's edge — Cloudflare or otherwise —
+     handles that perimeter).
   2. ``get_mcp_route`` returns a Starlette ``Route`` (not a ``Mount``)
      bound at ``/mcp`` so requests without a trailing slash work — some
      MCP clients POST to ``/mcp`` bare and ``Mount`` 405s on that path.
@@ -17,7 +18,7 @@ Wiring overview:
      log can distinguish MCP-driven entries. Returns 401 when every
      provider returns None.
   4. ``mcp_lifespan`` is an async context manager that the FastAPI app
-     enters during its lifespan so the FastMCP session manager's task
+     enters during its lifespan so the session manager's task
      group is alive while requests are served.
 
 The FastAPI app-wide ``Depends(require_authenticated)`` does NOT
@@ -36,8 +37,8 @@ from typing import AsyncGenerator, Optional
 
 from urllib.parse import urlsplit, urlunsplit
 
-from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.server import StreamableHTTPASGIApp
+from mcp.server.mcpserver import MCPServer
+from mcp.server.streamable_http_manager import StreamableHTTPASGIApp
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -70,15 +71,15 @@ _AS_METADATA_SUFFIXES = (
 )
 
 # Module-level singleton so the lifespan and route helpers reference the
-# same FastMCP instance. Constructed lazily by ``create_mcp_server`` and
+# same MCPServer instance. Constructed lazily by ``create_mcp_server`` and
 # torn down by reset to None in tests if needed.
-_mcp_server: FastMCP | None = None
+_mcp_server: MCPServer | None = None
 
 
-def create_mcp_server() -> FastMCP:
-    """Build the Access MCP server. Idempotent — repeat calls return
-    the same instance so the lifespan and the route refer to the same
-    session manager."""
+def create_mcp_server() -> MCPServer:
+    """Build the Access MCP server and its session manager. Idempotent —
+    repeat calls return the same instance so the lifespan and the route
+    refer to the same session manager."""
     global _mcp_server
     if _mcp_server is not None:
         return _mcp_server
@@ -97,18 +98,24 @@ def create_mcp_server() -> FastMCP:
     # allowlist (operators set this for defense-in-depth or for local
     # dev with a browser open).
     allowed_hosts = [h.strip() for h in (settings.MCP_ALLOWED_HOSTS or "").split(",") if h.strip()]
-    mcp = FastMCP(
-        "Access",
-        instructions=ACCESS_MCP_INSTRUCTIONS,
+    mcp = MCPServer("Access", instructions=ACCESS_MCP_INSTRUCTIONS)
+
+    register_tools(mcp)
+    register_prompts(mcp)
+
+    # Builds ``mcp.session_manager``. Called exactly once: each call
+    # replaces the session manager, so a second call would leave the
+    # route holding a manager the lifespan never starts. Pass
+    # ``transport_security`` explicitly even when empty — left as None,
+    # the SDK enables DNS-rebinding protection for its default
+    # ``127.0.0.1`` host and rejects every real Host header with a 421.
+    mcp.streamable_http_app(
         stateless_http=True,
         transport_security=TransportSecuritySettings(
             enable_dns_rebinding_protection=bool(allowed_hosts),
             allowed_hosts=allowed_hosts,
         ),
     )
-
-    register_tools(mcp)
-    register_prompts(mcp)
 
     logger.info(
         f"Access MCP server initialized with {len(mcp._tool_manager._tools)} tools "
@@ -119,7 +126,7 @@ def create_mcp_server() -> FastMCP:
     return mcp
 
 
-def get_mcp_server() -> FastMCP:
+def get_mcp_server() -> MCPServer:
     if _mcp_server is None:
         raise RuntimeError("MCP server has not been created. Call create_mcp_server() first.")
     return _mcp_server
@@ -135,11 +142,7 @@ def get_mcp_route() -> Route:
     ``/mcp/`` and 405 on bare-``/mcp`` POSTs, which is what some MCP
     clients send.
     """
-    mcp = get_mcp_server()
-    # Force creation of the session manager — ``streamable_http_app``
-    # is a builder that initializes it lazily.
-    mcp.streamable_http_app()
-    handler = StreamableHTTPASGIApp(mcp.session_manager)
+    handler = StreamableHTTPASGIApp(get_mcp_server().session_manager)
     # ``methods=None`` allows every HTTP verb (GET, POST, DELETE) the MCP
     # Streamable-HTTP transport uses for session resumption / aborts.
     return Route(MCP_PATH, endpoint=handler, methods=None)
@@ -147,16 +150,14 @@ def get_mcp_route() -> Route:
 
 @asynccontextmanager
 async def mcp_lifespan() -> AsyncGenerator[None, None]:
-    """Run the FastMCP session manager alongside the parent app.
+    """Run the MCP session manager alongside the parent app.
 
     Entered from ``api.app.create_app``'s lifespan when ``ENABLE_MCP`` is
     true. Without this the session manager's anyio TaskGroup never
     starts and the first ``/mcp`` request 500s with "Task group is not
     initialized."
     """
-    mcp = get_mcp_server()
-    mcp.streamable_http_app()  # idempotent — guarantees session_manager exists
-    async with mcp.session_manager.run():
+    async with get_mcp_server().session_manager.run():
         logger.info("MCP session manager started")
         try:
             yield
@@ -290,7 +291,7 @@ class MCPAuthMiddleware:
     ``BaseHTTPMiddleware``: we need direct access to ``scope["headers"]``
     (no Starlette ``Request`` materialization) and we want to bind
     ContextVars on the *outer* dispatch so they're visible during the
-    FastMCP handler's threadpool work too.
+    MCP handler's work too.
     """
 
     def __init__(self, app: ASGIApp) -> None:
