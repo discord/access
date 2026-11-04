@@ -26,7 +26,7 @@ that area:
 ## Stack
 
 **Backend:** FastAPI + Pydantic v2 + **async** SQLAlchemy 2.0 (asyncio) + Alembic
-**Frontend:** React 18 + TypeScript, Vite, MUI, React Query
+**Frontend:** React 19 + TypeScript, Vite, MUI, React Query
 **Auth:** Authlib (OIDC or Cloudflare Access JWT — operator's choice)
 **Plugins:** pluggy
 **Tooling:** `uv` (deps + venv, pinned to Python 3.13), `ruff` (lint/format), `ty` (type check)

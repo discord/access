@@ -345,7 +345,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
                         <Grid item>
                           <Box>{option.name}</Box>
                           <Typography variant="body2" color="text.secondary">
-                            {GROUP_TYPE_ID_TO_LABELS[option.type]}
+                            {GROUP_TYPE_ID_TO_LABELS[option.type ?? 'role_group']}
                             {disabled &&
                             disallowOwnerAdd &&
                             !isAccessAdmin(currentUser) &&
@@ -437,7 +437,3 @@ export default function AddRoles(props: AddRolesProps) {
     </>
   );
 }
-
-AddRoles.defaultProps = {
-  owner: false,
-};

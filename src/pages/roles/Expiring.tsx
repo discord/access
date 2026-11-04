@@ -225,9 +225,11 @@ export default function ExpiringRoless() {
       <TableContainer component={Paper}>
         <TableTopBar title="Expiring Role-Based Access">
           <BulkRenewal
-            rows={rows.filter((row: AuditGroupRoleRow) =>
-              canManageGroup(currentUser, row.group as GroupDetail | undefined),
-            )}
+            rows={
+              rows.filter((row: AuditGroupRoleRow) =>
+                canManageGroup(currentUser, row.group as GroupDetail | undefined),
+              ) as unknown as Array<RoleGroupMapDetail>
+            }
           />
           <Tooltip title="Show access that still needs review or all expiring access.">
             <ToggleButtonGroup size="small" exclusive value={filterNeedsReview} onChange={handleNeedsReviewOrAll}>
@@ -393,9 +395,11 @@ export default function ExpiringRoless() {
                 {ownerId == '@me' || canManageGroup(currentUser, row.group as GroupDetail | undefined) ? (
                   <TableCell align="center">
                     <BulkRenewal
-                      rows={rows.filter((row: AuditGroupRoleRow) =>
-                        canManageGroup(currentUser, row.group as GroupDetail | undefined),
-                      )}
+                      rows={
+                        rows.filter((row: AuditGroupRoleRow) =>
+                          canManageGroup(currentUser, row.group as GroupDetail | undefined),
+                        ) as unknown as Array<RoleGroupMapDetail>
+                      }
                       select={row.id}
                       rereview={row.should_expire ?? undefined}
                     />

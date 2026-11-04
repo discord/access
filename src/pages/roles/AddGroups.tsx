@@ -47,7 +47,6 @@ import {isAccessAdmin, isGroupOwner} from '../../authorization';
 import {minTagTimeGroups, requiredReasonGroups, ownerCantAddSelfGroups} from '../../helpers';
 import {timeLimitLabel} from '../../constraints';
 import {useCurrentUser} from '../../authentication';
-import {group} from 'console';
 import accessConfig from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
@@ -474,7 +473,3 @@ export default function AddGroups(props: AddGroupsProps) {
     </>
   );
 }
-
-AddGroups.defaultProps = {
-  owner: false,
-};

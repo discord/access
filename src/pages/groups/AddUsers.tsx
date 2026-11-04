@@ -366,7 +366,3 @@ export default function AddUsers(props: AddUsersProps) {
     </>
   );
 }
-
-AddUsers.defaultProps = {
-  owner: false,
-};

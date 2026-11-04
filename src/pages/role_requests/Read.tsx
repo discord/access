@@ -166,7 +166,7 @@ export default function ReadRoleRequest() {
   // Check to see if current user is a blocked group owner
   const ownedGroup = currentUser.active_group_ownerships
     ?.map((group: OktaUserGroupMemberDetail) => group.active_group!.id)
-    .includes(roleRequest.requested_group?.id);
+    .includes(roleRequest.requested_group?.id ?? '');
   const roleMembers =
     roleRequest.requester_role?.active_user_memberships?.map(
       (user: OktaUserGroupMemberDetail) => user.active_user!.id,
@@ -192,7 +192,7 @@ export default function ReadRoleRequest() {
     (ownerCantAddSelf(tags, false) && !roleRequest.request_ownership) ||
     (ownerCantAddSelf(tags, true) && roleRequest.request_ownership);
   const blocked = ownedGroup && roleMembers.includes(currentUser.id) && tagged;
-  const manager = canManageGroup(currentUser, roleRequest.requested_group);
+  const manager = canManageGroup(currentUser, roleRequest.requested_group as GroupDetail | undefined);
   const requestedGroupManager = manager && !blocked;
 
   const complete = (
@@ -556,7 +556,7 @@ export default function ReadRoleRequest() {
               }}>
               <TimelineItem>
                 <TimelineOppositeContent sx={{m: 'auto 0'}} align="right">
-                  <span title={roleRequest.created_at}>
+                  <span title={roleRequest.created_at ?? undefined}>
                     {dayjs(roleRequest.created_at).startOf('second').fromNow()}
                   </span>
                 </TimelineOppositeContent>
@@ -858,8 +858,7 @@ export default function ReadRoleRequest() {
                                   <TableRow>
                                     <TableCell colSpan={3}>
                                       <Typography variant="h6" color="text.accent">
-                                        {roleRequest.requested_group?.name}{' '}
-                                        {roleRequest.requested_group?.type == 'role_group' ? 'Owners' : 'Group Owners'}
+                                        {roleRequest.requested_group?.name} Group Owners
                                       </Typography>
                                     </TableCell>
                                   </TableRow>

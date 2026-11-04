@@ -6,6 +6,10 @@ import {AppDetail, GroupDetail, OktaUserDetail} from '../../api/apiSchemas';
 
 const createMutate = vi.fn();
 const updateMutate = vi.fn();
+// What GET /api/apps answers (`AppSummary`s) and GET /api/apps/{id} answers (`AppDetail`s, keyed
+// by id). A test that picks an app in the App field sets both.
+let appSearchItems: unknown[] = [];
+let appDetailsById: Record<string, unknown> = {};
 
 vi.mock('react-router-dom', () => ({useNavigate: () => vi.fn()}));
 // Pinned rather than inherited from a developer's .env: REQUIRE_DESCRIPTIONS drives whether
@@ -16,7 +20,10 @@ vi.mock('../../config/accessConfig', async (importOriginal) => ({
   requireDescriptions: true,
 }));
 vi.mock('../../api/apiComponents', () => ({
-  useApps: () => ({data: {items: []}}),
+  useApps: () => ({data: {items: appSearchItems}}),
+  useAppById: (variables: {pathParams: {appId: string}}, options?: {enabled?: boolean}) => ({
+    data: options?.enabled === false ? undefined : appDetailsById[variables.pathParams.appId],
+  }),
   useTags: () => ({data: {items: []}}),
   useGroupsCreate: () => ({mutate: createMutate}),
   useGroupByIdPut: () => ({mutate: updateMutate}),
@@ -64,6 +71,8 @@ const OWNER_APP_GROUP = {
 beforeEach(() => {
   createMutate.mockClear();
   updateMutate.mockClear();
+  appSearchItems = [];
+  appDetailsById = {};
 });
 
 const openDialog = async (label: string) => {
@@ -186,5 +195,50 @@ describe('the app group lifecycle plugin configuration form', () => {
     expect(screen.queryByText(PLUGIN_FORM)).not.toBeInTheDocument();
     // The dialog did open; the description field is there, only the plugin form is not.
     expect(screen.getByLabelText(/^Description/)).toBeInTheDocument();
+  });
+
+  // The groups page opens the dialog with no app; the app is picked in the App field from
+  // search results, which do not carry the plugin id, so the dialog has to look it up.
+  it('is offered once an app with a plugin is picked on the groups page', async () => {
+    appSearchItems = [{id: APP.id, name: APP.name}];
+    appDetailsById = {[APP.id]: PLUGIN_APP};
+    render(<CreateUpdateGroup currentUser={ACCESS_ADMIN} />);
+
+    await openDialog('Create Group');
+    expect(screen.queryByText(PLUGIN_FORM)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('combobox', {name: 'Type'}));
+    await userEvent.click(screen.getByRole('option', {name: 'App Group'}));
+    await userEvent.click(screen.getByRole('combobox', {name: /^App/}));
+    await userEvent.click(screen.getByRole('option', {name: APP.name}));
+
+    expect(screen.getByText(PLUGIN_FORM)).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Admin');
+    await userEvent.type(screen.getByLabelText(/^Description/), 'Grants the Admin role');
+    await userEvent.type(screen.getByLabelText(/^Level/), 'high');
+    await submitDialog('Create');
+
+    expect(createMutate).toHaveBeenCalledTimes(1);
+    expect(createMutate.mock.calls[0][0].body).toMatchObject({
+      type: 'app_group',
+      app_id: APP.id,
+      name: 'App-HammerAndChiselZendeskSandbox-Admin',
+      plugin_data: {audit_logger: {configuration: {level: 'high'}}},
+    });
+  });
+
+  it('is not offered when the picked app has no plugin', async () => {
+    appSearchItems = [{id: APP.id, name: APP.name}];
+    appDetailsById = {[APP.id]: APP};
+    render(<CreateUpdateGroup currentUser={ACCESS_ADMIN} />);
+
+    await openDialog('Create Group');
+    await userEvent.click(screen.getByRole('combobox', {name: 'Type'}));
+    await userEvent.click(screen.getByRole('option', {name: 'App Group'}));
+    await userEvent.click(screen.getByRole('combobox', {name: /^App/}));
+    await userEvent.click(screen.getByRole('option', {name: APP.name}));
+
+    expect(screen.queryByText(PLUGIN_FORM)).not.toBeInTheDocument();
   });
 });

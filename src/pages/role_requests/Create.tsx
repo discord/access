@@ -350,7 +350,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
                       <Grid item>
                         <Box>{option.name}</Box>
                         <Typography variant="body2" color="text.secondary">
-                          {GROUP_TYPE_ID_TO_LABELS[option.type]}
+                          {GROUP_TYPE_ID_TO_LABELS[option.type ?? 'role_group']}
                         </Typography>
                       </Grid>
                     </Grid>

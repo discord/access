@@ -29,6 +29,8 @@ function textInput(value: string, caretIndex = value.length) {
   input.style.fontSize = '10px';
   input.style.fontFamily = 'monospace';
   // Pinned so the expected caret offsets don't depend on jsdom's UA styles.
+  // The border needs a style too: a computed border width is 0 while its style is none.
+  input.style.borderLeftStyle = 'solid';
   input.style.borderLeftWidth = '1px';
   input.style.paddingLeft = '4px';
   input.value = value;

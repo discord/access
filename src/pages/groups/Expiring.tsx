@@ -223,9 +223,11 @@ export default function ExpiringGroups() {
       <TableContainer component={Paper}>
         <TableTopBar title="Expiring Individual Access">
           <BulkRenewal
-            rows={rows.filter((row: AuditUserGroupRow) =>
-              canManageGroup(currentUser, row.group as GroupDetail | undefined),
-            )}
+            rows={
+              rows.filter((row: AuditUserGroupRow) =>
+                canManageGroup(currentUser, row.group as GroupDetail | undefined),
+              ) as unknown as Array<OktaUserGroupMemberDetail>
+            }
             ownAccess={userId == '@me' || userId == currentUser.id}
           />
           <Tooltip title="Show access that still needs review or all expiring access.">
@@ -396,9 +398,11 @@ export default function ExpiringGroups() {
                 ) : ownerId == '@me' || canManageGroup(currentUser, row.group as GroupDetail | undefined) ? (
                   <TableCell align="center">
                     <BulkRenewal
-                      rows={rows.filter((row: AuditUserGroupRow) =>
-                        canManageGroup(currentUser, row.group as GroupDetail | undefined),
-                      )}
+                      rows={
+                        rows.filter((row: AuditUserGroupRow) =>
+                          canManageGroup(currentUser, row.group as GroupDetail | undefined),
+                        ) as unknown as Array<OktaUserGroupMemberDetail>
+                      }
                       select={row.id}
                       rereview={row.should_expire ?? undefined}
                     />

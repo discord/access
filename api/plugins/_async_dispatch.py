@@ -9,8 +9,7 @@ a list of coroutines that the application runs to completion via
 A stale *synchronous* implementation of an async hook would return a plain value
 instead of a coroutine, which then fails when scheduled as a task.
 ``verify_async_impls`` turns that into a clear, load-time error naming the
-offending plugin — mirroring the fail-fast spirit of
-``metrics_reporter._verify_tag_forwarding``.
+offending plugin.
 """
 
 import asyncio
