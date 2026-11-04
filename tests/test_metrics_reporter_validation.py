@@ -8,7 +8,6 @@ import pytest
 from api.plugins._async_dispatch import verify_async_impls
 from api.plugins.metrics_reporter import (
     MetricsReporterPluginSpec,
-    _verify_tag_forwarding,
     hookimpl,
     metrics_reporter_plugin_name,
 )
@@ -21,27 +20,25 @@ def _manager_with(plugin: object) -> pluggy.PluginManager:
     return pm
 
 
-def test_accepts_impl_without_defaults() -> None:
-    class GoodPlugin:
+def test_impl_defaults_receive_caller_values() -> None:
+    """An impl that defaults value and tags still receives what the caller passes."""
+    received: list[tuple[float, Optional[dict[str, str]], bool]] = []
+
+    class DefaultingPlugin:
         @hookimpl
         def record_counter(
-            self, metric_name: str, value: float, tags: Optional[dict[str, str]], monotonic: bool = True
+            self,
+            metric_name: str,
+            value: float = 0.0,
+            tags: Optional[dict[str, str]] = None,
+            monotonic: bool = False,
         ) -> None:
-            pass
+            received.append((value, tags, monotonic))
 
-    _verify_tag_forwarding(_manager_with(GoodPlugin()))
+    pm = _manager_with(DefaultingPlugin())
+    pm.hook.record_counter(metric_name="requests", value=3.0, tags={"route": "/api"}, monotonic=True)
 
-
-def test_raises_when_tags_has_default() -> None:
-    class BadPlugin:
-        @hookimpl
-        def record_counter(
-            self, metric_name: str, value: float, tags: Optional[dict[str, str]] = None, monotonic: bool = True
-        ) -> None:
-            pass
-
-    with pytest.raises(RuntimeError, match="record_counter"):
-        _verify_tag_forwarding(_manager_with(BadPlugin()))
+    assert received == [(3.0, {"route": "/api"}, True)]
 
 
 def test_verify_async_impls_rejects_sync_hook() -> None:

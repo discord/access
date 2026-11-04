@@ -41,7 +41,7 @@ dependencies = [
     # Okta
     "okta>=3.4.4,<4",
     # Plugins
-    "pluggy>=1.6.0,<2",
+    "pluggy>=1.7.0,<2",
     # MCP — embedded Model Context Protocol server (gated behind ENABLE_MCP).
     # Bumping the major (2.x) will break imports — FastMCP's API has
     # historically reshaped between majors.
