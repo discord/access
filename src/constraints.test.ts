@@ -106,6 +106,7 @@ describe('carriedConstraints', () => {
     const reader = carriedConstraints([entry('disallow_self_add_membership', true)]);
     expect(reader.isSelfAddDisallowed(false)).toBe(true);
     expect(reader.forGroup('some-other-group').isSelfAddDisallowed(false)).toBe(true);
+    expect(reader.forGroup('some-other-group').answered).toBe(false);
   });
 });
 
