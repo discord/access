@@ -393,9 +393,15 @@ function readRecords(dir) {
   );
 }
 
-/** Strips what legitimately differs between the two sides (ports, asset hashes, line numbers). */
+/**
+ * Strips what legitimately differs between the two sides: ports, asset hashes, line numbers, and
+ * the component stack React appends to its warnings after a blank line. The stack names the
+ * props and handlers of every component above the offending element, so a dependency upgrade
+ * that renames any of them would otherwise make an unchanged warning look new.
+ */
 function normalizeError(message) {
   return message
+    .split('\n\n')[0]
     .replace(/https?:\/\/127\.0\.0\.1:\d+/g, '<origin>')
     .replace(/-[A-Za-z0-9_-]{8}\.js/g, '.js')
     .replace(/:\d+:\d+/g, '')
