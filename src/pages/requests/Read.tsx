@@ -11,8 +11,8 @@ import Avatar from '@mui/material/Avatar';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
 import AccessRequestIcon from '../../components/icons/MoreTime';
-import PendingIcon from '@mui/icons-material/HelpOutline';
-import ApprovedIcon from '@mui/icons-material/CheckCircleOutline';
+import PendingIcon from '@mui/icons-material/HelpOutlineOutlined';
+import ApprovedIcon from '@mui/icons-material/CheckCircleOutlineOutlined';
 import RejectedIcon from '@mui/icons-material/HighlightOff';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -373,7 +373,12 @@ export default function ReadRequest() {
       />
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
-          <Grid item xs={12} md={5} lg={3}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 5,
+              lg: 3,
+            }}>
             <Paper
               sx={{
                 p: 2,
@@ -421,7 +426,12 @@ export default function ReadRequest() {
               </Avatar>
             </Paper>
           </Grid>
-          <Grid item xs={12} md={7} lg={9}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 7,
+              lg: 9,
+            }}>
             <Paper
               sx={{
                 p: 2,
@@ -433,12 +443,11 @@ export default function ReadRequest() {
               }}>
               <Grid container>
                 <Grid
-                  item
-                  xs={8}
                   sx={{
                     textAlign: 'center',
                     wordBreak: 'break-word',
-                  }}>
+                  }}
+                  size={8}>
                   <Typography variant="h4">
                     {(accessRequest.requester?.deleted_at ?? null) != null ? (
                       <Link
@@ -489,14 +498,13 @@ export default function ReadRequest() {
                 </Grid>
                 <Divider orientation="vertical" flexItem sx={{mr: '-1px'}} />
                 <Grid
-                  item
-                  xs={4}
                   sx={{
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
                     textAlign: 'center',
-                  }}>
+                  }}
+                  size={4}>
                   <Typography variant="h6">Status</Typography>
                   <Typography variant="h4">
                     <b>{accessRequest.status}</b>
@@ -507,7 +515,7 @@ export default function ReadRequest() {
           </Grid>
 
           {/* Historical Access Information Section */}
-          <Grid item xs={12}>
+          <Grid size={12}>
             <AccessHistory
               subjectType="user"
               subjectName={displayUserName(accessRequest.requester)}
@@ -517,7 +525,7 @@ export default function ReadRequest() {
             />
           </Grid>
 
-          <Grid item xs={12}>
+          <Grid size={12}>
             <Timeline
               sx={{
                 [`& .${timelineOppositeContentClasses.root}`]: {
@@ -641,8 +649,12 @@ export default function ReadRequest() {
                               {!ownRequest ? (
                                 <FormControl fullWidth>
                                   <Grid container>
-                                    <Grid item xs={12}>
-                                      <Typography variant="subtitle1" color="text.accent">
+                                    <Grid size={12}>
+                                      <Typography
+                                        variant="subtitle1"
+                                        sx={{
+                                          color: 'text.accent',
+                                        }}>
                                         {timeLimit
                                           ? (accessRequest.request_ownership ? 'Ownership of ' : 'Membership to ') +
                                             'this group is limited to ' +
@@ -651,7 +663,7 @@ export default function ReadRequest() {
                                           : null}
                                       </Typography>
                                     </Grid>
-                                    <Grid item xs={8}>
+                                    <Grid size={8}>
                                       <SelectElement
                                         fullWidth
                                         label="For how long?"
@@ -661,8 +673,8 @@ export default function ReadRequest() {
                                         required
                                       />
                                     </Grid>
-                                    <Grid item xs={1} />
-                                    <Grid item xs={2}>
+                                    <Grid size={1} />
+                                    <Grid size={2}>
                                       <ToggleButtonGroupElement
                                         name="ownerOrMember"
                                         enforceAtLeastOneSelected
@@ -682,7 +694,7 @@ export default function ReadRequest() {
                                         ]}
                                       />
                                     </Grid>
-                                    <Grid item xs={1} />
+                                    <Grid size={1} />
                                   </Grid>
                                 </FormControl>
                               ) : null}
@@ -759,7 +771,11 @@ export default function ReadRequest() {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="text.accent">
+                                      <Typography
+                                        variant="h6"
+                                        sx={{
+                                          color: 'text.accent',
+                                        }}>
                                         {accessRequest.requested_group?.name}{' '}
                                         {accessRequest.requested_group?.type == 'role_group'
                                           ? 'Owners'
@@ -826,7 +842,11 @@ export default function ReadRequest() {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="text.accent">
+                                      <Typography
+                                        variant="h6"
+                                        sx={{
+                                          color: 'text.accent',
+                                        }}>
                                         {((accessRequest.requested_group ?? {}) as AppGroupDetail).app?.name}
                                         {' App Owners'}
                                       </Typography>
@@ -892,7 +912,11 @@ export default function ReadRequest() {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="text.accent">
+                                      <Typography
+                                        variant="h6"
+                                        sx={{
+                                          color: 'text.accent',
+                                        }}>
                                         {ACCESS_APP_RESERVED_NAME}
                                         {' Admins'}
                                       </Typography>

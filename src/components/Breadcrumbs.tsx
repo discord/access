@@ -25,7 +25,11 @@ export default function Crumbs() {
         }
 
         return last ? (
-          <Typography color="text.primary" key={to}>
+          <Typography
+            key={to}
+            sx={{
+              color: 'text.primary',
+            }}>
             {display}
           </Typography>
         ) : (

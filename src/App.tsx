@@ -288,8 +288,14 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
               component="h1"
               variant="h5"
               noWrap
-              sx={{px: 2, maxWidth: 125, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}
-              color="text.accent">
+              sx={{
+                color: 'text.accent',
+                px: 2,
+                maxWidth: 125,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}>
               {appName.toUpperCase()}
             </Typography>
           </Link>
@@ -301,7 +307,14 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
         <List component="nav">
           <NavItems open={open} />
         </List>
-        <Stack marginTop="auto" p={2} direction={open ? 'row' : 'column'} spacing={1} alignItems="center">
+        <Stack
+          direction={open ? 'row' : 'column'}
+          spacing={1}
+          sx={{
+            marginTop: 'auto',
+            p: 2,
+            alignItems: 'center',
+          }}>
           <ThemeToggle setThemeMode={setThemeMode} condensed={!open} />
           <ConfettiToggleButton />
         </Stack>

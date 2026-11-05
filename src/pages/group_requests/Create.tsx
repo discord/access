@@ -362,7 +362,11 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       <DialogTitle> Create Group Request</DialogTitle>
       <DialogContent>
         {requestError !== '' && <Alert severity="error">{requestError}</Alert>}
-        <Typography variant="subtitle1" color="text.accent">
+        <Typography
+          variant="subtitle1"
+          sx={{
+            color: 'text.accent',
+          }}>
           If this request is approved, you will be added as the group owner.
         </Typography>
         <FormControl size="small" margin="normal" fullWidth>
@@ -472,19 +476,29 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
         </FormControl>
         <FormControl margin="normal" fullWidth>
           {ownershipTimeLimit != null && (
-            <Typography variant="subtitle2" color="text.accent" sx={{marginBottom: '12px'}}>
+            <Typography
+              variant="subtitle2"
+              sx={{
+                color: 'text.accent',
+                marginBottom: '12px',
+              }}>
               {'Ownership is limited to ' + timeLimitLabel(ownershipTimeLimit) + ' by a tag constraint.'}
             </Typography>
           )}
-          <Grid container alignItems="flex-start" spacing={2}>
-            <Grid item xs={6}>
+          <Grid
+            container
+            spacing={2}
+            sx={{
+              alignItems: 'flex-start',
+            }}>
+            <Grid size={6}>
               <OwnershipLengthField
                 timeLimit={ownershipTimeLimit}
                 blocked={constraints.blocked}
                 onChange={setOwnershipUntil}
               />
             </Grid>
-            <Grid item xs={6}>
+            <Grid size={6}>
               {ownershipUntil === 'custom' && (
                 <DatePickerElement
                   label="Custom End Date"
