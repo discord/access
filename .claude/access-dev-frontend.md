@@ -21,6 +21,16 @@ with the spec, so commit the regenerated client alongside the backend change.
 The data-fetching layer is React Query **v5** (`@tanstack/react-query`); mind the v5 renames
 (`cacheTime` → `gcTime`, object-form hook args) when copying older call-site patterns.
 
+### Pages and the visual diff
+
+`npm run visual-diff` renders every `<Route>` in `src/App.tsx` from a table of cases in
+`scripts/visual-diff/pages.spec.ts`, against data from `scripts/visual-diff/seed.py`. Keep them
+in step with the app: when you add or rename a route, add a case for it in the same change, and
+seed any rows the page needs to render something other than an empty state. When you change a
+model column the seed sets, update the seed too. Run the visual diff before opening a PR that
+upgrades a frontend dependency or changes layout, theming, or a shared component.
+`scripts/visual-diff/README.md` has the details.
+
 ## Layout and design principles
 
 Follow the patterns established in existing pages before introducing new structure.
