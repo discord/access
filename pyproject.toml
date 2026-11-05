@@ -1,7 +1,7 @@
 [build-system]
 # Use the setuptools backend so the wheel picks up api/config/migrations via
 # package discovery and bundles config/*.json (see [tool.setuptools] below).
-requires = ["setuptools>=77"]
+requires = ["setuptools>=83.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -12,7 +12,7 @@ dependencies = [
     # FastAPI
     "fastapi>=0.139.0,<0.157",
     "fastapi-pagination>=0.15.15,<0.17",
-    "uvicorn[standard]>=0.51.0,<0.52",
+    "uvicorn[standard]>=0.51.0,<0.55",
     "gunicorn>=26.0.0,<27",
     "itsdangerous>=2.2.0,<3",
     "click>=8.4.2,<9",
