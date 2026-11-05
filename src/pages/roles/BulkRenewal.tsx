@@ -507,23 +507,36 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
       <FormContainer<CreateRequestForm> onSuccess={(formData) => submit(formData)}>
         <DialogTitle>Bulk Renew Role Access</DialogTitle>
         <DialogContent>
-          <Typography variant="subtitle1" color="text.accent">
+          <Typography
+            variant="subtitle1"
+            sx={{
+              color: 'text.accent',
+            }}>
             {timeLimit
               ? 'Access to one or more selected groups is limited to ' + timeLimitLabel(timeLimit) + '.'
               : null}
           </Typography>
-          <Typography variant="subtitle1" color="text.accent">
+          <Typography
+            variant="subtitle1"
+            sx={{
+              color: 'text.accent',
+            }}>
             {display_owner_add_constraint
               ? 'Due to group tag constraints, some roles may not be renewed since you are both a member of the role and an owner of the group. Please reach out to another group owner to renew the role membership to the group or create a role request if you own the role.'
               : null}
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{mb: 2}}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              mb: 2,
+            }}>
             Selected for renewal: {selectedYes.length} | Selected to allow expiration: {selectedNo.length}
           </Typography>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
           <ConstraintsUnavailableAlert constraints={constraintsError} action="renewal" />
           <Grid container spacing={1}>
-            <Grid item xs={6}>
+            <Grid size={6}>
               <FormControl fullWidth sx={{margin: '7px 0'}}>
                 <TextFieldElement
                   label="Why? (provide a reason)"
@@ -544,7 +557,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
                 />
               </FormControl>
             </Grid>
-            <Grid item xs={3}>
+            <Grid size={3}>
               <Box>
                 <FormControl margin="normal" fullWidth sx={{margin: '7px 0'}}>
                   <InputLabel>For how long?</InputLabel>
@@ -565,7 +578,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
                 </FormControl>
               </Box>
             </Grid>
-            <Grid item xs={3}>
+            <Grid size={3}>
               {until == 'custom' ? (
                 <Box>
                   <FormControl margin="normal" fullWidth required sx={{margin: '7px 0'}}>

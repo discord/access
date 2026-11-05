@@ -9,7 +9,11 @@ interface InlineReasonProps {
 export default function InlineReason({reason}: InlineReasonProps) {
   if (!reason) {
     return (
-      <Typography variant="body2" color="text.secondary">
+      <Typography
+        variant="body2"
+        sx={{
+          color: 'text.secondary',
+        }}>
         No reason given
       </Typography>
     );

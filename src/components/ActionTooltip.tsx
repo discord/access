@@ -34,7 +34,9 @@ export default function ActionTooltip({title, children}: {title: string; childre
       // reason to open, so the label comes straight back over the dialog.
       onOpen={() => setOpen(document.querySelector('[role="dialog"]') == null)}
       onClose={() => setOpen(false)}
-      PopperProps={OVER_THE_ICON}>
+      slotProps={{
+        popper: OVER_THE_ICON,
+      }}>
       {/* On mousedown rather than click: the press focuses the button first, and
           a focused button is a reason for MUI to open the tooltip again. */}
       <Box onMouseDownCapture={() => setOpen(false)}>{children}</Box>

@@ -246,8 +246,10 @@ export default function QuickSwitcher({open, onClose}: QuickSwitcherProps) {
       fullWidth
       maxWidth="sm"
       sx={{'& .MuiDialog-container': {alignItems: 'flex-start'}}}
-      PaperProps={{sx: {mt: '12vh', borderRadius: 2}}}
-      TransitionProps={{onEntered: focusInput}}>
+      slotProps={{
+        transition: {onEntered: focusInput},
+        paper: {sx: {mt: '12vh', borderRadius: 2}},
+      }}>
       <Box onKeyDown={handleKeyDown}>
         <TextField
           autoFocus
@@ -257,31 +259,41 @@ export default function QuickSwitcher({open, onClose}: QuickSwitcherProps) {
           placeholder="Search users, groups, roles, and apps…"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          InputProps={{
-            disableUnderline: true,
-            sx: {fontSize: '1.1rem', px: 2, py: 1.5},
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon color="action" />
-              </InputAdornment>
-            ),
-            endAdornment: isFetching ? (
-              <InputAdornment position="end">
-                <CircularProgress size={18} />
-              </InputAdornment>
-            ) : null,
+          slotProps={{
+            input: {
+              disableUnderline: true,
+              sx: {fontSize: '1.1rem', px: 2, py: 1.5},
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon color="action" />
+                </InputAdornment>
+              ),
+              endAdornment: isFetching ? (
+                <InputAdornment position="end">
+                  <CircularProgress size={18} />
+                </InputAdornment>
+              ) : null,
+            },
           }}
         />
         <Divider />
         {trimmedQuery.length === 0 ? (
           <Box sx={{px: 3, py: 4, textAlign: 'center'}}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+              }}>
               Start typing to search across users, groups, roles, and apps.
             </Typography>
           </Box>
         ) : results.length === 0 && !isFetching ? (
           <Box sx={{px: 3, py: 4, textAlign: 'center'}}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+              }}>
               No results for “{trimmedQuery}”.
             </Typography>
           </Box>
@@ -301,8 +313,10 @@ export default function QuickSwitcher({open, onClose}: QuickSwitcherProps) {
                     <ListItemText
                       primary={result.primary}
                       secondary={result.secondary}
-                      primaryTypographyProps={{noWrap: true}}
-                      secondaryTypographyProps={{noWrap: true}}
+                      slotProps={{
+                        primary: {noWrap: true},
+                        secondary: {noWrap: true},
+                      }}
                     />
                   </ListItemButton>
                 </React.Fragment>
@@ -312,13 +326,25 @@ export default function QuickSwitcher({open, onClose}: QuickSwitcherProps) {
         )}
         <Divider />
         <Box sx={{display: 'flex', gap: 2, px: 2, py: 1}}>
-          <Typography variant="caption" color="text.secondary">
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}>
             <kbd>↑</kbd> <kbd>↓</kbd> to navigate
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}>
             <kbd>↵</kbd> to select
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+            }}>
             <kbd>esc</kbd> to close
           </Typography>
         </Box>
