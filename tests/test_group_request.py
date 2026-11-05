@@ -1,14 +1,14 @@
-from datetime import datetime, timedelta, timezone
-from typing import Any, cast, Protocol
+from datetime import UTC, datetime, timedelta
+from typing import Any, Protocol, cast
 
 import pytest
 from faker import Faker
+from fastapi import FastAPI
 from httpx import AsyncClient
 from okta.models import Group
 from pytest_mock import MockerFixture
-from fastapi import FastAPI
-
 from sqlalchemy import func, or_, select
+
 from api.config import settings
 from api.exceptions import ConflictError
 from api.extensions import Db
@@ -17,13 +17,13 @@ from api.models import (
     AppGroup,
     GroupRequest,
     OktaGroup,
+    OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
-    OktaGroupTagMap,
     Tag,
 )
-from api.operations import CreateGroupRequest, ApproveGroupRequest, RejectGroupRequest
+from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
 from api.plugins import ConditionalAccessResponse, get_notification_hook
 from api.services import okta
 from tests.factories import (
@@ -179,7 +179,7 @@ async def test_create_group_request_with_ownership_ending_at(
     await db.session.commit()
 
     # Request ownership for 60 days
-    requested_ending_at = datetime.now(timezone.utc) + timedelta(days=60)
+    requested_ending_at = datetime.now(UTC) + timedelta(days=60)
 
     group_request = await CreateGroupRequest(
         requester_user=user,
@@ -199,7 +199,7 @@ async def test_create_group_request_with_ownership_ending_at(
     # Should be close to the requested time (within a few seconds), make both timezone-aware
     stored_time = group_request.requested_ownership_ending_at
     if stored_time.tzinfo is None:
-        stored_time = stored_time.replace(tzinfo=timezone.utc)
+        stored_time = stored_time.replace(tzinfo=UTC)
     assert abs((stored_time - requested_ending_at).total_seconds()) < 5
 
 
@@ -239,10 +239,10 @@ async def test_create_group_request_tag_limits_ownership_time(
     await db.session.refresh(group_request)
     stored_time = group_request.requested_ownership_ending_at
     if stored_time.tzinfo is None:
-        stored_time = stored_time.replace(tzinfo=timezone.utc)
+        stored_time = stored_time.replace(tzinfo=UTC)
 
     # Should be set to approximately 90 days from now
-    expected_ending = datetime.now(timezone.utc) + timedelta(days=90)
+    expected_ending = datetime.now(UTC) + timedelta(days=90)
     time_diff = abs((stored_time - expected_ending).total_seconds())
     assert time_diff < 5  # Within 5 seconds of expected
 
@@ -266,7 +266,7 @@ async def test_create_group_request_tag_reduces_requested_ownership_time(
     await db.session.commit()
 
     # Request ownership for 90 days (should be reduced to 30 days)
-    requested_ending_at = datetime.now(timezone.utc) + timedelta(days=90)
+    requested_ending_at = datetime.now(UTC) + timedelta(days=90)
 
     group_request = await CreateGroupRequest(
         requester_user=user,
@@ -285,10 +285,10 @@ async def test_create_group_request_tag_reduces_requested_ownership_time(
     await db.session.refresh(group_request)
     stored_time = group_request.requested_ownership_ending_at
     if stored_time.tzinfo is None:
-        stored_time = stored_time.replace(tzinfo=timezone.utc)
+        stored_time = stored_time.replace(tzinfo=UTC)
 
     # Should be set to approximately 30 days from now (not 90)
-    expected_ending = datetime.now(timezone.utc) + timedelta(days=30)
+    expected_ending = datetime.now(UTC) + timedelta(days=30)
     time_diff = abs((stored_time - expected_ending).total_seconds())
     assert time_diff < 5  # Within 5 seconds of expected
 
@@ -379,7 +379,7 @@ async def test_approve_group_request_sets_owner_with_ending_time(
     mocker.patch.object(okta, "add_owner_to_group")
 
     # Request ownership for 60 days
-    requested_ending_at = datetime.now(timezone.utc) + timedelta(days=60)
+    requested_ending_at = datetime.now(UTC) + timedelta(days=60)
 
     group_request = await CreateGroupRequest(
         requester_user=user,
@@ -417,7 +417,7 @@ async def test_approve_group_request_sets_owner_with_ending_time(
     # Make both timezone-aware
     stored_time = ownerships[0].ended_at
     if stored_time.tzinfo is None:
-        stored_time = stored_time.replace(tzinfo=timezone.utc)
+        stored_time = stored_time.replace(tzinfo=UTC)
 
     # Should be close to the requested time
     time_diff = abs((stored_time - requested_ending_at).total_seconds())
@@ -471,7 +471,7 @@ async def test_approve_group_request_tag_limits_owner_ending_time(
     assert group_request is not None
 
     # Approver sets resolved ownership ending time to 90 days (should be reduced to 30 by tag)
-    requested_90_days = datetime.now(timezone.utc) + timedelta(days=90)
+    requested_90_days = datetime.now(UTC) + timedelta(days=90)
     group_request.resolved_ownership_ending_at = requested_90_days
     await db.session.commit()
 
@@ -500,10 +500,10 @@ async def test_approve_group_request_tag_limits_owner_ending_time(
     # Make both timezone-aware
     stored_time = ownerships[0].ended_at
     if stored_time.tzinfo is None:
-        stored_time = stored_time.replace(tzinfo=timezone.utc)
+        stored_time = stored_time.replace(tzinfo=UTC)
 
     # Should be approximately 30 days from now (not 90)
-    expected_ending = datetime.now(timezone.utc) + timedelta(days=30)
+    expected_ending = datetime.now(UTC) + timedelta(days=30)
     time_diff = abs((stored_time - expected_ending).total_seconds())
     assert time_diff < 5  # Within 5 seconds of expected
 
@@ -514,7 +514,7 @@ async def test_approve_group_request_tag_limits_owner_ending_time(
     await db.session.refresh(group_request)
     resolved_time = group_request.resolved_ownership_ending_at
     if resolved_time.tzinfo is None:
-        resolved_time = resolved_time.replace(tzinfo=timezone.utc)
+        resolved_time = resolved_time.replace(tzinfo=UTC)
     assert resolved_time < requested_90_days
 
 
@@ -894,7 +894,7 @@ async def test_time_limited_app_owner_can_approve_request_via_http(
     app_owner, group_request = await _create_app_group_request_with_owner(
         db=db,
         requester=user,
-        owner_ended_at=datetime.now(timezone.utc) + timedelta(days=30),
+        owner_ended_at=datetime.now(UTC) + timedelta(days=30),
     )
 
     mock_user(app_owner.id)
@@ -915,7 +915,7 @@ async def test_time_limited_app_owner_can_reject_request_via_http(
     app_owner, group_request = await _create_app_group_request_with_owner(
         db=db,
         requester=user,
-        owner_ended_at=datetime.now(timezone.utc) + timedelta(days=30),
+        owner_ended_at=datetime.now(UTC) + timedelta(days=30),
     )
 
     mock_user(app_owner.id)
@@ -936,7 +936,7 @@ async def test_expired_app_owner_cannot_approve_request_via_http(
     app_owner, group_request = await _create_app_group_request_with_owner(
         db=db,
         requester=user,
-        owner_ended_at=datetime.now(timezone.utc) - timedelta(days=1),
+        owner_ended_at=datetime.now(UTC) - timedelta(days=1),
     )
 
     mock_user(app_owner.id)
@@ -1491,7 +1491,7 @@ async def test_conditional_access_plugin_ending_at_caps_ownership(
         side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_owner_to_group")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     mocker.patch(
         "api.operations.create_group_request.evaluate_conditional_access",
         return_value=[
@@ -1523,7 +1523,7 @@ async def test_conditional_access_plugin_ending_at_caps_ownership(
         )
     ).one()
     assert ownership.ended_at is not None
-    stored_time = ownership.ended_at.replace(tzinfo=timezone.utc)
+    stored_time = ownership.ended_at.replace(tzinfo=UTC)
     assert abs((stored_time - (now + timedelta(days=expected_days))).total_seconds()) < 5
 
 
@@ -1543,7 +1543,7 @@ async def test_conditional_access_plugin_past_ending_at_routes_to_reviewers(
         "api.operations.create_group_request.evaluate_conditional_access",
         return_value=[
             ConditionalAccessResponse(
-                approved=True, reason="Auto-Approved", ending_at=datetime.now(timezone.utc) - timedelta(days=1)
+                approved=True, reason="Auto-Approved", ending_at=datetime.now(UTC) - timedelta(days=1)
             )
         ],
     )
@@ -1624,7 +1624,7 @@ async def test_create_group_request_with_taken_name_raises_conflict(
 
 async def test_create_group_request_with_deleted_group_name_succeeds(app: FastAPI, db: Db, user: OktaUser) -> None:
     db.session.add(user)
-    await OktaGroupFactory.create_async(name="Formerly Taken", deleted_at=datetime.now(timezone.utc))
+    await OktaGroupFactory.create_async(name="Formerly Taken", deleted_at=datetime.now(UTC))
     await db.session.commit()
 
     group_request = await CreateGroupRequest(
@@ -2531,12 +2531,12 @@ async def test_post_group_request_validation_via_http(
     """POST /api/group-requests pre-validates: deleted requester → 403,
     unknown tag → 400, and `app_group` without `requested_app_id` → 400
     (the Pydantic discriminator catches it before the handler runs)."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     create_url = url_for("api-group-requests.group_requests_create")
 
     # (a) Deleted requester → 403
-    deleted = await OktaUserFactory.create_async(deleted_at=datetime.now(timezone.utc))
+    deleted = await OktaUserFactory.create_async(deleted_at=datetime.now(UTC))
     mock_user(deleted.id)
     rep = await client.post(
         create_url,
@@ -2606,7 +2606,7 @@ async def test_post_group_request_app_id_must_exist_deleted(
     """`requested_app_id` pointing at a soft-deleted App → 404 (the resource
     queries `App.deleted_at.is_(None)` before accepting the request)."""
     db.session.add(user)
-    deleted_app = await AppFactory.create_async(name="DeletedApp", deleted_at=datetime.now(timezone.utc))
+    deleted_app = await AppFactory.create_async(name="DeletedApp", deleted_at=datetime.now(UTC))
     await db.session.commit()
     mock_user(user.id)
     rep = await client.post(
@@ -2628,7 +2628,7 @@ async def test_post_group_request_tag_ids_must_be_undeleted(
     from tests.factories import TagFactory
 
     db.session.add(user)
-    deleted_tag = await TagFactory.create_async(name="DeletedTag", deleted_at=datetime.now(timezone.utc))
+    deleted_tag = await TagFactory.create_async(name="DeletedTag", deleted_at=datetime.now(UTC))
     await db.session.commit()
     mock_user(user.id)
     rep = await client.post(

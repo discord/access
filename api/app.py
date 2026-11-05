@@ -12,10 +12,11 @@ import json
 import logging
 import re
 import sys
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from os import environ
 from pathlib import Path
-from typing import Any, AsyncGenerator, Optional
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
@@ -25,9 +26,9 @@ from starlette.responses import Response
 
 from api import exception_handlers, middleware
 from api.config import settings
+from api.context import set_process_source
 from api.database import build_async_engine
 from api.extensions import db
-from api.context import set_process_source
 from api.log_filters import (
     TEXT_LOG_FORMAT,
     JsonLogFormatter,
@@ -175,15 +176,17 @@ def _configure_logging(source: str = "server") -> None:
     logging.root.addFilter(token_filter)
 
 
-def _drop_wrapped_ignored_errors(event: dict, hint: dict) -> Optional[dict]:
+def _drop_wrapped_ignored_errors(event: dict, hint: dict) -> dict | None:
     """Sentry before_send: drop events whose cause chain contains a type we
     already list in ``ignore_errors``.
 
     ``ignore_errors`` only matches the top-level exception type, but the MCP
     server wraps every exception a tool raises in a ToolError via
     ``raise ToolError(...) from e`` — so an ignored error raised inside a tool
-    (today: a pydantic ValidationError from argument validation) surfaces as a
-    non-ignored ToolError and leaks through. Walk the explicit ``__cause__``
+    surfaces as a non-ignored ToolError and leaks through. The SDK logs a
+    crash (any exception other than ToolError, ResourceError or MCPError) at
+    ERROR with that wrapper as ``exc_info``; an argument ValidationError is
+    logged at INFO and never reaches Sentry. Walk the explicit ``__cause__``
     chain — not implicit ``__context__`` — so a genuine failure that merely ran
     while handling an ignored error still alerts. Keep this set in sync with
     ``_configure_sentry``'s ``ignore_errors``.
@@ -221,8 +224,8 @@ def _configure_sentry() -> None:
     from fastapi import HTTPException
     from fastapi.exceptions import RequestValidationError
     from pydantic import ValidationError
-    from sentry_sdk.integrations.starlette import StarletteIntegration
     from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
     from starlette.exceptions import HTTPException as StarletteHTTPException
 
     from api.auth.dependencies import OIDCRedirectRequired
@@ -297,7 +300,7 @@ def _configure_threadpool_limit() -> None:
     logger.info("Worker-thread pool limit set to %d", settings.THREADPOOL_MAX_WORKERS)
 
 
-def create_app(testing: Optional[bool] = False) -> FastAPI:
+def create_app(testing: bool | None = False) -> FastAPI:
     _configure_logging()
 
     if testing:
@@ -324,15 +327,14 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     # the route registration below can grab the session manager, then
     # enter its lifespan in the FastAPI lifespan so the session
     # manager's task group is running while requests are served.
-    mcp_lifespan: Optional[Any] = None
+    mcp_lifespan: Any | None = None
     if settings.ENABLE_MCP:
-        from api.mcp.server import create_mcp_server
-        from api.mcp.server import mcp_lifespan as mcp_lifespan
+        from api.mcp.server import create_mcp_server, mcp_lifespan
 
         create_mcp_server()
 
     @asynccontextmanager
-    async def lifespan(_fast_app: FastAPI) -> AsyncGenerator[None, None]:
+    async def lifespan(_fast_app: FastAPI) -> AsyncGenerator[None]:
         # Bound the worker-thread pool inside the running event loop (the anyio
         # limiter is loop-scoped, so this can't run at import time).
         _configure_threadpool_limit()
@@ -377,6 +379,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     # OIDC: Authlib + SessionMiddleware. Only mounted if configured.
     if settings.OIDC_CLIENT_SECRETS is not None and settings.SECRET_KEY:
         from starlette.middleware.sessions import SessionMiddleware
+
         from api.auth.oidc import register_oidc
 
         # HttpOnly is set by SessionMiddleware unconditionally; we add Secure
@@ -428,7 +431,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         # Use a Route (not a Mount) so /mcp without trailing slash works;
         # /mcp/ would 405 some MCP clients. Insert the route at the
         # FastAPI level — it doesn't go through include_router because
-        # the handler is a raw ASGI app from FastMCP.
+        # the handler is a raw ASGI app from the MCP SDK.
         app.routes.append(get_mcp_route())
         # RFC 9728 metadata, served unauthenticated for client discovery.
         # Registered ahead of the SPA catch-all so the well-known path

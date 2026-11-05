@@ -1,7 +1,7 @@
 import copy
 import logging
 from datetime import UTC, datetime
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
@@ -21,9 +21,9 @@ from api.models import (
     RoleGroup,
     Tag,
 )
-from api.models.request_reviewers import get_assigned_reviewers
 from api.models.app_group import get_access_owners
 from api.models.okta_group import is_group_name_taken
+from api.models.request_reviewers import get_assigned_reviewers
 from api.models.tag import effective_ended_at
 from api.operations._fan_out import defer_notification
 from api.operations.constraints.check_for_self_add import CheckForSelfAdd
@@ -40,9 +40,9 @@ class ApproveGroupRequest:
         self,
         *,
         group_request: GroupRequest | str,
-        approver_user: Optional[OktaUser | str] = None,
+        approver_user: OktaUser | str | None = None,
         approval_reason: str = "",
-        ending_at: Optional[datetime] = None,
+        ending_at: datetime | None = None,
         notify: bool = True,
         bypass_self_approval: bool = False,
     ):
@@ -56,7 +56,7 @@ class ApproveGroupRequest:
         self.notify = notify
         self.bypass_self_approval = bypass_self_approval
 
-    async def execute(self) -> Optional[GroupRequest]:
+    async def execute(self) -> GroupRequest | None:
         # Lock the request row for the transaction so concurrent approvers
         # can't both pass the pending-state guard and double-create the group.
         # `of=` keeps FOR UPDATE off the joinedload's nullable outer-join side

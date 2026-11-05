@@ -18,7 +18,6 @@ from collections.abc import Mapping
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
-
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException

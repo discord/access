@@ -27,15 +27,16 @@ updates:
       interval: "weekly"
     ignore:
       - dependency-name: "@rollup/rollup-*"
-      # Vite 8's Rolldown-based dep optimizer miscompiles our MUI v5 +
-      # styled-components dependency graph (rolldown/rolldown#9515 and #8950),
-      # blank-screening the dev server. Re-attempt the major bump once a Vite 8
-      # release ships a Rolldown with both fixed. @vitejs/plugin-react >=6
-      # requires Vite 8, so it is held back with it (5.x still supports Vite 7).
-      - dependency-name: "vite"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@vitejs/plugin-react"
-        versions: [">=6"]
+      # @sentry/vite-plugin 5.4+ depends on the Sentry CLI, which is licensed
+      # under the source-available FSL from 3.0 on. Stay on 4.x until that
+      # license is approved for use.
+      - dependency-name: "@sentry/vite-plugin"
+        versions: [">=5"]
+      # TypeScript 7's npm package doesn't ship the compiler API that
+      # @openapi-codegen reaches through tsutils, so `npm run codegen` hangs.
+      # Stay below 7 until the codegen stops depending on that API.
+      - dependency-name: "typescript"
+        versions: [">=7"]
     groups:
       mui:
         patterns:

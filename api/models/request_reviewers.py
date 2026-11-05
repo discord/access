@@ -28,8 +28,9 @@ Being assigned does not decide who may resolve a request. The approve and
 reject routes check that on their own.
 """
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Literal, cast
+from typing import Any, Literal, cast
 
 from sqlalchemy import ColumnElement, ColumnExpressionArgument, and_, exists, func, not_, or_, select
 from sqlalchemy.orm import aliased

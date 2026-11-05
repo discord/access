@@ -4,8 +4,8 @@ from typing import Any
 import pytest
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
-
 from sqlalchemy import func, or_, select
+
 from api.extensions import Db
 from api.models import (
     App,

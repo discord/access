@@ -2,11 +2,11 @@ import asyncio
 import logging
 from collections import defaultdict
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from okta.models.group_rule import GroupRule as OktaGroupRuleType
 from sqlalchemy import and_, func, or_, select
-from api.config import settings
 from sqlalchemy.orm import (
     aliased,
     joinedload,
@@ -14,8 +14,7 @@ from sqlalchemy.orm import (
     with_polymorphic,
 )
 
-from okta.models.group_rule import GroupRule as OktaGroupRuleType
-
+from api.config import settings
 from api.extensions import db
 from api.models import (
     AccessRequest,
@@ -102,7 +101,7 @@ async def _prefetch_group_okta_lists(
                     # Exception, so it propagates and stops the run rather than
                     # being swallowed.
                     result: list[User] | Exception = task.result()
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - handed to the caller, which skips just this group
                     result = exc
                 # Refill the window before yielding so the replacement fetch
                 # overlaps the caller's reconciliation of this result.
@@ -184,7 +183,7 @@ async def sync_users() -> None:
             .where(or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > func.now()))
         )
     ).all()
-    for user_id in set([u.user_id for u in db_deleted_users_with_access]):
+    for user_id in {u.user_id for u in db_deleted_users_with_access}:
         logger.info(f"Ending active group ownerships/memberships for deleted user in DB {user_id}")
         await DeleteUser(user=user_id).execute()
 
@@ -576,7 +575,7 @@ async def expire_access_requests() -> None:
                 select(AccessRequest)
                 .where(AccessRequest.status == AccessRequestStatus.PENDING)
                 .where(AccessRequest.resolved_at.is_(None))
-                .where(AccessRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
+                .where(AccessRequest.created_at < datetime.now(UTC) - timedelta(seconds=max_age_seconds))
             )
         ).all()
         await _expire_each(older_than_max, reject, "access request")
@@ -621,7 +620,7 @@ async def expire_role_requests() -> None:
                 select(RoleRequest)
                 .where(RoleRequest.status == AccessRequestStatus.PENDING)
                 .where(RoleRequest.resolved_at.is_(None))
-                .where(RoleRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
+                .where(RoleRequest.created_at < datetime.now(UTC) - timedelta(seconds=max_age_seconds))
             )
         ).all()
         await _expire_each(older_than_max, reject, "role request")
@@ -677,7 +676,7 @@ async def expire_group_requests() -> None:
                 select(GroupRequest)
                 .where(GroupRequest.status == AccessRequestStatus.PENDING)
                 .where(GroupRequest.resolved_at.is_(None))
-                .where(GroupRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
+                .where(GroupRequest.created_at < datetime.now(UTC) - timedelta(seconds=max_age_seconds))
             )
         ).all()
         await _expire_each(older_than_max, reject, "group request")
@@ -719,7 +718,7 @@ async def expiring_access_notifications_user() -> None:
         )
     ).all()
 
-    user_id_group_id_roles = set((member.user_id, member.group_id) for member in db_memberships_roles)
+    user_id_group_id_roles = {(member.user_id, member.group_id) for member in db_memberships_roles}
 
     db_memberships_expiring_tomorrow = [
         member
@@ -762,7 +761,7 @@ async def expiring_access_notifications_user() -> None:
     for membership in db_memberships_expiring_next_week:
         grouped_next_week.setdefault(membership.active_user, []).append(membership)
 
-    for user in grouped_tomorrow:
+    for user, memberships_tomorrow in grouped_tomorrow.items():
         # If the user has access expiring both tomorrow and in a week, only send one message
         if user in grouped_next_week:
             # Notification hooks are native async now: awaited directly on the event
@@ -772,23 +771,23 @@ async def expiring_access_notifications_user() -> None:
                 NotificationHook.ACCESS_EXPIRING_USER,
                 user=user,
                 expiration_datetime=None,
-                okta_user_group_members=grouped_tomorrow[user] + grouped_next_week[user],
+                okta_user_group_members=memberships_tomorrow + grouped_next_week[user],
             )
         else:
             await send_notification(
                 NotificationHook.ACCESS_EXPIRING_USER,
                 user=user,
                 expiration_datetime=None if weekend_notif_tomorrow else datetime.now() + timedelta(days=1),
-                okta_user_group_members=grouped_tomorrow[user],
+                okta_user_group_members=memberships_tomorrow,
             )
 
-    for user in grouped_next_week:
+    for user, memberships_next_week in grouped_next_week.items():
         if user not in grouped_tomorrow:
             await send_notification(
                 NotificationHook.ACCESS_EXPIRING_USER,
                 user=user,
                 expiration_datetime=None if weekend_notif_week else datetime.now() + timedelta(weeks=1),
-                okta_user_group_members=grouped_next_week[user],
+                okta_user_group_members=memberships_next_week,
             )
 
     logger.info("Expiring access notifications for users finished.")

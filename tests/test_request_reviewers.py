@@ -1,8 +1,8 @@
 """Who reviews each kind of request."""
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Awaitable, Callable, Optional
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -57,7 +57,7 @@ class Scenario:
 
     request: AccessRequest | RoleRequest | GroupRequest
     users: dict[str, OktaUser]
-    expected_level: Optional[OwnerLevel]
+    expected_level: OwnerLevel | None
     expected_reviewers: set[str]
     expected_by_level: list[tuple[OwnerLevel, set[str]]] = field(default_factory=list)
 
@@ -230,7 +230,7 @@ async def access_nobody_eligible() -> Scenario:
 async def access_ended_ownership_ignored() -> Scenario:
     u = await _users("requester", "former_owner")
     group = await OktaGroupFactory.create_async()
-    await _own(u["former_owner"], group, ended_at=datetime.now(timezone.utc) - timedelta(days=1))
+    await _own(u["former_owner"], group, ended_at=datetime.now(UTC) - timedelta(days=1))
     req = await AccessRequestFactory.create_async(requester_user_id=u["requester"].id, requested_group_id=group.id)
     return Scenario(
         req,
@@ -247,7 +247,7 @@ async def access_deleted_owner_ignored() -> Scenario:
     u = await _users("requester", "deleted_owner")
     group = await OktaGroupFactory.create_async()
     await _own(u["deleted_owner"], group)
-    u["deleted_owner"].deleted_at = datetime.now(timezone.utc)
+    u["deleted_owner"].deleted_at = datetime.now(UTC)
     await db.session.commit()
     req = await AccessRequestFactory.create_async(requester_user_id=u["requester"].id, requested_group_id=group.id)
     return Scenario(
@@ -598,8 +598,7 @@ async def test_modify_group_users_batch_close_notifications_use_reviewers_assign
 async def test_modify_group_users_snapshots_only_requests_it_can_fulfil(db: Db, mocker: MockerFixture) -> None:
     """Adding a member to a role snapshots the member's requests for the role and
     the groups the role is associated with, not their other pending requests."""
-    import api.operations.modify_group_users as modify_group_users
-    from api.operations import ModifyGroupUsers
+    from api.operations import ModifyGroupUsers, modify_group_users
     from api.services import okta
 
     u = await _users("requester", "group_owner")
@@ -627,9 +626,7 @@ async def test_close_notification_computes_reviewers_for_a_request_missing_from_
 ) -> None:
     """A request the snapshot misses, such as one opened after it was taken, has
     its reviewers computed when the operation closes it."""
-    import api.operations.modify_group_users as modify_group_users
-    import api.operations.modify_role_groups as modify_role_groups
-    from api.operations import ModifyGroupUsers, ModifyRoleGroups
+    from api.operations import ModifyGroupUsers, ModifyRoleGroups, modify_group_users, modify_role_groups
     from api.plugins import get_notification_hook
     from api.services import okta
 
@@ -853,7 +850,7 @@ async def test_reviewer_directions_agree(
     # Each resolve route checks permission before it checks that the request is
     # pending, so on a resolved request it answers 403 to a user it refuses and
     # 409 to one it permits, without approving anything.
-    scenario.request.resolved_at = datetime.now(timezone.utc)
+    scenario.request.resolved_at = datetime.now(UTC)
     await db.session.commit()
     assert eligible == await _permitted_by_resolve_routes(app, client, url_for, scenario)
 

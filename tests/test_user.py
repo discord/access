@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
 from httpx import AsyncClient
 from sqlalchemy import select
@@ -8,9 +9,7 @@ from api.config import settings
 from api.extensions import Db
 from api.models import App, AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
-
 from tests.factories import OktaUserFactory
-from typing import Any
 
 
 async def test_get_user_at_me_includes_group_memberships(
@@ -191,7 +190,7 @@ async def test_user_email_uniqueness(client: AsyncClient, db: Db) -> None:
         await db.session.rollback()
 
     # Verify another user with the same email can be inserted if its state is deleted
-    user2.deleted_at = datetime.now(timezone.utc)
+    user2.deleted_at = datetime.now(UTC)
     db.session.add(user2)
     await db.session.commit()  # This should not raise an exception
 

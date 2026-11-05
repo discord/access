@@ -10,7 +10,7 @@ version = "2.0"
 requires-python = ">=3.13"
 dependencies = [
     # FastAPI
-    "fastapi>=0.139.0,<0.144",
+    "fastapi>=0.139.0,<0.157",
     "fastapi-pagination>=0.15.15,<0.17",
     "uvicorn[standard]>=0.51.0,<0.52",
     "gunicorn>=26.0.0,<27",
@@ -41,11 +41,11 @@ dependencies = [
     # Okta
     "okta>=3.4.4,<4",
     # Plugins
-    "pluggy>=1.6.0,<2",
+    "pluggy>=1.7.0,<2",
     # MCP — embedded Model Context Protocol server (gated behind ENABLE_MCP).
-    # Bumping the major (2.x) will break imports — FastMCP's API has
-    # historically reshaped between majors.
-    "mcp[cli]>=1.28.1,<2",
+    # The SDK reshapes its server API between majors (1.x's FastMCP is 2.x's
+    # MCPServer), so a 3.x bump needs the migration guide, not just the lock.
+    "mcp[cli]>=2.3.0,<3",
 ]
 
 [project.scripts]
@@ -72,7 +72,7 @@ dev = [
     "ruff>=0.15.21,<0.18",
     # Typing
     # Exact pin: every 0.0.x release of ty may change its diagnostics.
-    "ty==0.0.88",
+    "ty==0.0.90",
     "types-python-dateutil>=2.9.0.20260807,<3",
     "types-cachetools>=7.0.0.20260713,<8",
     { include-group = "test" },
@@ -114,9 +114,9 @@ config = ["*.json"]
 line-length = 120
 
 [tool.ruff.lint]
-# Selected explicitly so the rule set changes only when this list does, not whenever
-# ruff's own defaults change.
-select = ["E4", "E7", "E9", "F"]
+# ruff's default rule set, plus the rules that were its defaults before 0.16. The
+# defaults can change when ruff is upgraded; the extended rules stay checked.
+extend-select = ["E4", "E7", "E9", "F"]
 
 # ----------------------------------------------------------------------
 # pytest — test scope and async config

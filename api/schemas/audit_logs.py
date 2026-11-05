@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -66,7 +66,7 @@ def _attr(obj: Any, name: str) -> Any:
     return getattr(obj, name, None)
 
 
-def _project(obj: Any, *keys: str) -> Optional[dict[str, Any]]:
+def _project(obj: Any, *keys: str) -> dict[str, Any] | None:
     """Build a `{key: getattr(obj, key) ...}` projection. Returns None when
     `obj` is None so dumping skips the field per `_ALLOWED_NULL_KEYS`."""
     if obj is None:
@@ -84,37 +84,37 @@ class _AuditUserRef(BaseModel):
     """OktaUser projection for `requester` / `owners_*` / `members_*` / `group_owners`."""
 
     model_config = ConfigDict(extra="ignore")
-    id: Optional[str] = None
-    email: Optional[str] = None
+    id: str | None = None
+    email: str | None = None
 
 
 class _AuditAppRef(BaseModel):
     """App projection for the `app` audit field."""
 
     model_config = ConfigDict(extra="ignore")
-    id: Optional[str] = None
-    name: Optional[str] = None
-    app_group_lifecycle_plugin: Optional[str] = None
-    plugin_data: Optional[dict[str, Any]] = None
+    id: str | None = None
+    name: str | None = None
+    app_group_lifecycle_plugin: str | None = None
+    plugin_data: dict[str, Any] | None = None
 
 
 class _AuditGroupAppRef(BaseModel):
     """Nested `app` shape inside `_AuditGroupRef` — only `id` and `name`."""
 
     model_config = ConfigDict(extra="ignore")
-    id: Optional[str] = None
-    name: Optional[str] = None
+    id: str | None = None
+    name: str | None = None
 
 
 class _AuditGroupRef(BaseModel):
     """PolymorphicGroup projection for `group` / `active_group`."""
 
     model_config = ConfigDict(extra="ignore")
-    id: Optional[str] = None
-    name: Optional[str] = None
-    type: Optional[str] = None
-    app: Optional[_AuditGroupAppRef] = None
-    plugin_data: Optional[dict[str, Any]] = None
+    id: str | None = None
+    name: str | None = None
+    type: str | None = None
+    app: _AuditGroupAppRef | None = None
+    plugin_data: dict[str, Any] | None = None
 
     @field_validator("app", mode="before")
     @classmethod
@@ -130,57 +130,57 @@ class _AuditRoleRef(BaseModel):
     """RoleGroup projection for `role` / `groups_added_ids_names` / etc."""
 
     model_config = ConfigDict(extra="ignore")
-    id: Optional[str] = None
-    name: Optional[str] = None
+    id: str | None = None
+    name: str | None = None
 
 
 class _AuditUserGroupMemberRef(BaseModel):
     """OktaUserGroupMember projection for the `*_should_expire_user_id_group_id` lists."""
 
     model_config = ConfigDict(extra="ignore")
-    user_id: Optional[str] = None
-    group_id: Optional[str] = None
+    user_id: str | None = None
+    group_id: str | None = None
 
 
 class _AuditRoleGroupMapRef(BaseModel):
     """RoleGroupMap projection for the `*_should_expire_role_id_group_id` lists."""
 
     model_config = ConfigDict(extra="ignore")
-    role_group_id: Optional[str] = None
-    group_id: Optional[str] = None
+    role_group_id: str | None = None
+    group_id: str | None = None
 
 
 class _AuditRequesterRoleRef(BaseModel):
     """Inner `requester_role` shape on `role_request`."""
 
     model_config = ConfigDict(extra="ignore")
-    id: Optional[str] = None
-    name: Optional[str] = None
+    id: str | None = None
+    name: str | None = None
 
 
 class _AuditAccessRequestRef(BaseModel):
     """AccessRequest projection for the `request` field."""
 
     model_config = ConfigDict(extra="ignore")
-    id: Optional[str] = None
-    request_reason: Optional[str] = None
-    request_ending_at: Optional[datetime] = None
-    request_ownership: Optional[bool] = None
-    resolution_reason: Optional[str] = None
-    approval_ending_at: Optional[datetime] = None
+    id: str | None = None
+    request_reason: str | None = None
+    request_ending_at: datetime | None = None
+    request_ownership: bool | None = None
+    resolution_reason: str | None = None
+    approval_ending_at: datetime | None = None
 
 
 class _AuditRoleRequestRef(BaseModel):
     """RoleRequest projection for the `role_request` field."""
 
     model_config = ConfigDict(extra="ignore")
-    id: Optional[str] = None
-    requester_role: Optional[_AuditRequesterRoleRef] = None
-    request_reason: Optional[str] = None
-    request_ending_at: Optional[datetime] = None
-    request_ownership: Optional[bool] = None
-    resolution_reason: Optional[str] = None
-    approval_ending_at: Optional[datetime] = None
+    id: str | None = None
+    requester_role: _AuditRequesterRoleRef | None = None
+    request_reason: str | None = None
+    request_ending_at: datetime | None = None
+    request_ownership: bool | None = None
+    resolution_reason: str | None = None
+    approval_ending_at: datetime | None = None
 
     @field_validator("requester_role", mode="before")
     @classmethod
@@ -196,33 +196,33 @@ class _AuditGroupRequestRef(BaseModel):
     """GroupRequest projection for the `group_request` field."""
 
     model_config = ConfigDict(extra="ignore")
-    id: Optional[str] = None
-    requested_group_name: Optional[str] = None
-    requested_group_type: Optional[str] = None
-    requested_app_id: Optional[str] = None
-    requested_ownership_ending_at: Optional[datetime] = None
-    request_reason: Optional[str] = None
-    resolved_ownership_ending_at: Optional[datetime] = None
-    resolution_reason: Optional[str] = None
+    id: str | None = None
+    requested_group_name: str | None = None
+    requested_group_type: str | None = None
+    requested_app_id: str | None = None
+    requested_ownership_ending_at: datetime | None = None
+    request_reason: str | None = None
+    resolved_ownership_ending_at: datetime | None = None
+    resolution_reason: str | None = None
 
 
 class _AuditTagRef(BaseModel):
     """Tag projection for `tag` / `tags_added` / `tags_removed`."""
 
     model_config = ConfigDict(extra="ignore")
-    id: Optional[str] = None
-    name: Optional[str] = None
-    constraints: Optional[dict[str, Any]] = None
-    enabled: Optional[bool] = None
+    id: str | None = None
+    name: str | None = None
+    constraints: dict[str, Any] | None = None
+    enabled: bool | None = None
 
 
 class _AuditOldTagRef(BaseModel):
     """Tag projection for `old_tag` (no `id`)."""
 
     model_config = ConfigDict(extra="ignore")
-    name: Optional[str] = None
-    constraints: Optional[dict[str, Any]] = None
-    enabled: Optional[bool] = None
+    name: str | None = None
+    constraints: dict[str, Any] | None = None
+    enabled: bool | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -367,59 +367,59 @@ class AuditLogPayload(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    event_type: Optional[EventType] = None
-    user_agent: Optional[str] = None
-    ip: Optional[str] = None
+    event_type: EventType | None = None
+    user_agent: str | None = None
+    ip: str | None = None
     # Entry-point that produced the audit log: the request's source ("web",
     # "mcp") inside a request, else the process source ("server",
     # "cli:<command>").
-    source: Optional[str] = None
-    current_user_id: Optional[str] = None
-    current_user_email: Optional[str] = None
+    source: str | None = None
+    current_user_id: str | None = None
+    current_user_email: str | None = None
 
     # Group + group-history fields
-    group: Optional[_AuditGroupRef] = None
-    active_group: Optional[_AuditGroupRef] = None
-    old_group_name: Optional[str] = None
-    old_group_type: Optional[str] = None
+    group: _AuditGroupRef | None = None
+    active_group: _AuditGroupRef | None = None
+    old_group_name: str | None = None
+    old_group_type: str | None = None
 
     # Group ownership / membership change deltas
-    group_owners: Optional[list[_AuditUserRef]] = None
-    owners_removed_ids_emails: Optional[list[_AuditUserRef]] = None
-    owners_added_ids_emails: Optional[list[_AuditUserRef]] = None
-    members_removed_ids_emails: Optional[list[_AuditUserRef]] = None
-    members_added_ids_emails: Optional[list[_AuditUserRef]] = None
-    owners_should_expire_user_id_group_id: Optional[list[_AuditUserGroupMemberRef]] = None
-    members_should_expire_user_id_group_id: Optional[list[_AuditUserGroupMemberRef]] = None
+    group_owners: list[_AuditUserRef] | None = None
+    owners_removed_ids_emails: list[_AuditUserRef] | None = None
+    owners_added_ids_emails: list[_AuditUserRef] | None = None
+    members_removed_ids_emails: list[_AuditUserRef] | None = None
+    members_added_ids_emails: list[_AuditUserRef] | None = None
+    owners_should_expire_user_id_group_id: list[_AuditUserGroupMemberRef] | None = None
+    members_should_expire_user_id_group_id: list[_AuditUserGroupMemberRef] | None = None
 
     # Role-modify deltas
-    role: Optional[_AuditRoleRef] = None
-    groups_added_ending_at: Optional[datetime] = None
-    owner_groups_removed_ids_names: Optional[list[_AuditRoleRef]] = None
-    owner_groups_added_ids_names: Optional[list[_AuditRoleRef]] = None
-    owner_groups_should_expire_role_id_group_id: Optional[list[_AuditRoleGroupMapRef]] = None
-    groups_removed_ids_names: Optional[list[_AuditRoleRef]] = None
-    groups_added_ids_names: Optional[list[_AuditRoleRef]] = None
-    groups_should_expire_role_id_group_id: Optional[list[_AuditRoleGroupMapRef]] = None
+    role: _AuditRoleRef | None = None
+    groups_added_ending_at: datetime | None = None
+    owner_groups_removed_ids_names: list[_AuditRoleRef] | None = None
+    owner_groups_added_ids_names: list[_AuditRoleRef] | None = None
+    owner_groups_should_expire_role_id_group_id: list[_AuditRoleGroupMapRef] | None = None
+    groups_removed_ids_names: list[_AuditRoleRef] | None = None
+    groups_added_ids_names: list[_AuditRoleRef] | None = None
+    groups_should_expire_role_id_group_id: list[_AuditRoleGroupMapRef] | None = None
 
     # Request-related fields
-    request: Optional[_AuditAccessRequestRef] = None
-    role_request: Optional[_AuditRoleRequestRef] = None
-    group_request: Optional[_AuditGroupRequestRef] = None
-    requester: Optional[_AuditUserRef] = None
+    request: _AuditAccessRequestRef | None = None
+    role_request: _AuditRoleRequestRef | None = None
+    group_request: _AuditGroupRequestRef | None = None
+    requester: _AuditUserRef | None = None
 
     # App-related fields
-    app: Optional[_AuditAppRef] = None
-    old_app_name: Optional[str] = None
-    owner_id: Optional[str] = None
-    old_app_group_lifecycle_plugin: Optional[str] = None
-    old_plugin_data: Optional[dict[str, Any]] = None
+    app: _AuditAppRef | None = None
+    old_app_name: str | None = None
+    owner_id: str | None = None
+    old_app_group_lifecycle_plugin: str | None = None
+    old_plugin_data: dict[str, Any] | None = None
 
     # Tag-related fields
-    tag: Optional[_AuditTagRef] = None
-    old_tag: Optional[_AuditOldTagRef] = None
-    tags_added: Optional[list[_AuditTagRef]] = Field(default=None)
-    tags_removed: Optional[list[_AuditTagRef]] = Field(default=None)
+    tag: _AuditTagRef | None = None
+    old_tag: _AuditOldTagRef | None = None
+    tags_added: list[_AuditTagRef] | None = Field(default=None)
+    tags_removed: list[_AuditTagRef] | None = Field(default=None)
 
     # ---- coercion validators ----
     _coerce_group = field_validator("group", "active_group", mode="before")(
@@ -513,9 +513,9 @@ class AuditLogSchema:
     def __init__(
         self,
         *,
-        exclude: Optional[list[str]] = None,
-        only: Optional[list[str]] = None,
-        partial: Optional[bool] = None,
+        exclude: list[str] | None = None,
+        only: list[str] | None = None,
+        partial: bool | None = None,
         **_: Any,
     ) -> None:
         self._exclude = list(exclude) if exclude else []

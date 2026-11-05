@@ -1,12 +1,12 @@
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from fastapi import FastAPI
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
-from fastapi import FastAPI
 
 from api.config import settings
 from api.extensions import Db
@@ -366,7 +366,7 @@ async def test_get_tags_q_via_http(client: AsyncClient, db: Db, url_for: Any) ->
 
 async def test_put_tag_404_for_soft_deleted(client: AsyncClient, db: Db, tag: Tag, url_for: Any) -> None:
     """PUT on a soft-deleted tag returns 404."""
-    tag.deleted_at = datetime.now(timezone.utc)
+    tag.deleted_at = datetime.now(UTC)
     db.session.add(tag)
     await db.session.commit()
 
@@ -377,7 +377,7 @@ async def test_put_tag_404_for_soft_deleted(client: AsyncClient, db: Db, tag: Ta
 
 async def test_delete_tag_404_for_soft_deleted(client: AsyncClient, db: Db, tag: Tag, url_for: Any) -> None:
     """DELETE on an already-soft-deleted tag returns 404."""
-    tag.deleted_at = datetime.now(timezone.utc)
+    tag.deleted_at = datetime.now(UTC)
     db.session.add(tag)
     await db.session.commit()
 
@@ -473,7 +473,7 @@ async def test_get_tag_prefers_active_over_deleted_with_same_name(client: AsyncC
     GET /api/tags/{name} must return the active one. The router uses
     `nullsfirst(deleted_at.desc())` to enforce that ordering."""
     deleted = TagFactory.build(name="DupName", description="old")
-    deleted.deleted_at = datetime.now(timezone.utc)
+    deleted.deleted_at = datetime.now(UTC)
     db.session.add(deleted)
     active = TagFactory.build(name="DupName", description="new")
     db.session.add(active)
@@ -492,7 +492,7 @@ async def test_get_tag_returns_deleted_when_no_active_match(client: AsyncClient,
     it (the `nullsfirst(deleted_at.desc())` ordering falls through to the
     deleted row when no active row exists)."""
     deleted = TagFactory.build(name="OnlyDeleted")
-    deleted.deleted_at = datetime.now(timezone.utc)
+    deleted.deleted_at = datetime.now(UTC)
     db.session.add(deleted)
     await db.session.commit()
 

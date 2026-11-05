@@ -56,7 +56,7 @@ import contextvars
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -102,12 +102,12 @@ _Collected = list[_DeferredFire]
 
 # Set per request by the `defer_fan_out` dependency; `None` outside an opted-in request, where
 # `defer_or_invoke_lifecycle_hook` invokes inline instead.
-_deferred_lifecycle: contextvars.ContextVar[Optional[_Collected]] = contextvars.ContextVar(
+_deferred_lifecycle: contextvars.ContextVar[_Collected | None] = contextvars.ContextVar(
     "access_deferred_lifecycle", default=None
 )
 
 
-def begin_deferred_lifecycle() -> tuple[_Collected, "contextvars.Token[Optional[_Collected]]"]:
+def begin_deferred_lifecycle() -> tuple[_Collected, contextvars.Token[_Collected | None]]:
     """Open a request-scoped lifecycle collector and bind it to the ContextVar.
 
     Returns the (empty) collector and the reset token. The same list object is what
@@ -119,14 +119,14 @@ def begin_deferred_lifecycle() -> tuple[_Collected, "contextvars.Token[Optional[
     return collected, token
 
 
-def end_deferred_lifecycle(token: "contextvars.Token[Optional[_Collected]]") -> None:
+def end_deferred_lifecycle(token: contextvars.Token[_Collected | None]) -> None:
     """Unbind the collector opened by `begin_deferred_lifecycle`."""
     _deferred_lifecycle.reset(token)
 
 
 def _snapshot_kwargs(
     kwargs: dict[str, Any],
-) -> Optional[tuple[Optional[tuple[str, ...]], tuple[tuple[str, Any], ...]]]:
+) -> tuple[tuple[str, ...] | None, tuple[tuple[str, Any], ...]] | None:
     """Split hook kwargs into (member ids, scalar kwargs), or None if something can't be carried.
 
     `members` is the only ORM-bearing kwarg any lifecycle hookspec takes; it becomes a tuple of
@@ -197,7 +197,7 @@ async def defer_or_invoke_lifecycle_hook(
     return []
 
 
-async def _reload_group(session: AsyncSession, fire: _DeferredFire) -> Optional[AppGroup]:
+async def _reload_group(session: AsyncSession, fire: _DeferredFire) -> AppGroup | None:
     """Re-load the fire's group, or None if there is no longer a live app group to reconcile.
 
     Selecting `AppGroup` rather than polymorphic `OktaGroup` makes the "still an app group" check

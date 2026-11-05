@@ -27,7 +27,8 @@ import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
 
-from api.extensions import Db, db as _db
+from api.extensions import Db
+from api.extensions import db as _db
 from api.models import AppTagMap, OktaGroupTagMap
 from api.operations import (
     CreateAccessRequest,

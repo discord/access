@@ -1,12 +1,10 @@
-from typing import List
-
 from sqlalchemy import func, or_, select
 
 from api.extensions import db
 from api.models.core_models import App, AppGroup, OktaGroup, OktaUser, OktaUserGroupMember
 
 
-async def get_app_managers(app_id: str) -> List[OktaUser]:
+async def get_app_managers(app_id: str) -> list[OktaUser]:
     """Returns the users that can manage members of the app"""
     owner_app_groups_stmt = (
         select(AppGroup)
@@ -39,7 +37,7 @@ async def get_app_managers(app_id: str) -> List[OktaUser]:
     return []
 
 
-async def get_access_owners() -> List[OktaUser]:
+async def get_access_owners() -> list[OktaUser]:
     """Returns the access super admins that are members of the owners group"""
 
     access_app = (

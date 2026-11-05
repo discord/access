@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from typing import Any, Dict, Optional, cast
+from typing import Any, cast
 
 import httpx
 import jwt
@@ -35,19 +35,19 @@ _jwks_cache_lock = threading.RLock()
 
 
 @cached(cache=TTLCache(maxsize=1, ttl=3600), lock=_jwks_cache_lock)
-def _signing_keys(team_domain: str) -> Dict[str, RSAPrivateKey | RSAPublicKey]:
+def _signing_keys(team_domain: str) -> dict[str, RSAPrivateKey | RSAPublicKey]:
     r = httpx.get(
         f"https://{team_domain}/cdn-cgi/access/certs",
         timeout=10,
     )
     r.raise_for_status()
-    keys: Dict[str, RSAPrivateKey | RSAPublicKey] = {}
+    keys: dict[str, RSAPrivateKey | RSAPublicKey] = {}
     for key_dict in r.json()["keys"]:
         keys[key_dict["kid"]] = jwt.algorithms.RSAAlgorithm.from_jwk(json.dumps(key_dict))
     return keys
 
 
-def _refresh_keys(team_domain: str) -> Dict[str, RSAPrivateKey | RSAPublicKey]:
+def _refresh_keys(team_domain: str) -> dict[str, RSAPrivateKey | RSAPublicKey]:
     with _jwks_cache_lock:
         _signing_keys.cache_clear()
         return _signing_keys(team_domain)
@@ -62,7 +62,7 @@ def extract_token(request: Request) -> str:
     )
 
 
-def verify_cloudflare_token(token: str) -> Dict[str, Any]:
+def verify_cloudflare_token(token: str) -> dict[str, Any]:
     """Verify a Cloudflare Access JWT and return its decoded payload.
 
     Raises HTTPException(403) on any verification failure.
@@ -73,7 +73,7 @@ def verify_cloudflare_token(token: str) -> Dict[str, Any]:
         unverified = jwt.get_unverified_header(token)
     except jwt.exceptions.DecodeError as e:
         raise HTTPException(status_code=403, detail="Invalid Cloudflare authorization token") from e
-    kid: Optional[str] = unverified.get("kid")
+    kid: str | None = unverified.get("kid")
     if not kid:
         raise HTTPException(status_code=403, detail="Invalid Cloudflare authorization token: Missing kid")
 

@@ -21,8 +21,8 @@ import type {HelpParagraph} from '../constraintCopy';
  *   button and the region it reveals agree as long as both ask the same instance.
  */
 export function useHelpRegionId(): (key: string) => string {
-  // Stripped to word characters because `useId` is free to emit punctuation
-  // (React 18 yields `:r1:`), which would need escaping in a CSS selector.
+  // Stripped to letters and digits because React leaves `useId`'s format unspecified,
+  // and punctuation such as `:` would need escaping in a CSS selector.
   const scope = React.useId().replace(/[^A-Za-z0-9]/g, '');
   return React.useCallback((key: string) => `constraint-help-${scope}-${key}`, [scope]);
 }

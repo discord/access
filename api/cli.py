@@ -13,26 +13,24 @@ Run via:
 
 from __future__ import annotations
 
-import asyncio
 import ast
+import asyncio
 import code
 import functools
 import types
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime
-from typing import Any, Callable, TypeVar, cast
+from typing import Any, cast
 
 import click
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import joinedload
 
-F = TypeVar("F", bound=Callable[..., Any])
-
 
 @asynccontextmanager
-async def app_context(*, scope: str | None = None, log_source: str = "cli") -> AsyncGenerator[None, None]:
+async def app_context(*, scope: str | None = None, log_source: str = "cli") -> AsyncGenerator[None]:
     """Bootstrap the application context an out-of-request entrypoint needs.
 
     Binds the SQLAlchemy async engine, mirrors `create_app()`'s logging /
@@ -81,7 +79,7 @@ async def app_context(*, scope: str | None = None, log_source: str = "cli") -> A
     finally:
         try:
             await db.session.commit()
-        except Exception:
+        except Exception:  # noqa: BLE001 - teardown must still close the session and dispose the engine
             await db.session.rollback()
         await db.remove()
         if token is not None:
@@ -93,7 +91,7 @@ async def app_context(*, scope: str | None = None, log_source: str = "cli") -> A
             await db.engine.dispose()
 
 
-def _with_app_context(func: F) -> F:
+def _with_app_context[F: Callable[..., Any]](func: F) -> F:
     """Run a Click command body inside its own `app_context`.
 
     This decorator is the sync/async boundary for the CLI: Click commands
@@ -144,7 +142,7 @@ def _load_plugin_commands() -> None:
     for ep in eps:
         try:
             command = ep.load()
-        except Exception:
+        except Exception:  # noqa: BLE001, S112 - a plugin command that fails to load must not break the CLI
             continue
         if isinstance(command, click.Command):
             cli.add_command(command, name=ep.name)
@@ -548,7 +546,7 @@ def _shell_namespace() -> dict[str, Any]:
     from datetime import UTC, datetime, timedelta
 
     from sqlalchemy import and_, delete, update
-    from sqlalchemy.orm import selectinload, selectin_polymorphic, with_polymorphic
+    from sqlalchemy.orm import selectin_polymorphic, selectinload, with_polymorphic
 
     from api import models, operations
     from api.config import settings
@@ -612,7 +610,7 @@ class _AsyncConsole(code.InteractiveConsole):
                 self._runner.run(result)
         except SystemExit:
             raise
-        except BaseException:
+        except BaseException:  # noqa: BLE001 - an interactive console reports every error and keeps reading
             self.showtraceback()
 
 

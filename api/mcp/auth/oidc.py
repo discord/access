@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 import jwt
@@ -45,8 +45,8 @@ from api.models import OktaUser
 logger = logging.getLogger(__name__)
 
 _metadata_lock = threading.RLock()
-_metadata: Optional[dict[str, Any]] = None
-_jwks_client: Optional[jwt.PyJWKClient] = None
+_metadata: dict[str, Any] | None = None
+_jwks_client: jwt.PyJWKClient | None = None
 
 
 def _get_metadata_and_jwks() -> tuple[dict[str, Any], jwt.PyJWKClient]:
@@ -97,7 +97,7 @@ def _configured_fallback_scopes() -> frozenset[str]:
     return frozenset(s.strip() for s in raw.split(",") if s.strip())
 
 
-async def resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
+async def resolve_identity(scope: Scope) -> MCPIdentity | None:
     """Return an ``MCPIdentity`` for an OIDC-authenticated request, or
     ``None`` to defer (no OIDC config, no Bearer token, verification
     failure). Never raises for a missing credential — the middleware

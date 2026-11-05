@@ -9,7 +9,7 @@ rollback-on-exception behavior.
 Session-scope lifecycle
 -----------------------
 MCP tool handlers do **not** execute in the ``/mcp`` HTTP request task.
-FastMCP's ``StreamableHTTPSessionManager`` runs the server (and therefore
+The SDK's ``StreamableHTTPSessionManager`` runs the server (and therefore
 the tool) in its own task, inside the session manager's task group. That
 matters for connection lifecycle: ``RequestIdMiddleware`` calls
 ``db.remove()`` from the *request* task, but a connection a tool checks
@@ -32,22 +32,23 @@ client drops the session) still returns its connection.
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.extensions import _session_scope, db as _db_shim
+from api.extensions import _session_scope
+from api.extensions import db as _db_shim
 
 
 @asynccontextmanager
-async def tool_session_scope() -> AsyncGenerator[None, None]:
+async def tool_session_scope() -> AsyncGenerator[None]:
     """Bind a fresh DB session scope for one MCP tool call and tear it
     down in the calling task.
 
     Each tool invocation gets its own ``async_scoped_session`` key so the
     session it uses (via ``db.session``) is created and removed within the
-    FastMCP server task, guaranteeing the connection returns to the pool
+    MCP server task, guaranteeing the connection returns to the pool
     from the task that checked it out. See the module docstring for why
     the ``/mcp`` request task's ``db.remove()`` can't do this.
     """
@@ -67,7 +68,7 @@ async def tool_session_scope() -> AsyncGenerator[None, None]:
 
 
 @asynccontextmanager
-async def mcp_db_session() -> AsyncGenerator[AsyncSession, None]:
+async def mcp_db_session() -> AsyncGenerator[AsyncSession]:
     """Yield the request-scoped DB session, committing on success and
     rolling back on exception. Matches the contract of
     ``api/database.py::get_db`` so write tools behave the same way as
@@ -78,7 +79,7 @@ async def mcp_db_session() -> AsyncGenerator[AsyncSession, None]:
     except Exception:
         try:
             await session.rollback()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 - re-raise the original error, not the rollback's
             pass
         raise
     else:

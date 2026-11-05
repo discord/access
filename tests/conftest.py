@@ -18,7 +18,8 @@
 from __future__ import annotations
 
 import os
-from typing import Any, AsyncGenerator, Callable, Generator
+from collections.abc import AsyncGenerator, Callable, Generator
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
@@ -26,11 +27,13 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
+from starlette.routing import NoMatchFound
 
 from api.app import create_app
 from api.auth.dependencies import get_current_user_id
 from api.config import settings
-from api.extensions import Base, Db, _session_scope, db as _db
+from api.extensions import Base, Db, _session_scope
+from api.extensions import db as _db
 from api.models import App, AppGroup, OktaUserGroupMember
 from tests.factories import (
     AccessRequestFactory,
@@ -128,7 +131,7 @@ def app(request: pytest.FixtureRequest) -> FastAPI:
 
 
 @pytest.fixture
-async def db(app: FastAPI) -> AsyncGenerator[Db, None]:
+async def db(app: FastAPI) -> AsyncGenerator[Db]:
     """Bind a test engine, create tables, and seed bootstrap data.
 
     Defaults to in-memory SQLite (aiosqlite). Set `TEST_DATABASE_URI` to
@@ -176,7 +179,7 @@ async def db(app: FastAPI) -> AsyncGenerator[Db, None]:
     finally:
         try:
             await _db.session.rollback()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 - teardown must still drop the schema
             pass
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
@@ -219,7 +222,7 @@ def _stringify_datetimes(obj: Any) -> Any:
 
 
 @pytest.fixture
-async def client(app: FastAPI, db: Db) -> AsyncGenerator[httpx.AsyncClient, None]:
+async def client(app: FastAPI, db: Db) -> AsyncGenerator[httpx.AsyncClient]:
     """Return an in-process async client that shares the test database session.
 
     `raise_app_exceptions=False` matches the old
@@ -238,7 +241,7 @@ async def client(app: FastAPI, db: Db) -> AsyncGenerator[httpx.AsyncClient, None
 
 
 @pytest.fixture
-def mock_user(app: FastAPI) -> Generator[Callable[[Any], None], None, None]:
+def mock_user(app: FastAPI) -> Generator[Callable[[Any], None]]:
     """Returns a callable that overrides `get_current_user_id` to return the
     given user (or user-id string)."""
 
@@ -266,13 +269,13 @@ def url_for(app: FastAPI) -> Callable[..., str]:
         try:
             path = app.url_path_for(endpoint, **path_params)
             return str(path)
-        except Exception:
+        except NoMatchFound:
             try:
                 path = app.url_path_for(endpoint)
                 if path_params:
                     return f"{path}?{urlencode(path_params)}"
                 return str(path)
-            except Exception:
+            except NoMatchFound:
                 return f"/{endpoint}"
 
     return _url_for

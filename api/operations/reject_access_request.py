@@ -1,11 +1,9 @@
-from typing import Optional
-
 import logging
 
-from api.context import get_request_context
 from sqlalchemy import func, nullsfirst, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
+from api.context import get_request_context
 from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequest, AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup
@@ -23,8 +21,8 @@ class RejectAccessRequest:
         rejection_reason: str = "",
         notify: bool = True,
         notify_requester: bool = True,
-        current_user_id: Optional[str | OktaUser] = None,
-        assigned_reviewers: Optional[list[OktaUser]] = None,
+        current_user_id: str | OktaUser | None = None,
+        assigned_reviewers: list[OktaUser] | None = None,
     ):
         """Reject a pending access request.
 

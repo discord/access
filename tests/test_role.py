@@ -3,8 +3,9 @@ from typing import Any
 
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
-
 from sqlalchemy import func, or_, select
+
+from api.auth import permissions as AuthorizationHelpers
 from api.extensions import Db
 from api.models import (
     AccessRequest,
@@ -18,7 +19,6 @@ from api.models import (
     RoleGroupMap,
     RoleRequest,
 )
-from api.auth import permissions as AuthorizationHelpers
 from api.operations import CreateAccessRequest, CreateRoleRequest, ModifyGroupUsers, ModifyRoleGroups
 from api.plugins import get_notification_hook
 from api.services import okta
@@ -1682,7 +1682,7 @@ async def test_role_list_owner_id_filter(client: AsyncClient, db: Db, url_for: A
     """`?owner_id=<user>` and `?owner_id=@me` filter /api/roles to the
     roles owned by that user. Flask had this; the FastAPI port previously
     only honored `q`."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     owner = OktaUserFactory.build()
     other = OktaUserFactory.build()
@@ -1690,7 +1690,7 @@ async def test_role_list_owner_id_filter(client: AsyncClient, db: Db, url_for: A
     role_b = RoleGroupFactory.build()
     db.session.add_all([owner, other, role_a, role_b])
     await db.session.commit()
-    end = datetime.now(timezone.utc) + timedelta(days=30)
+    end = datetime.now(UTC) + timedelta(days=30)
     await OktaUserGroupMemberFactory.create_async(user_id=owner.id, group_id=role_a.id, is_owner=True, ended_at=end)
     await OktaUserGroupMemberFactory.create_async(user_id=other.id, group_id=role_b.id, is_owner=True, ended_at=end)
 

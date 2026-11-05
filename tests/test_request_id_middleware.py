@@ -9,7 +9,8 @@ import anyio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from api.extensions import _session_scope, db as _db
+from api.extensions import _session_scope
+from api.extensions import db as _db
 from api.middleware import RequestIdMiddleware
 
 

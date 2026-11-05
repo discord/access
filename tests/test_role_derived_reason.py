@@ -12,12 +12,12 @@ from pytest_mock import MockerFixture
 from sqlalchemy import select
 
 from api.extensions import Db
-from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
 from api.integrity import verify_and_fix_role_memberships
+from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.operations._derived_reason import (
-    MISSING_REASON_PLACEHOLDER,
     _MAX_LENGTH,
+    MISSING_REASON_PLACEHOLDER,
     ROLE_IN_GROUP_PREFIX,
     ROLE_OWNS_GROUP_PREFIX,
     USER_IN_ROLE_PREFIX,

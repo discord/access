@@ -23,7 +23,6 @@ from api.schemas import (
     SearchUserGroupAuditQuery,
 )
 
-
 # --- Audit defaults --------------------------------------------------------
 
 
@@ -132,13 +131,12 @@ def test_group_constants_renamed() -> None:
     # `_GROUP_*` to make it obvious they're only used by the group bodies.
     # This test fails fast if a future edit re-introduces an unprefixed
     # constant under the old name.
+    import api.schemas.requests_schemas as m
     from api.schemas.requests_schemas import (  # noqa: F401
         _GROUP_DESC_MAX_LENGTH,
         _GROUP_NAME_MAX_LENGTH,
         _GROUP_NAME_PATTERN_STR,
     )
-
-    import api.schemas.requests_schemas as m
 
     assert not hasattr(m, "_NAME_PATTERN_STR")
     assert not hasattr(m, "_NAME_MAX_LENGTH")

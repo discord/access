@@ -11,11 +11,11 @@ Covers the seams that aren't exercised by the REST test suite:
     ``AuditLogSchema`` payload during a write.
 
 The MCP route is mounted as a Starlette ``Route`` whose handler is the
-FastMCP ``StreamableHTTPASGIApp``. Round-tripping a full Streamable HTTP
+SDK's ``StreamableHTTPASGIApp``. Round-tripping a full Streamable HTTP
 JSON-RPC session against an in-memory TestClient is fragile across MCP
 SDK versions, so most tool-level tests call the registered tool
 function directly with an ``MCPIdentity`` bound on the context — the
-exact code path FastMCP would take, minus the JSON-RPC framing.
+exact code path the SDK would take, minus the JSON-RPC framing.
 """
 
 from __future__ import annotations
@@ -23,8 +23,9 @@ from __future__ import annotations
 import asyncio
 import gc
 import json
+from collections.abc import AsyncIterator, Generator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Generator, Optional
+from typing import Any
 
 import httpx
 import pytest
@@ -34,7 +35,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from api.config import settings
 from api.context import RequestContext, set_request_context
-from api.extensions import Base, Db, _session_scope, db as _db
+from api.extensions import Base, Db, _session_scope
+from api.extensions import db as _db
 from api.mcp.auth import (
     ALL_V1_SCOPES,
     MCP_SCOPE_CREATE_REQUESTS,
@@ -64,13 +66,13 @@ async def _mcp_client(a: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
 
 
 @pytest.fixture
-def with_mcp_enabled() -> Generator[None, None, None]:
+def with_mcp_enabled() -> Generator[None]:
     """Flip ENABLE_MCP for the test, clearing the cached server singleton
     on both sides so create_app rebuilds it cleanly."""
     prev = settings.ENABLE_MCP
     settings.ENABLE_MCP = True
     # Reset the cached server singleton so subsequent create_app() calls
-    # construct a fresh FastMCP rather than reusing a stale one.
+    # construct a fresh MCPServer rather than reusing a stale one.
     from api.mcp import server as _srv
 
     _srv._mcp_server = None
@@ -80,14 +82,14 @@ def with_mcp_enabled() -> Generator[None, None, None]:
 
 
 @pytest.fixture
-def override_mcp_auth(with_mcp_enabled: None, monkeypatch: pytest.MonkeyPatch) -> Generator[Any, None, None]:
+def override_mcp_auth(with_mcp_enabled: None, monkeypatch: pytest.MonkeyPatch) -> Generator[Any]:
     """Stub every built-in provider so the middleware sees exactly what
     the test sets. Returns a setter — tests call it with an
     ``MCPIdentity`` (or ``None`` to simulate the 401 path).
     """
-    holder: dict[str, Optional[MCPIdentity]] = {"identity": None}
+    holder: dict[str, MCPIdentity | None] = {"identity": None}
 
-    async def _stub(_scope: Any) -> Optional[MCPIdentity]:
+    async def _stub(_scope: Any) -> MCPIdentity | None:
         return holder["identity"]
 
     # Patch all three providers as the middleware imports them. Any of
@@ -98,7 +100,7 @@ def override_mcp_auth(with_mcp_enabled: None, monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("api.mcp.auth.cloudflare.resolve_identity", _stub)
     monkeypatch.setattr("api.mcp.auth.oidc.resolve_identity", _stub)
 
-    def _set(identity: Optional[MCPIdentity]) -> None:
+    def _set(identity: MCPIdentity | None) -> None:
         holder["identity"] = identity
 
     yield _set
@@ -152,7 +154,7 @@ async def test_authenticated_request_proceeds_past_middleware(
     a = create_app(testing=True)
     async with _mcp_client(a) as client:
         r = await client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "initialize"})
-        # We accept any non-401 — FastMCP may 400/406 on a malformed
+        # We accept any non-401 — the SDK may 400/406 on a malformed
         # body, but it's past the auth gate, which is what we care about.
         assert r.status_code != 401, f"Auth gate rejected a valid identity: {r.status_code} {r.text}"
 
@@ -164,17 +166,17 @@ async def test_provider_chain_first_non_none_wins(
     """The middleware walks dev → cloudflare → oidc in that order and
     takes the first non-None identity. Exercises the chain logic
     directly against ``MCPAuthMiddleware`` rather than an HTTP client so
-    each iteration is independent of FastMCP's session-manager lifecycle
+    each iteration is independent of the session-manager lifecycle
     (which can only ``.run()`` once per instance).
     """
     dev_id = MCPIdentity(user_id="dev-user", scopes=ALL_V1_SCOPES)
     cf_id = MCPIdentity(user_id="cf-user", scopes=ALL_V1_SCOPES)
     oidc_id = MCPIdentity(user_id="oidc-user", scopes=ALL_V1_SCOPES)
 
-    def _resolves_to(identity: Optional[MCPIdentity]) -> Any:
+    def _resolves_to(identity: MCPIdentity | None) -> Any:
         # The middleware awaits each provider's resolve_identity, so the
         # stubs must be coroutine functions.
-        async def _resolve(_scope: Any) -> Optional[MCPIdentity]:
+        async def _resolve(_scope: Any) -> MCPIdentity | None:
             return identity
 
         return _resolve
@@ -199,7 +201,7 @@ async def test_provider_chain_first_non_none_wins(
     async def _async_receive() -> Any:
         return {"type": "http.request"}
 
-    async def _run() -> Optional[MCPIdentity]:
+    async def _run() -> MCPIdentity | None:
         captured.clear()
         await middleware({"type": "http", "path": "/mcp", "headers": []}, _async_receive, _async_send)
         return captured.get("identity")
@@ -241,7 +243,7 @@ async def test_read_tool_over_http_returns_its_db_connection(
     return its pooled DB connection to the pool.
 
     Regression test for the connection leak where MCP tools run in the
-    FastMCP session-manager task (not the ``/mcp`` request task), so the
+    SDK's session-manager task (not the ``/mcp`` request task), so the
     request task's ``RequestIdMiddleware`` teardown closes the session
     from the wrong task and the connection is never checked back in —
     surfacing later as SQLAlchemy's "garbage collector is trying to clean

@@ -11,11 +11,11 @@ Expiring roles pages and the per-user / per-group audit views.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
-
+from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import and_, func, not_, nullsfirst, nullslast, or_, select
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload, with_polymorphic
@@ -32,8 +32,6 @@ from api.models import (
     RoleGroup,
     RoleGroupMap,
 )
-from fastapi_pagination.ext.sqlalchemy import apaginate
-
 from api.pagination import Page
 from api.schemas import (
     AuditOrderBy,
@@ -65,7 +63,7 @@ def _unix_to_utc_naive(ts: int) -> datetime:
     Bare `datetime.fromtimestamp(ts)` returns naive *local* time, so comparing
     it against a naive-UTC column drifts by the server's UTC offset.
     """
-    return datetime.fromtimestamp(ts, tz=timezone.utc).replace(tzinfo=None)
+    return datetime.fromtimestamp(ts, tz=UTC).replace(tzinfo=None)
 
 
 def _resolve_me(value: str | None, current_user_id: str) -> str | None:
