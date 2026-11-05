@@ -283,7 +283,8 @@ async function prepareBaseFrontend(worktree, sha, logFile) {
     return cached;
   }
   log('installing base dependencies (first run against this base; cached afterwards)');
-  // --ignore-scripts: husky's `prepare` would rewrite the core.hooksPath every worktree shares.
+  // --ignore-scripts: the base is an older commit whose `prepare` writes to the git config every
+  // worktree shares, and a throwaway worktree needs no git hooks.
   await run('npm', ['ci', '--ignore-scripts', '--no-audit', '--no-fund'], {cwd: worktree, logFile});
   log('building base frontend');
   const staging = `${cached}.partial-${process.pid}`;

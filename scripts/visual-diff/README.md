@@ -30,7 +30,7 @@ images for each changed page; `.visual-diff/summary.json` has the full error tex
 ## How it works
 
 - **The base runs in a temporary `git worktree`** of `git merge-base HEAD <base>`, installed with
-  `npm ci --ignore-scripts` so husky can't rewrite the shared `core.hooksPath`. The current branch
+  `npm ci --ignore-scripts` so the base's `prepare` can't rewrite the shared `core.hooksPath`. The current branch
   is built from the working tree as it stands, uncommitted changes included. Both builds go to
   temporary directories, so the checkout's `build/` is untouched.
 - **Each side gets its own SQLite database, backend, and static server on free ports.** The
