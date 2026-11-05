@@ -62,7 +62,6 @@ updates:
           - "@vitejs/*"
           - "typescript"
           - "prettier"
-          - "husky"
           - "lint-staged"
       npm-major:
         patterns:
