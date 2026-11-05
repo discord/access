@@ -39,7 +39,7 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.m
     }, []);
 
     return (
-      <Grid item xs={12} className={'app-detail app-detail-admin-action-group'}>
+      <Grid className={'app-detail app-detail-admin-action-group'} size={12}>
         <Paper sx={{p: 2}}>
           <Box
             sx={{

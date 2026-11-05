@@ -161,7 +161,11 @@ export default function EffectiveConstraints({constraints}: {constraints: Effect
   return (
     <Accordion expanded={expanded} onChange={(_e, isExpanded) => setExpanded(isExpanded)}>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-        <Typography variant="h6" color="text.accent">
+        <Typography
+          variant="h6"
+          sx={{
+            color: 'text.accent',
+          }}>
           Effective constraints ({constraints.length})
         </Typography>
       </AccordionSummary>

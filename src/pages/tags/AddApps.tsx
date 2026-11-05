@@ -151,10 +151,18 @@ function AddAppsDialog(props: AddAppsDialogProps) {
                 renderOption: (props, option, state) => {
                   return (
                     <li {...props}>
-                      <Grid container alignItems="center">
-                        <Grid item>
+                      <Grid
+                        container
+                        sx={{
+                          alignItems: 'center',
+                        }}>
+                        <Grid>
                           <Box>{option.name}</Box>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: 'text.secondary',
+                            }}>
                             App
                           </Typography>
                         </Grid>

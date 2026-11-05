@@ -33,7 +33,12 @@ import {ConfigField, groupConfigHasFields, isFieldLocked} from './AppGroupLifecy
 import {PluginConfigProp} from '../api/apiSchemas';
 
 const prop = (over: Partial<PluginConfigProp>): PluginConfigProp =>
-  ({display_name: 'X', type: 'text', required: false, ...over}) as PluginConfigProp;
+  ({
+    display_name: 'X',
+    type: 'text',
+    required: false,
+    ...over,
+  }) as PluginConfigProp;
 
 // ConfigField only depends on the (mocked) form context, so invoke it as a plain
 // function and inspect the returned element tree — no DOM render needed.
@@ -69,14 +74,14 @@ describe('isFieldLocked', () => {
 
 describe('ConfigField suffix', () => {
   it('renders a text-field suffix as an inline end adornment', () => {
-    const adornment = renderField({type: 'text', suffix: '@example.com'}).props.InputProps.endAdornment;
+    const adornment = renderField({type: 'text', suffix: '@example.com'}).props.slotProps.input.endAdornment;
     expect(adornment).toBeTruthy();
     // The adornment wraps the suffix text as its children.
     expect(adornment.props.children).toBe('@example.com');
   });
 
   it('omits the end adornment when no suffix is set', () => {
-    expect(renderField({type: 'text'}).props.InputProps.endAdornment).toBeUndefined();
+    expect(renderField({type: 'text'}).props.slotProps.input.endAdornment).toBeUndefined();
   });
 });
 

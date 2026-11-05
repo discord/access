@@ -157,7 +157,6 @@ export function ConfigField({
           helperText={(fieldError?.message as string) || numHelp}
           required={property.required}
           defaultValue={value ?? property.default_value}
-          InputProps={{readOnly: locked}}
           {...register(
             fieldName,
             locked
@@ -168,6 +167,9 @@ export function ConfigField({
                 },
           )}
           sx={{mb: 2}}
+          slotProps={{
+            input: {readOnly: locked},
+          }}
         />
       );
     }
@@ -185,14 +187,6 @@ export function ConfigField({
           helperText={(fieldError?.message as string) || textHelp}
           required={property.required}
           defaultValue={value ?? property.default_value ?? ''}
-          InputProps={{
-            readOnly: locked,
-            // A static suffix (e.g. an email domain) shown inline after the value; decorative,
-            // not part of the stored value.
-            ...(property.suffix
-              ? {endAdornment: <InputAdornment position="end">{property.suffix}</InputAdornment>}
-              : {}),
-          }}
           {...register(
             fieldName,
             locked
@@ -203,6 +197,16 @@ export function ConfigField({
                 },
           )}
           sx={{mb: 2}}
+          slotProps={{
+            input: {
+              readOnly: locked,
+              // A static suffix (e.g. an email domain) shown inline after the value; decorative,
+              // not part of the stored value.
+              ...(property.suffix
+                ? {endAdornment: <InputAdornment position="end">{property.suffix}</InputAdornment>}
+                : {}),
+            },
+          }}
         />
       );
     }

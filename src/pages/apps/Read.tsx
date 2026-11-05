@@ -76,7 +76,7 @@ export default function ReadApp() {
         <Grid container spacing={3}>
           <AppsHeader app={app} currentUser={currentUser} />
           {(app as any)?.app_group_lifecycle_plugin && (
-            <Grid item xs={12}>
+            <Grid size={12}>
               <AppGroupLifecyclePluginData
                 entityType="app"
                 pluginId={(app as any).app_group_lifecycle_plugin}
@@ -114,14 +114,14 @@ export default function ReadApp() {
             isExpanded={isExpanded || isSearchActive}
           />
           {nonOwnerGroupsQuery.isFetchingNextPage && (
-            <Grid item xs={12}>
+            <Grid size={12}>
               <Box sx={{display: 'flex', justifyContent: 'center'}}>
                 <CircularProgress size={24} />
               </Box>
             </Grid>
           )}
           {/* Load the next page of app groups when this scrolls into view. */}
-          <Grid item xs={12} sx={{py: 0}}>
+          <Grid sx={{py: 0}} size={12}>
             <InfiniteScrollSentinel
               onVisible={() => nonOwnerGroupsQuery.fetchNextPage()}
               disabled={!nonOwnerGroupsQuery.hasNextPage || nonOwnerGroupsQuery.isFetchingNextPage}

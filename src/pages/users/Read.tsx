@@ -239,7 +239,11 @@ function GroupTable({
           <TableRow>
             <TableCell colSpan={3}>
               <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                <Typography variant="h6" color="text.accent">
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: 'text.accent',
+                  }}>
                   {title}
                 </Typography>
                 <Box sx={{display: 'flex', alignItems: 'center'}}>
@@ -343,7 +347,11 @@ function SideBySideTables({
 }: SideBySideTablesProps) {
   return (
     <Grid container spacing={2}>
-      <Grid item xs={12} md={6}>
+      <Grid
+        size={{
+          xs: 12,
+          md: 6,
+        }}>
         <GroupTable
           title="Ownerships"
           groups={ownerships}
@@ -354,7 +362,11 @@ function SideBySideTables({
           onClickRemoveDirectAccess={onClickRemoveDirectAccess}
         />
       </Grid>
-      <Grid item xs={12} md={6}>
+      <Grid
+        size={{
+          xs: 12,
+          md: 6,
+        }}>
         <GroupTable
           title="Memberships"
           groups={memberships}
@@ -396,7 +408,12 @@ function CollapsibleSection({
   const memberCount = Object.keys(memberships).length;
 
   return (
-    <Accordion expanded={expanded} onChange={onToggle} TransitionProps={{unmountOnExit: true}}>
+    <Accordion
+      expanded={expanded}
+      onChange={onToggle}
+      slotProps={{
+        transition: {unmountOnExit: true},
+      }}>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
         <Box sx={{display: 'inline-flex', flexGrow: 1, alignItems: 'center'}}>
           <Box sx={{flexGrow: 0.95}}>{summaryLeft}</Box>
@@ -574,12 +591,30 @@ export default function ReadUser() {
       <ChangeTitle title={displayUserName(user)} />
       <Container maxWidth="xl" sx={{my: 4}}>
         <Grid container spacing={3}>
-          <Grid item xs={12} alignItems="center">
+          <Grid
+            size={12}
+            sx={{
+              alignItems: 'center',
+            }}>
             <Paper sx={{p: 2}}>
-              <Stack direction="column" gap={2}>
-                <Stack alignItems="center" direction="column" gap={1} sx={{wordBreak: 'break-word'}}>
+              <Stack
+                direction="column"
+                sx={{
+                  gap: 2,
+                }}>
+                <Stack
+                  direction="column"
+                  sx={{
+                    alignItems: 'center',
+                    gap: 1,
+                    wordBreak: 'break-word',
+                  }}>
                   <UserAvatar name={displayUserName(user)} size={100} variant={'h3'} />
-                  <Typography variant="h3" textAlign="center">
+                  <Typography
+                    variant="h3"
+                    sx={{
+                      textAlign: 'center',
+                    }}>
                     {user.deleted_at != null ? (
                       <>
                         <s>{displayUserName(user)}</s> is Deleted
@@ -588,7 +623,11 @@ export default function ReadUser() {
                       displayUserName(user)
                     )}
                   </Typography>
-                  <Typography variant="h5" textAlign="center">
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      textAlign: 'center',
+                    }}>
                     {user.email?.toLowerCase()}
                   </Typography>
                   <Typography>
@@ -628,7 +667,12 @@ export default function ReadUser() {
                       </Button>
                     </>
                   )}
-                  <Tooltip title="Audit" placement="top" PopperProps={moveTooltip}>
+                  <Tooltip
+                    title="Audit"
+                    placement="top"
+                    slotProps={{
+                      popper: moveTooltip,
+                    }}>
                     <IconButton
                       aria-label="audit"
                       to={`/users/${id}/audit`}
@@ -649,23 +693,56 @@ export default function ReadUser() {
               </Stack>
             </Paper>
           </Grid>
-          <Grid item container xs={12} lg={3} spacing={3} alignContent={'flex-start'} order={{xs: 2, lg: 3}}>
-            <Grid item xs={12} sm={6} lg={12}>
+          <Grid
+            container
+            spacing={3}
+            size={{
+              xs: 12,
+              lg: 3,
+            }}
+            sx={{
+              alignContent: 'flex-start',
+              order: {xs: 2, lg: 3},
+            }}>
+            <Grid
+              size={{
+                xs: 12,
+                sm: 6,
+                lg: 12,
+              }}>
               <ProfileToCard user={user} />
             </Grid>
-            <Grid item xs={12} sm={6} lg={12}>
+            <Grid
+              size={{
+                xs: 12,
+                sm: 6,
+                lg: 12,
+              }}>
               <ReportingToCard user={user} />
             </Grid>
           </Grid>
-          <Grid item container xs={12} lg={9} rowSpacing={3} order={{xs: 3, lg: 2}}>
+          <Grid
+            container
+            rowSpacing={3}
+            size={{
+              xs: 12,
+              lg: 9,
+            }}
+            sx={{
+              order: {xs: 3, lg: 2},
+            }}>
             {hasRoles && rolesHasMatch && (
-              <Grid item xs={12}>
+              <Grid size={12}>
                 <Typography variant="h5" sx={{mb: 2}}>
                   Roles
                 </Typography>
                 <CollapsibleSection
                   summaryLeft={
-                    <Typography variant="h6" color="text.accent">
+                    <Typography
+                      variant="h6"
+                      sx={{
+                        color: 'text.accent',
+                      }}>
                       All Roles
                     </Typography>
                   }
@@ -684,13 +761,17 @@ export default function ReadUser() {
               </Grid>
             )}
             {hasStandardGroups && standardGroupsHasMatch && (
-              <Grid item xs={12}>
+              <Grid size={12}>
                 <Typography variant="h5" sx={{mb: 2}}>
                   Groups
                 </Typography>
                 <CollapsibleSection
                   summaryLeft={
-                    <Typography variant="h6" color="text.accent">
+                    <Typography
+                      variant="h6"
+                      sx={{
+                        color: 'text.accent',
+                      }}>
                       All Groups
                     </Typography>
                   }
@@ -713,7 +794,7 @@ export default function ReadUser() {
               </Grid>
             )}
             {hasAppGroups && filteredAppEntries.length > 0 && (
-              <Grid item xs={12}>
+              <Grid size={12}>
                 <Typography variant="h5" sx={{mb: 2}}>
                   Apps
                 </Typography>
@@ -729,7 +810,11 @@ export default function ReadUser() {
                       <CollapsibleSection
                         key={appEntry.appId}
                         summaryLeft={
-                          <Typography variant="h6" color="text.accent">
+                          <Typography
+                            variant="h6"
+                            sx={{
+                              color: 'text.accent',
+                            }}>
                             <Link
                               to={`/apps/${appEntry.appName}`}
                               sx={{
