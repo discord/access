@@ -184,7 +184,7 @@ export default function AppGroupLifecyclePluginData({
                 }}>
                 Associated App Group Lifecycle Plugin: {selectedPlugin.display_name}
               </Typography>
-              <Typography variant="body1" color="grey">
+              <Typography variant="body1" sx={{color: 'grey'}}>
                 {selectedPlugin.description}
               </Typography>
             </Stack>

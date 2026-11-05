@@ -9,7 +9,7 @@ export const EmptyListEntry: React.FC<EmptyListEntryProps> = ({cellProps, custom
   return (
     <TableRow>
       <TableCell {...cellProps}>
-        <Typography variant="body2" color="grey">
+        <Typography variant="body2" sx={{color: 'grey'}}>
           {customText || 'None'}
         </Typography>
       </TableCell>

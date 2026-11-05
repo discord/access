@@ -375,11 +375,7 @@ function AccordionMaker({which, expandedSlug, onSlugChange, onInternalLink}: Acc
                     onClick={(e) => handleCopyLink(e, slug)}
                     aria-label="Copy link"
                     sx={{ml: 1, opacity: 0.5, '&:hover': {opacity: 1}}}>
-                    <LinkIcon
-                      sx={{
-                        fontSize: 'small',
-                      }}
-                    />
+                    <LinkIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
               </Box>
