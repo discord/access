@@ -105,6 +105,13 @@ package in `package-lock.json` doesn't support; CI runs it in the `node-lint` jo
 dependency bump raises its own floor, narrow `engines.node` to the versions every package
 supports, then refresh the lockfile's root metadata with the npm version CI pins.
 
+The pre-commit hook is the tracked `.husky/pre-commit` (lint-staged running ESLint and
+prettier). Nothing generates it: the root `prepare` script only sets `core.hooksPath` to the
+relative `.husky`, which git resolves per worktree, so running `npm install` in one worktree
+leaves the hook working in all of them. Don't reintroduce a hooks manager that writes a
+generated, gitignored hooks directory; `core.hooksPath` is shared across worktrees, and the other
+worktrees would lose the hook silently.
+
 ## Visual diff
 
 tsc and vitest don't render pages. Before opening a PR that upgrades a frontend dependency (MUI,
