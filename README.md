@@ -107,6 +107,14 @@ make test            # run ruff + ty + pytest
 
 Under the hood these run `uv run pytest` / `uv run ruff` / `uv run ty`; the Makefile is just a thin wrapper. Run any of them directly with `uv run` if you prefer.
 
+### Visual diff
+
+```
+npm run visual-diff
+```
+
+Renders every page of the frontend on your branch and on its merge base with `origin/main`, then lists the pages whose screenshots changed and any console, network, or render errors that only your branch has. Run it before opening a PR that upgrades a frontend dependency or changes layout or theming. It needs `uv` and an `npm ci --ignore-scripts` install, seeds its own throwaway databases (no Okta access), and leaves any dev server you have running alone. See [.claude/access-dev-testing.md](.claude/access-dev-testing.md#visual-diff) for details.
+
 ## Linting
 
 ```
