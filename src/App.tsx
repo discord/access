@@ -405,6 +405,12 @@ export default function App() {
         },
       },
       components: {
+        // MUI 9 defaults this to 36px; 56px keeps the nav labels in one column clear of their icons.
+        MuiListItemIcon: {
+          styleOverrides: {
+            root: {minWidth: 56},
+          },
+        },
         MuiChip: {
           styleOverrides: {
             colorPrimary: ({ownerState, theme}) => ({
