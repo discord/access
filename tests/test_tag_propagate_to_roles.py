@@ -1,11 +1,10 @@
 from typing import Any
 
 import pytest
-from httpx import AsyncClient
-
 from fastapi import FastAPI
-
+from httpx import AsyncClient
 from sqlalchemy import select
+
 from api.extensions import Db
 from api.models import Tag
 from tests.factories import TagFactory

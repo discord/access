@@ -32,9 +32,8 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Optional
-
 from urllib.parse import urlsplit, urlunsplit
 
 from mcp.server.mcpserver import MCPServer
@@ -149,7 +148,7 @@ def get_mcp_route() -> Route:
 
 
 @asynccontextmanager
-async def mcp_lifespan() -> AsyncGenerator[None, None]:
+async def mcp_lifespan() -> AsyncGenerator[None]:
     """Run the MCP session manager alongside the parent app.
 
     Entered from ``api.app.create_app``'s lifespan when ``ENABLE_MCP`` is
@@ -238,7 +237,7 @@ def get_protected_resource_metadata_routes() -> list[Route]:
 # --- ASGI auth middleware ---------------------------------------------------
 
 
-def _client_ip_from_headers(scope: Scope) -> Optional[str]:
+def _client_ip_from_headers(scope: Scope) -> str | None:
     """Best-effort client IP, mirroring api.middleware._client_ip but
     reading directly off the ASGI scope (no Starlette Request available
     here)."""
@@ -255,7 +254,7 @@ def _client_ip_from_headers(scope: Scope) -> Optional[str]:
     return None
 
 
-def _user_agent_from_headers(scope: Scope) -> Optional[str]:
+def _user_agent_from_headers(scope: Scope) -> str | None:
     headers = dict(scope.get("headers", []))
     ua = headers.get(b"user-agent")
     return ua.decode() if ua else None
@@ -314,7 +313,7 @@ class MCPAuthMiddleware:
         # and OIDC providers are mutually exclusive in production (the
         # config validator in api/config.py rejects setups that
         # configure both).
-        identity: Optional[MCPIdentity] = None
+        identity: MCPIdentity | None = None
         for provider in (dev_provider, cloudflare_provider, oidc_provider):
             try:
                 identity = await provider.resolve_identity(scope)

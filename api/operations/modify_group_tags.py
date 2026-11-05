@@ -1,11 +1,9 @@
-from typing import Optional
-
 import logging
 
 from sqlalchemy import func, or_, select, update
-from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
 from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
@@ -17,13 +15,13 @@ class ModifyGroupTags:
         self,
         *,
         group: OktaGroup | str,
-        tags_to_add: list[str] = [],
-        tags_to_remove: list[str] = [],
-        current_user_id: Optional[str],
+        tags_to_add: list[str] | None = None,
+        tags_to_remove: list[str] | None = None,
+        current_user_id: str | None,
     ):
         self.group_id = group if isinstance(group, str) else group.id
-        self.tag_ids_to_add = tags_to_add
-        self.tag_ids_to_remove = tags_to_remove
+        self.tag_ids_to_add = tags_to_add or []
+        self.tag_ids_to_remove = tags_to_remove or []
         self.current_user_id = current_user_id
 
     async def execute(self) -> OktaGroup:
@@ -81,7 +79,7 @@ class ModifyGroupTags:
                 )
             ).all()
 
-            new_tag_ids_to_add = set(tag_ids_to_add) - set([m.tag_id for m in existing_tag_maps])
+            new_tag_ids_to_add = set(tag_ids_to_add) - {m.tag_id for m in existing_tag_maps}
 
             for tag_id in new_tag_ids_to_add:
                 db.session.add(

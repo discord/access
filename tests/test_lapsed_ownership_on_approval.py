@@ -8,7 +8,7 @@ approvals route to the app owner or an Access admin rather than the requester.
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from okta.models import Group
@@ -56,7 +56,7 @@ async def test_approval_rejected_when_requested_ownership_window_has_passed(db: 
     await db.session.commit()
     approver = await _access_owner(db)
     request = await _group_request(db, user, "Lapsed")
-    request.requested_ownership_ending_at = datetime.now(timezone.utc) - timedelta(days=1)
+    request.requested_ownership_ending_at = datetime.now(UTC) - timedelta(days=1)
     await db.session.commit()
     # Captured before expire_all() below: reading request.id afterwards would
     # refresh an expired instance outside a greenlet (MissingGreenlet).
@@ -84,8 +84,8 @@ async def test_approval_rejected_when_resolved_ownership_window_has_passed(db: D
     await db.session.commit()
     approver = await _access_owner(db)
     request = await _group_request(db, user, "LapsedResolved")
-    request.requested_ownership_ending_at = datetime.now(timezone.utc) + timedelta(days=30)
-    request.resolved_ownership_ending_at = datetime.now(timezone.utc) - timedelta(hours=1)
+    request.requested_ownership_ending_at = datetime.now(UTC) + timedelta(days=30)
+    request.resolved_ownership_ending_at = datetime.now(UTC) - timedelta(hours=1)
     await db.session.commit()
 
     with pytest.raises(InvalidRequestError):
@@ -97,7 +97,7 @@ async def test_approval_succeeds_with_a_future_ownership_window(db: Db, user: Ok
     await db.session.commit()
     approver = await _access_owner(db)
     request = await _group_request(db, user, "Future")
-    request.requested_ownership_ending_at = datetime.now(timezone.utc) + timedelta(days=30)
+    request.requested_ownership_ending_at = datetime.now(UTC) + timedelta(days=30)
     await db.session.commit()
 
     await ApproveGroupRequest(group_request=request.id, approver_user=approver, approval_reason="ok").execute()

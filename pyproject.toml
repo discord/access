@@ -114,9 +114,9 @@ config = ["*.json"]
 line-length = 120
 
 [tool.ruff.lint]
-# Selected explicitly so the rule set changes only when this list does, not whenever
-# ruff's own defaults change.
-select = ["E4", "E7", "E9", "F"]
+# ruff's default rule set, plus the rules that were its defaults before 0.16. The
+# defaults can change when ruff is upgraded; the extended rules stay checked.
+extend-select = ["E4", "E7", "E9", "F"]
 
 # ----------------------------------------------------------------------
 # pytest — test scope and async config

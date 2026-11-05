@@ -1,16 +1,12 @@
 import asyncio
-from datetime import UTC, datetime, timedelta
-from typing import Dict, Optional
-
 import logging
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_, select, update
-from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
+from api.context import get_request_context
 from api.extensions import db
-from api.operations._derived_reason import role_derived_reason
-from api.operations._fan_out import defer_or_drain_fan_out, prepare_notification_task
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -26,31 +22,33 @@ from api.models import (
 )
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import effective_ended_at
-from api.operations.constraints import CheckForReason, CheckForSelfAdd
-from api.operations._time_limits import limit_access_conferred_by_roles, propagating_seconds_limit
-from api.plugins import NotificationHook
+from api.operations._derived_reason import role_derived_reason
+from api.operations._fan_out import defer_or_drain_fan_out, prepare_notification_task
 from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
+from api.operations._time_limits import limit_access_conferred_by_roles, propagating_seconds_limit
+from api.operations.constraints import CheckForReason, CheckForSelfAdd
+from api.plugins import NotificationHook
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecycleHook,
     get_app_group_lifecycle_plugin_to_invoke,
 )
-from api.services import okta
 from api.schemas import AuditLogSchema, EventType
+from api.services import okta
 
 
 class ModifyRoleGroups:
     def __init__(
         self,
         role_group: RoleGroup | str,
-        groups_added_ended_at: Optional[datetime] = None,
-        groups_to_add: list[str] = [],
-        owner_groups_to_add: list[str] = [],
-        groups_should_expire: list[int] = [],
-        owner_groups_should_expire: list[int] = [],
-        groups_to_remove: list[str] = [],
-        owner_groups_to_remove: list[str] = [],
+        groups_added_ended_at: datetime | None = None,
+        groups_to_add: list[str] | None = None,
+        owner_groups_to_add: list[str] | None = None,
+        groups_should_expire: list[int] | None = None,
+        owner_groups_should_expire: list[int] | None = None,
+        groups_to_remove: list[str] | None = None,
+        owner_groups_to_remove: list[str] | None = None,
         sync_to_okta: bool = True,
-        current_user_id: Optional[str] = None,
+        current_user_id: str | None = None,
         created_reason: str = "",
         notify: bool = True,
     ):
@@ -58,12 +56,12 @@ class ModifyRoleGroups:
 
         self.groups_added_ended_at = groups_added_ended_at
 
-        self.group_ids_to_add = groups_to_add
-        self.owner_group_ids_to_add = owner_groups_to_add
-        self.group_should_expire_ids = groups_should_expire
-        self.owner_group_should_expire_ids = owner_groups_should_expire
-        self.group_ids_to_remove = groups_to_remove
-        self.owner_group_ids_to_remove = owner_groups_to_remove
+        self.group_ids_to_add = groups_to_add or []
+        self.owner_group_ids_to_add = owner_groups_to_add or []
+        self.group_should_expire_ids = groups_should_expire or []
+        self.owner_group_should_expire_ids = owner_groups_should_expire or []
+        self.group_ids_to_remove = groups_to_remove or []
+        self.owner_group_ids_to_remove = owner_groups_to_remove or []
 
         self.sync_to_okta = sync_to_okta
 
@@ -388,7 +386,7 @@ class ModifyRoleGroups:
 
         # Add new groups to role and owner groups to role
         if len(groups_to_add) > 0 or len(owner_groups_to_add) > 0:
-            role_memberships_added: Dict[str, RoleGroupMap] = {}
+            role_memberships_added: dict[str, RoleGroupMap] = {}
             for group in groups_to_add:
                 # Handle group time limit constraints when roles are added to groups
                 # with tagged time limits as members
@@ -407,7 +405,7 @@ class ModifyRoleGroups:
                 role_memberships_added[group.id] = membership_to_add
                 db.session.add(membership_to_add)
 
-            role_ownerships_added: Dict[str, RoleGroupMap] = {}
+            role_ownerships_added: dict[str, RoleGroupMap] = {}
             for owner_group in owner_groups_to_add:
                 # Handle group time limit constraints when roles are added to groups
                 # with tagged time limits as owners
@@ -447,7 +445,7 @@ class ModifyRoleGroups:
                 )
             ).all()
             groups_added_by_id = {group.id: group for group in groups_to_add}
-            group_memberships_added: Dict[str, Dict[str, OktaUserGroupMember]] = {}
+            group_memberships_added: dict[str, dict[str, OktaUserGroupMember]] = {}
             for role_associated_group_map in role_memberships_added.values():
                 group_memberships_added[role_associated_group_map.group_id] = role_associated_membership_added = {}
 
@@ -520,7 +518,7 @@ class ModifyRoleGroups:
                     role_associated_membership_added[member.user_id] = membership_to_add
                     db.session.add(membership_to_add)
 
-            group_ownerships_added: Dict[str, Dict[str, OktaUserGroupMember]] = {}
+            group_ownerships_added: dict[str, dict[str, OktaUserGroupMember]] = {}
             for role_associated_group_map in role_ownerships_added.values():
                 group_ownerships_added[role_associated_group_map.group_id] = role_associated_ownership_added = {}
                 for member in active_role_memberships:
@@ -733,9 +731,7 @@ class ModifyRoleGroups:
 
         return self.role
 
-    async def __remove_groups_from_role(
-        self, groups_to_remove: list[OktaGroup] = [], owner_groups: bool = False
-    ) -> None:
+    async def __remove_groups_from_role(self, groups_to_remove: list[OktaGroup], owner_groups: bool = False) -> None:
         if len(groups_to_remove) == 0:
             return
 

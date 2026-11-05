@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from unittest.mock import MagicMock
 
@@ -40,7 +39,7 @@ def _http_error(status: int) -> HTTPError:
 
 async def test_socket_timeout_surfaces_as_okta_timeout(mocker: MockerFixture, okta_service: OktaService) -> None:
     """The SDK returns an aiohttp/asyncio timeout as an error; the facade raises OktaTransientError."""
-    mocker.patch("okta.client.Client.get_user", return_value=(None, None, asyncio.TimeoutError()))
+    mocker.patch("okta.client.Client.get_user", return_value=(None, None, TimeoutError()))
     with pytest.raises(OktaTransientError):
         await okta_service.get_user("okta_id")
 
@@ -108,7 +107,7 @@ async def test_unrelated_attributeerror_not_mapped(mocker: MockerFixture, okta_s
 
 async def test_swallowable_call_site_absorbs_timeout(mocker: MockerFixture, okta_service: OktaService) -> None:
     """Membership mutations catch OktaTransientError and continue instead of propagating."""
-    mocker.patch("okta.client.Client.assign_user_to_group", return_value=(None, asyncio.TimeoutError()))
+    mocker.patch("okta.client.Client.assign_user_to_group", return_value=(None, TimeoutError()))
     # Should not raise — add_user_to_group swallows OktaTransientError.
     await okta_service.add_user_to_group("group_id", "user_id")
 

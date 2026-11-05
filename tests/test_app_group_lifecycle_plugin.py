@@ -9,10 +9,11 @@ This includes tests for:
 - Plugin lifecycle hooks
 """
 
+from collections.abc import Generator
 from dataclasses import asdict
-from unittest.mock import MagicMock
 from datetime import UTC, datetime, timedelta
-from typing import Any, Generator
+from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -313,7 +314,7 @@ class DummyPlugin:
 
 
 @pytest.fixture
-def test_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[DummyPlugin, None, None]:
+def test_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[DummyPlugin]:
     """Register the test plugin for testing."""
     import pluggy
 
@@ -952,7 +953,7 @@ class TestContextFindGroupsByStatus:
         therefore mandatory, not decorative -- and a warm session would hide a missing one, since
         many-to-one resolves from the identity map without SQL.
         """
-        _, group = await self._app_with_group(db, "FindAppCold", "C", {"ext_id": "cold"})
+        _, _group = await self._app_with_group(db, "FindAppCold", "C", {"ext_id": "cold"})
         expected_app_name = "FindAppCold"
 
         db.session.expunge_all()

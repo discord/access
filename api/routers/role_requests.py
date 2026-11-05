@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-
+from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import String, and_, cast, false, not_, or_, select
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload
 from starlette.requests import Request
@@ -25,8 +25,6 @@ from api.models import (
 )
 from api.models.tag import effective_constraint
 from api.operations import ApproveRoleRequest, CreateRoleRequest, RejectRoleRequest
-from fastapi_pagination.ext.sqlalchemy import apaginate
-
 from api.pagination import Page, validated
 from api.routers._eager import (
     effective_constraint_options,

@@ -13,7 +13,7 @@ GET    /api/groups/{group_id}/audit         redirects to /api/audit/users
 from __future__ import annotations
 
 import copy
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
@@ -325,20 +325,20 @@ async def put_group(
     new_plugin_data = (
         body.plugin_data if isinstance(body, _AppGroupUpdateBody) and "plugin_data" in fields_set else None
     )
-    if new_plugin_data is not None and new_plugin_data != (group.plugin_data or {}):
-        if not (
+    if (
+        new_plugin_data is not None
+        and new_plugin_data != (group.plugin_data or {})
+        and not (
             await is_access_admin(db, current_user_id)
             or (type(group) is AppGroup and await is_app_owner_group_owner(db, current_user_id, app_group=group))
-        ):
-            raise HTTPException(
-                403, "Only Access owners and app owners are allowed to configure plugins at the group level"
-            )
+        )
+    ):
+        raise HTTPException(
+            403, "Only Access owners and app owners are allowed to configure plugins at the group level"
+        )
 
-    if body.tags_to_remove and len(body.tags_to_remove) > 0:
-        if not await is_access_admin(db, current_user_id):
-            raise HTTPException(
-                403, "Current user is not an Access Admin and not allowed to remove tags from this group"
-            )
+    if body.tags_to_remove and len(body.tags_to_remove) > 0 and not await is_access_admin(db, current_user_id):
+        raise HTTPException(403, "Current user is not an Access Admin and not allowed to remove tags from this group")
 
     # Prevent rebinding an AppGroup to a different app without owning the
     # target app. Access admins can always rebind. Apply the rebind here when
@@ -447,9 +447,7 @@ async def put_group(
         if not final_name.startswith(app_group_name_prefix):
             raise HTTPException(
                 400,
-                'App Group name "{}" should be prefixed with App name. For example: "{}"'.format(
-                    final_name, app_group_name_prefix
-                ),
+                f'App Group name "{final_name}" should be prefixed with App name. For example: "{app_group_name_prefix}"',
             )
 
         # Validate plugin_data against the *target* app's plugin now, on the conversion path.
@@ -635,8 +633,8 @@ async def get_group_member_details(
     group_id: str,
     db: DbSession,
     current_user_id: CurrentUserId,
-    owner: Annotated[Optional[bool], Query()] = None,
-    q: Annotated[Optional[str], Query()] = None,
+    owner: Annotated[bool | None, Query()] = None,
+    q: Annotated[str | None, Query()] = None,
 ) -> Page[OktaUserGroupMemberDetail]:
     """Paginated, fully-hydrated active membership rows for a group. `owner=true`
     returns ownerships, `owner=false` memberships, omitted returns both. Lets the

@@ -44,9 +44,9 @@ from __future__ import annotations
 
 from typing import Any, TypeVar
 
-from pydantic import BaseModel
 from polyfactory import Use
 from polyfactory.factories.pydantic_factory import ModelFactory
+from pydantic import BaseModel
 
 from api.schemas.requests_schemas import (
     CreateAccessRequestBody,

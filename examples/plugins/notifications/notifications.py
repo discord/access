@@ -1,9 +1,6 @@
-from __future__ import print_function
-
 import logging
 import os
 from datetime import date, datetime, timedelta
-from typing import Optional
 
 import pluggy
 
@@ -31,15 +28,15 @@ def parse_dates(comparison_date: datetime, owner: bool) -> str:
     prev_monday = today - timedelta(days=today.weekday())
 
     if owner:  # 'round' dates to previous Monday
-        if prev_monday <= just_date and just_date < prev_monday + timedelta(weeks=1):
+        if prev_monday <= just_date < prev_monday + timedelta(weeks=1):
             return "this week"
-        elif prev_monday + timedelta(weeks=1) <= just_date and just_date < prev_monday + timedelta(weeks=2):
+        elif prev_monday + timedelta(weeks=1) <= just_date < prev_monday + timedelta(weeks=2):
             return "next week"
-        elif prev_monday + timedelta(weeks=2) <= just_date and just_date < prev_monday + timedelta(weeks=3):
+        elif prev_monday + timedelta(weeks=2) <= just_date < prev_monday + timedelta(weeks=3):
             return "in two weeks"
-        elif prev_monday + timedelta(weeks=3) <= just_date and just_date < prev_monday + timedelta(weeks=4):
+        elif prev_monday + timedelta(weeks=3) <= just_date < prev_monday + timedelta(weeks=4):
             return "in three weeks"
-        elif prev_monday + timedelta(weeks=4) <= just_date and just_date < prev_monday + timedelta(weeks=5):
+        elif prev_monday + timedelta(weeks=4) <= just_date < prev_monday + timedelta(weeks=5):
             return "in four weeks"
     else:
         if just_date == today + timedelta(days=1):  # one day before
@@ -207,8 +204,8 @@ async def access_expiring_user(
 async def access_expiring_owner(
     owner: OktaUser,
     expiration_datetime: datetime,
-    group_user_associations: Optional[list[OktaUserGroupMember]],
-    role_group_associations: Optional[list[RoleGroupMap]],
+    group_user_associations: list[OktaUserGroupMember] | None,
+    role_group_associations: list[RoleGroupMap] | None,
 ) -> None:
     if group_user_associations is not None and len(group_user_associations) > 0:
         expiring_access_url = get_base_url() + "/expiring-groups?owner_id=@me"

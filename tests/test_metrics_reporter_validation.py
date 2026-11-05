@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 import pluggy
 import pytest
 
@@ -22,7 +20,7 @@ def _manager_with(plugin: object) -> pluggy.PluginManager:
 
 def test_impl_defaults_receive_caller_values() -> None:
     """An impl that defaults value and tags still receives what the caller passes."""
-    received: list[tuple[float, Optional[dict[str, str]], bool]] = []
+    received: list[tuple[float, dict[str, str] | None, bool]] = []
 
     class DefaultingPlugin:
         @hookimpl
@@ -30,7 +28,7 @@ def test_impl_defaults_receive_caller_values() -> None:
             self,
             metric_name: str,
             value: float = 0.0,
-            tags: Optional[dict[str, str]] = None,
+            tags: dict[str, str] | None = None,
             monotonic: bool = False,
         ) -> None:
             received.append((value, tags, monotonic))
@@ -45,7 +43,7 @@ def test_verify_async_impls_rejects_sync_hook() -> None:
     class SyncPlugin:
         @hookimpl
         def record_counter(
-            self, metric_name: str, value: float, tags: Optional[dict[str, str]], monotonic: bool = True
+            self, metric_name: str, value: float, tags: dict[str, str] | None, monotonic: bool = True
         ) -> None:
             pass
 
@@ -57,7 +55,7 @@ def test_verify_async_impls_accepts_async_hook() -> None:
     class AsyncPlugin:
         @hookimpl
         async def record_counter(
-            self, metric_name: str, value: float, tags: Optional[dict[str, str]], monotonic: bool = True
+            self, metric_name: str, value: float, tags: dict[str, str] | None, monotonic: bool = True
         ) -> None:
             pass
 

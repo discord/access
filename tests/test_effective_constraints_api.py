@@ -1,8 +1,7 @@
 from typing import Any
 
-from httpx import AsyncClient
-
 from fastapi import FastAPI
+from httpx import AsyncClient
 
 from api.extensions import Db
 from api.models import RoleGroupMap, Tag

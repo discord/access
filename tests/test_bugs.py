@@ -5,7 +5,8 @@ FastAPI migration plan."""
 
 from __future__ import annotations
 
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any, Self
 
 import pytest
 from fastapi import FastAPI
@@ -15,14 +16,13 @@ from pytest_mock import MockerFixture
 from api.auth.dependencies import require_authenticated
 from api.config import settings
 
-
 _REAL_DSN = "https://abc@o12345.ingest.sentry.io/777"
 _PLACEHOLDER_DSN = "https://user@example.ingest.sentry.io/1234567"
 _ENVELOPE = f'{{"event_id":"abc","dsn":"{_PLACEHOLDER_DSN}"}}\n{{{{"type":"event"}}}}\n{{{{"message":"hi"}}}}\n'
 
 
 @pytest.fixture
-def production_env(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+def production_env(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     """Bypass the dev/test auth shortcut so the 'production' branch of
     `bugs.post_sentry` runs. `require_authenticated` is overridden to no-op
     because the real path would try to verify a Cloudflare/OIDC token."""
@@ -43,10 +43,10 @@ async def test_sentry_envelope_is_forwarded_with_dsn_rewritten(
     captured: dict[str, Any] = {}
 
     class _FakeAsyncClient:
-        async def __aenter__(self) -> "_FakeAsyncClient":
+        async def __aenter__(self) -> Self:
             return self
 
-        async def __aexit__(self, *args: Any) -> None:
+        async def __aexit__(self, *args: object) -> None:
             return None
 
         async def post(self, url: str, *, content: str, headers: dict[str, str], timeout: float) -> None:

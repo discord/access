@@ -5,9 +5,10 @@ import functools
 import inspect
 import json
 import logging
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
+from typing import Any, ClassVar
 
 from okta.client import Client as OktaClient
 from okta.models.add_group_request import AddGroupRequest
@@ -58,7 +59,7 @@ logger = logging.getLogger(__name__)
 # SDK models the field as a strict bool, so deserializing any user schema raises
 # a pydantic ``ValidationError``. Relax the field to match Okta's real payload.
 _unique_field = UserSchemaAttribute.model_fields["unique"]
-_unique_field.annotation = Optional[str]
+_unique_field.annotation = str | None
 _unique_field.metadata = []
 UserSchemaAttribute.model_rebuild(force=True)
 
@@ -80,6 +81,17 @@ class OktaTransientError(Exception):
     def __init__(self, message: str, *, retryable: bool = False) -> None:
         super().__init__(message)
         self.retryable = retryable
+
+
+class OktaResponseError(Exception):
+    """Raised when an Okta call returns an error, or a result Access cannot use.
+
+    Covers every failure the SDK reports in its result tuple that is neither
+    transient (``OktaTransientError``) nor a missing listed resource
+    (``OktaResourceNotFoundError``), plus responses that succeed but lack the
+    data Access needs. It is a plain ``Exception`` subclass, so callers that
+    catch ``Exception`` around Okta calls handle it unchanged.
+    """
 
 
 class OktaResourceNotFoundError(Exception):
@@ -156,9 +168,7 @@ def _is_retryable_okta_error(error: Any) -> bool:
         return False
     if isinstance(error, asyncio.TimeoutError):
         return False
-    if str(error) == "Request Timeout exceeded.":
-        return False
-    return True
+    return str(error) != "Request Timeout exceeded."
 
 
 def _group_push_mapping_to_dict(mapping: GroupPushMapping) -> dict[str, Any]:
@@ -213,17 +223,17 @@ class OktaService:
     """For interacting with the Okta API"""
 
     def __init__(self) -> None:
-        self.okta_domain: Optional[str] = None
-        self.okta_api_token: Optional[str] = None
+        self.okta_domain: str | None = None
+        self.okta_api_token: str | None = None
         self.use_group_owners_api = False
         # A server-loop-scoped client for connection pooling (see
         # ``start_pooled_client``). ``None`` on CLI/test loops, where each call
         # builds its own client instead.
-        self._pooled_client: Optional[OktaClient] = None
-        self._pooled_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._pooled_client: OktaClient | None = None
+        self._pooled_loop: asyncio.AbstractEventLoop | None = None
 
     def initialize(
-        self, okta_domain: Optional[str], okta_api_token: Optional[str], use_group_owners_api: bool = False
+        self, okta_domain: str | None, okta_api_token: str | None, use_group_owners_api: bool = False
     ) -> None:
         # Ignore an okta domain and api token when testing
         if okta_domain is None or okta_api_token is None:
@@ -246,7 +256,7 @@ class OktaService:
         )
 
     @asynccontextmanager
-    async def _okta_client(self) -> AsyncGenerator[_WrapperClient, None]:
+    async def _okta_client(self) -> AsyncGenerator[_WrapperClient]:
         """Yield a wrapping proxy over an Okta client bound to the running loop.
 
         The proxy (``_WrapperClient``) routes every async API call through
@@ -337,10 +347,10 @@ class OktaService:
 
         A 404 — the resource being listed is gone — is already surfaced as
         ``OktaResourceNotFoundError`` by ``_call``, so it never reaches the check
-        below; every other error keeps raising the generic ``Exception``.
+        below; every other error raises ``OktaResponseError``.
         """
         results: list[Any] = []
-        after: Optional[str] = None
+        after: str | None = None
         while True:
             # ``list_method`` is a proxied client method, so it already routes
             # through ``_call``.
@@ -348,7 +358,7 @@ class OktaService:
             # List endpoints are data-returning, so the tuple is (data, resp, error).
             page, response, error = result
             if error is not None:
-                raise Exception(error)
+                raise OktaResponseError(error)
             assert page is not None and response is not None
             results.extend(page)
             after = PaginationHelper.extract_next_cursor(response.headers)
@@ -361,7 +371,7 @@ class OktaService:
             user, _, error = await client.get_user(userId)
 
         if error is not None:
-            raise Exception(error)
+            raise OktaResponseError(error)
 
         assert user is not None
 
@@ -372,7 +382,7 @@ class OktaService:
             userType, user_type_resp, error = await client.get_user_type(userTypeId)
 
             if error is not None:
-                raise Exception(error)
+                raise OktaResponseError(error)
 
             assert userType is not None and user_type_resp is not None
 
@@ -384,7 +394,7 @@ class OktaService:
             schema, _, error = await client.get_user_schema(schemaId)
 
         if error is not None:
-            raise Exception(error)
+            raise OktaResponseError(error)
 
         return UserSchema(schema)
 
@@ -392,7 +402,7 @@ class OktaService:
         async with self._okta_client() as client:
             users = await self._paginate(client.list_users)
 
-        return list(map(lambda user: User(user), users))
+        return [User(user) for user in users]
 
     async def create_group(self, name: str, description: str) -> Group:
         async with self._okta_client() as client:
@@ -401,7 +411,7 @@ class OktaService:
             )
 
         if error is not None:
-            raise Exception(error)
+            raise OktaResponseError(error)
 
         assert group is not None
 
@@ -413,10 +423,10 @@ class OktaService:
             existing_group_data, _, get_error = await client.get_group(groupId)
             if get_error is not None:
                 logger.error(f"Failed to fetch existing group {groupId} before update: {get_error}")
-                raise Exception(f"Failed to fetch existing group {groupId} before update: {get_error}")
+                raise OktaResponseError(f"Failed to fetch existing group {groupId} before update: {get_error}")
             if existing_group_data is None:
                 logger.error(f"Group {groupId} not found in Okta before update.")
-                raise Exception(f"Group {groupId} not found in Okta before update.")
+                raise OktaResponseError(f"Group {groupId} not found in Okta before update.")
 
             # Extract Existing Profile. ``Group.profile`` is an anyOf union
             # wrapper; ``actual_instance.to_dict()`` flattens the standard
@@ -441,7 +451,7 @@ class OktaService:
             group, _, error = await client.replace_group(groupId, group_payload)
 
         if error is not None:
-            raise Exception(error)
+            raise OktaResponseError(error)
 
         assert group is not None
 
@@ -461,7 +471,7 @@ class OktaService:
                 *_, error = await client.assign_user_to_group(groupId, userId)
 
             if error is not None:
-                raise Exception(error)
+                raise OktaResponseError(error)
         except OktaTransientError:
             logger.warning(f"Transient Okta error adding user {userId} to group {groupId}")
 
@@ -479,7 +489,7 @@ class OktaService:
                 *_, error = await client.unassign_user_from_group(groupId, userId)
 
             if error is not None:
-                raise Exception(error)
+                raise OktaResponseError(error)
         except OktaTransientError:
             logger.warning(f"Transient Okta error removing user {userId} from group {groupId}")
 
@@ -490,13 +500,13 @@ class OktaService:
             group, _, error = await client.get_group(groupId)
 
         if error is not None:
-            raise Exception(error)
+            raise OktaResponseError(error)
 
         assert group is not None
 
         return Group(group)
 
-    DEFAULT_QUERY_PARAMS = {"filter": 'type eq "BUILT_IN" or type eq "OKTA_GROUP"'}
+    DEFAULT_QUERY_PARAMS: ClassVar[dict[str, str]] = {"filter": 'type eq "BUILT_IN" or type eq "OKTA_GROUP"'}
 
     async def list_groups(self, *, query_params: dict[str, str] = DEFAULT_QUERY_PARAMS) -> list[Group]:
         # ``query_params`` keys (``filter``, ``q``, ``search``) map directly onto
@@ -504,7 +514,7 @@ class OktaService:
         async with self._okta_client() as client:
             groups = await self._paginate(client.list_groups, **query_params)
 
-        return list(map(lambda group: Group(group), groups))
+        return [Group(group) for group in groups]
 
     async def list_groups_with_active_rules(self) -> dict[str, list[OktaGroupRuleType]]:
         group_rules = await self.list_group_rules()
@@ -518,9 +528,9 @@ class OktaService:
                     group_ids_with_group_rules.setdefault(id, []).append(group_rule)
         return group_ids_with_group_rules
 
-    async def list_group_rules(self, *, query_params: dict[str, str] = {}) -> list[OktaGroupRuleType]:
+    async def list_group_rules(self, *, query_params: dict[str, str] | None = None) -> list[OktaGroupRuleType]:
         async with self._okta_client() as client:
-            group_rules = await self._paginate(client.list_group_rules, **query_params)
+            group_rules = await self._paginate(client.list_group_rules, **(query_params or {}))
 
         return group_rules
 
@@ -528,14 +538,14 @@ class OktaService:
         async with self._okta_client() as client:
             users = await self._paginate(client.list_group_users, groupId)
 
-        return list(map(lambda user: User(user), users))
+        return [User(user) for user in users]
 
     async def delete_group(self, groupId: str) -> None:
         async with self._okta_client() as client:
             *_, error = await client.delete_group(groupId)
 
         if error is not None:
-            raise Exception(error)
+            raise OktaResponseError(error)
 
     # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/Group/#tag/Group/operation/assignGroupOwner
     async def add_owner_to_group(self, groupId: str, userId: str) -> None:
@@ -556,7 +566,7 @@ class OktaService:
 
             # Ignore error if owner is already assigned to group
             if error is not None and "already assigned to this group" not in str(error):
-                raise Exception(error)
+                raise OktaResponseError(error)
         except OktaTransientError:
             logger.warning(f"Transient Okta error adding owner {userId} to group {groupId}")
 
@@ -579,7 +589,7 @@ class OktaService:
                 *_, error = await client.delete_group_owner(groupId, userId)
 
             if error is not None:
-                raise Exception(error)
+                raise OktaResponseError(error)
         except OktaTransientError:
             logger.warning(f"Transient Okta error removing owner {userId} from group {groupId}")
 
@@ -598,7 +608,7 @@ class OktaService:
 
         # ``GroupOwner`` exposes the owning user's ``id``; wrap it in the same
         # loose accessor other okta reads return so callers stay uniform.
-        return list(map(lambda owner: User(owner), owners))
+        return [User(owner) for owner in owners]
 
     # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/GroupPushMapping/#tag/GroupPushMapping/operation/createGroupPushMapping
     async def create_group_push_mapping(
@@ -624,17 +634,17 @@ class OktaService:
             mapping, response, error = await client.create_group_push_mapping(appId, body)
 
         if error is not None:
-            raise Exception(error)
+            raise OktaResponseError(error)
         # Okta returns HTTP 200 for create-or-link, but the SDK's response map only types the
         # spec'd 201, so it leaves the parsed ``mapping`` empty while the JSON sits in the
         # response's ``raw_data``. Fall back to parsing that body when the typed data is absent.
         # (An explicit check rather than ``assert`` so it holds under ``python -O``.)
         if mapping is None:
             if response is None or not response.raw_data:
-                raise Exception("Okta group push mapping create returned no data")
+                raise OktaResponseError("Okta group push mapping create returned no data")
             mapping = GroupPushMapping.from_dict(json.loads(response.raw_data))
         if mapping is None:
-            raise Exception("Could not parse Okta group push mapping create response")
+            raise OktaResponseError("Could not parse Okta group push mapping create response")
         return _group_push_mapping_to_dict(mapping)
 
     # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/GroupPushMapping/#tag/GroupPushMapping/operation/deleteGroupPushMapping
@@ -661,12 +671,12 @@ class OktaService:
                 )
                 error = deactivate[-1] if isinstance(deactivate, tuple) else None
                 if error is not None:
-                    raise Exception(error)
+                    raise OktaResponseError(error)
 
                 deletion = await client.delete_group_push_mapping(appId, mappingId, deleteTargetGroup)
                 error = deletion[-1] if isinstance(deletion, tuple) else None
                 if error is not None:
-                    raise Exception(error)
+                    raise OktaResponseError(error)
             except OktaResourceNotFoundError:
                 return
 
@@ -718,9 +728,9 @@ class User:
         profile: Any = self.user.profile
         profile_data = profile.model_dump(by_alias=True, exclude={"additional_properties"})
         profile_data.update(profile.additional_properties or {})
-        return dict(((user_attrs_to_titles.get(k, k), v) for (k, v) in profile_data.items()))
+        return {user_attrs_to_titles.get(k, k): v for (k, v) in profile_data.items()}
 
-    def get_deleted_at(self) -> Optional[datetime]:
+    def get_deleted_at(self) -> datetime | None:
         user: Any = self.user
         return user.status_changed if user.status in ("SUSPENDED", "DEPROVISIONED") else None
 
@@ -808,7 +818,7 @@ def _group_profile(group: Any) -> Any:
 def is_managed_group(
     group: Group,
     group_ids_with_group_rules: dict[str, list[OktaGroupRuleType]],
-    custom_attr: Optional[str] = OKTA_GROUP_PROFILE_CUSTOM_ATTR,
+    custom_attr: str | None = OKTA_GROUP_PROFILE_CUSTOM_ATTR,
 ) -> bool:
     # Check if OKTA_GROUP_PROFILE_CUSTOM_ATTR attribute exists as a custom Okta Group Profile attribute and retrieve its value
     if custom_attr:

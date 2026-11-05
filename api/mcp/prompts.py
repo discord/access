@@ -148,7 +148,7 @@ def _request_access_prompt(group_or_role: str = "") -> str:
     )
 
 
-def register_prompts(mcp: "MCPServer") -> None:
+def register_prompts(mcp: MCPServer) -> None:
     """Register the v1 prompts on the given MCPServer instance."""
 
     @mcp.prompt(name="request_access", description=REQUEST_ACCESS_PROMPT_DESC)

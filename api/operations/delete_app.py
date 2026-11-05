@@ -1,10 +1,8 @@
-from typing import Optional
-
 import logging
 
 from sqlalchemy import func, or_, select, update
-from api.context import get_request_context
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaUser
 from api.operations.delete_group import DeleteGroup
@@ -12,7 +10,7 @@ from api.schemas import AuditLogSchema, EventType
 
 
 class DeleteApp:
-    def __init__(self, *, app: App | str, current_user_id: Optional[str] = None):
+    def __init__(self, *, app: App | str, current_user_id: str | None = None):
         self.app_id = app if isinstance(app, str) else app.id
         self.current_user_id = current_user_id
 

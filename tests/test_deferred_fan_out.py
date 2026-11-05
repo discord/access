@@ -40,7 +40,6 @@ from api.routers._fan_out import defer_fan_out
 from api.services import okta
 from tests.factories import AppFactory
 
-
 # --- defer_or_drain_fan_out: defer vs. drain-inline vs. no-op -----------------
 
 
@@ -145,9 +144,8 @@ async def test_defer_fan_out_drains_inline_on_endpoint_error(caplog: pytest.LogC
 
     # The endpoint raises: the error response won't carry our BackgroundTask, so
     # the dependency drains inline before re-raising.
-    with caplog.at_level(logging.ERROR, logger="api"):
-        with pytest.raises(ValueError):
-            await agen.athrow(ValueError("endpoint boom"))
+    with caplog.at_level(logging.ERROR, logger="api"), pytest.raises(ValueError):
+        await agen.athrow(ValueError("endpoint boom"))
 
     assert task.done()
     assert ran == ["ran"]
@@ -173,7 +171,7 @@ async def test_detach_for_deferred_fan_out_is_selective_and_idempotent(db: Db, o
     await db.session.commit()
     assert okta_group in db.session
 
-    collected, token = begin_deferred_fan_out()  # deferring → detach is active
+    _collected, token = begin_deferred_fan_out()  # deferring → detach is active
     try:
         # None and objects already absent from the session are tolerated.
         detach_for_deferred_fan_out(db.session, [None, okta_group])
