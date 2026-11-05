@@ -28,7 +28,8 @@ The data-fetching layer is React Query **v5** (`@tanstack/react-query`); mind th
 in step with the app: when you add or rename a route, add a case for it in the same change, and
 seed any rows the page needs to render something other than an empty state. When you change a
 model column the seed sets, update the seed too. Run the visual diff before opening a PR that
-upgrades a frontend dependency or changes layout, theming, or a shared component.
+upgrades a frontend dependency (MUI, MUI X, React, React Router, Emotion) or changes layout,
+theming, or a shared component.
 `scripts/visual-diff/README.md` has the details.
 
 ## Layout and design principles
