@@ -9,13 +9,14 @@ from api.exceptions import ConflictError, InvalidRequestError
 from api.extensions import db
 from api.models import AccessRequestStatus, App, AppGroup, AppRequest, OktaGroup, OktaUser, Tag
 from api.models.app_group import get_access_owners
+from api.models.okta_group import is_group_name_taken
 from api.models.tag import coalesce_ended_at
 from api.operations._active_ids import partition_active_role_ids, partition_active_user_ids
 from api.operations._fan_out import defer_notification
 from api.operations._grants import carry_out_grants, failed_grants_note
 from api.operations._requesters import load_active_requester, split_requester
 from api.operations._service_principals import audit_ref
-from api.operations.create_app import CreateApp, app_group_conflict, owner_group_conflict
+from api.operations.create_app import CreateApp, owner_group_conflict
 from api.operations.create_group import GroupDict
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_role_groups import ModifyRoleGroups
@@ -34,6 +35,13 @@ def _capped(requested: datetime | None, cap: datetime | None) -> datetime | None
         return requested
     cap = cap.replace(tzinfo=UTC) if cap.tzinfo is None else cap.astimezone(UTC)
     return cap if requested is None else min(requested, cap)
+
+
+async def ensure_app_group_names_free(names: list[str]) -> None:
+    """Raise `ConflictError` if a group already has one of `names`, since creating the app would take it over."""
+    for name in names:
+        if await is_group_name_taken(name):
+            raise ConflictError(f"A group named '{name}' already exists")
 
 
 class ApproveAppRequest:
@@ -56,8 +64,8 @@ class ApproveAppRequest:
 
     Raises:
         ConflictError: The request is no longer pending, its requester is no longer
-            active, the app can't be created under its name, or an initial app group
-            already belongs to another app.
+            active, the app can't be created under its name, or a group already has
+            the name of an initial app group.
         InvalidRequestError: An end date has passed, or none of the named app owners is
             still active. Other named users and roles that are no longer active are
             skipped and noted in the resolution reason.
@@ -165,9 +173,7 @@ class ApproveAppRequest:
         conflict = await owner_group_conflict(app_request.requested_app_name)
         if conflict is not None:
             raise ConflictError(conflict)
-        conflict = await app_group_conflict([group.name for group in app_groups])
-        if conflict is not None:
-            raise ConflictError(conflict)
+        await ensure_app_group_names_free([group.name for group in app_groups])
 
         # Users and roles named in the request may have been deleted since. They are
         # skipped and the resolution reason says so, rather than leaving a request

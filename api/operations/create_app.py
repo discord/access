@@ -47,24 +47,6 @@ async def owner_group_conflict(app_name: str) -> str | None:
     )
 
 
-async def app_group_conflict(names: list[str]) -> str | None:
-    """Explain why a new app can't be created with these app groups, or return None if it can.
-
-    Creating an app takes over an existing app group with a requested name, so a
-    name that is already another app's group is refused.
-    """
-    if not names:
-        return None
-    taken = (
-        await db.session.scalars(
-            select(AppGroup.name)
-            .where(func.lower(AppGroup.name).in_([name.lower() for name in names]))
-            .where(AppGroup.deleted_at.is_(None))
-        )
-    ).first()
-    return None if taken is None else f"{taken} already belongs to another app"
-
-
 class AppDict(TypedDict):
     name: str
     description: str
