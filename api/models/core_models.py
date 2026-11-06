@@ -1174,7 +1174,7 @@ class GroupRequest(Base, RequestedByMixin):
     )
 
 
-class AppRequest(Base):
+class AppRequest(Base, RequestedByMixin):
     """A request to create an app, with its owners and initial app groups.
 
     Approved by Access admins (or a conditional-access plugin). The requester is
@@ -1240,7 +1240,10 @@ class AppRequest(Base):
     request_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 
     resolver_user_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
-    # The end dates the approval granted; an approver may shorten the requested ones.
+    # Set instead of `resolver_user_id` when a service principal withdraws its own request.
+    resolver_service_principal_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("service_principal.id"))
+    # The end dates the approval granted, after the approver's choice, any plugin
+    # cap, and the app's tag limits.
     resolved_ownership_ending_at: Mapped[datetime | None] = mapped_column(NaiveUTCDateTime())
     resolved_membership_ending_at: Mapped[datetime | None] = mapped_column(NaiveUTCDateTime())
     resolution_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
@@ -1262,6 +1265,12 @@ class AppRequest(Base):
     resolver: Mapped[OktaUser | None] = relationship(
         "OktaUser",
         primaryjoin="OktaUser.id == AppRequest.resolver_user_id",
+        viewonly=True,
+        lazy="raise_on_sql",
+    )
+    resolver_service_principal: Mapped[Optional["ServicePrincipal"]] = relationship(
+        "ServicePrincipal",
+        primaryjoin="ServicePrincipal.id == AppRequest.resolver_service_principal_id",
         viewonly=True,
         lazy="raise_on_sql",
     )

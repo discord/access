@@ -22,7 +22,7 @@ from api.models.app_group import get_access_owners, get_app_managers
 from api.models.okta_group import is_group_name_taken
 from api.models.tag import coalesce_ended_at
 from api.operations._active_ids import require_active_role_ids, require_active_user_ids
-from api.operations._conditional_access import apply_conditional_access
+from api.operations._conditional_access import apply_conditional_access, current_status
 from api.operations._fan_out import defer_notification
 from api.operations._requesters import load_active_requester, split_requester
 from api.operations._service_principals import audit_ref
@@ -206,6 +206,7 @@ class CreateGroupRequest:
 
         db.session.add(group_request)
         await db.session.commit()
+        group_request_id = group_request.id
 
         # If the requested group is an app group and the requester is the app owner, approve the request
         if self.requested_group_type == "app_group" and app is not None and requester_user is not None:
@@ -309,7 +310,7 @@ class CreateGroupRequest:
             reject=lambda r: RejectGroupRequest(
                 group_request=group_request, rejection_reason=r.reason, notify=False
             ).execute(),
-            status=lambda: group_request.status,
+            status=lambda: current_status(GroupRequest, group_request_id),
         ):
             return group_request
 

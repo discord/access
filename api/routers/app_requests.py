@@ -17,12 +17,14 @@ from sqlalchemy.orm import aliased, joinedload
 from api.auth.dependencies import CurrentRequester, CurrentUserId
 from api.auth.permissions import is_access_admin
 from api.database import DbSession
-from api.models import AccessRequestStatus, AppRequest, OktaUser, ServicePrincipal
+from api.models import AccessRequestStatus, AppRequest, OktaUser
 from api.operations import ApproveAppRequest, CreateAppRequest, RejectAppRequest
+from api.operations._ending_at import USE_REQUESTED
 from api.pagination import Page, validated
 from api.routers._eager import service_principal_options
 from api.routers._fan_out import defer_fan_out
 from api.routers._named_principals import attach_named_principals
+from api.routers._requests import filter_by_requester, join_requester_for_search, withdraw_prior_requests
 from api.schemas.app_requests import (
     AppRequestDetail,
     CreateAppRequestBody,
@@ -38,6 +40,7 @@ def _load_options() -> tuple:
         joinedload(AppRequest.requester),
         joinedload(AppRequest.requester_service_principal).options(*service_principal_options()),
         joinedload(AppRequest.resolver),
+        joinedload(AppRequest.resolver_service_principal).options(*service_principal_options()),
     )
 
 
@@ -83,28 +86,7 @@ async def list_app_requests(
         stmt = stmt.where(AppRequest.status == q_args.status)
 
     if q_args.requester_user_id:
-        if q_args.requester_user_id == "@me":
-            stmt = stmt.where(
-                or_(
-                    AppRequest.requester_user_id == current_user_id,
-                    AppRequest.requester_service_principal_id == current_user_id,
-                )
-            )
-        else:
-            requester_alias = aliased(OktaUser)
-            requester_sp_alias = aliased(ServicePrincipal)
-            stmt = (
-                stmt.outerjoin(AppRequest.requester.of_type(requester_alias))
-                .outerjoin(AppRequest.requester_service_principal.of_type(requester_sp_alias))
-                .where(
-                    or_(
-                        AppRequest.requester_user_id == q_args.requester_user_id,
-                        requester_alias.email.ilike(q_args.requester_user_id),
-                        AppRequest.requester_service_principal_id == q_args.requester_user_id,
-                        requester_sp_alias.display_name.ilike(q_args.requester_user_id),
-                    )
-                )
-            )
+        stmt = filter_by_requester(stmt, AppRequest, q_args.requester_user_id, current_user_id)
 
     if q_args.assignee_user_id:
         # "Requests I can resolve": Access admins resolve every app request, except their own.
@@ -128,21 +110,14 @@ async def list_app_requests(
 
     if q_args.q:
         like = f"%{q_args.q}%"
-        q_requester = aliased(OktaUser)
-        q_requester_sp = aliased(ServicePrincipal)
-        stmt = (
-            stmt.outerjoin(AppRequest.requester.of_type(q_requester))
-            .outerjoin(AppRequest.requester_service_principal.of_type(q_requester_sp))
-            .where(
-                or_(
-                    AppRequest.id.like(f"{q_args.q}%"),
-                    cast(AppRequest.status, String).ilike(like),
-                    AppRequest.requested_app_name.ilike(like),
-                    AppRequest.requested_app_description.ilike(like),
-                    q_requester.email.ilike(like),
-                    q_requester.display_name.ilike(like),
-                    q_requester_sp.display_name.ilike(like),
-                )
+        stmt, requester_clauses = join_requester_for_search(stmt, AppRequest, like)
+        stmt = stmt.where(
+            or_(
+                AppRequest.id.like(f"{q_args.q}%"),
+                cast(AppRequest.status, String).ilike(like),
+                AppRequest.requested_app_name.ilike(like),
+                AppRequest.requested_app_description.ilike(like),
+                *requester_clauses,
             )
         )
 
@@ -164,28 +139,19 @@ async def post_app_request(
     db: DbSession,
     requester: CurrentRequester,
 ) -> AppRequestDetail:
-    # A retry replaces the same requester's pending request for the same app name.
-    requester_column = (
-        AppRequest.requester_service_principal_id
-        if isinstance(requester, ServicePrincipal)
-        else AppRequest.requester_user_id
-    )
-    priors = (
-        await db.scalars(
-            select(AppRequest)
-            .where(func.lower(AppRequest.requested_app_name) == func.lower(body.requested_app_name))
-            .where(requester_column == requester.id)
-            .where(AppRequest.status == AccessRequestStatus.PENDING)
-            .where(AppRequest.resolved_at.is_(None))
-        )
-    ).all()
-    for prior in priors:
-        await RejectAppRequest(
+    # A retry replaces the requester's pending request for the same app name.
+    await withdraw_prior_requests(
+        db,
+        AppRequest,
+        requester,
+        [func.lower(AppRequest.requested_app_name) == func.lower(body.requested_app_name)],
+        lambda prior: RejectAppRequest(
             app_request=prior,
             rejection_reason="Closed due to duplicate app request creation",
             notify_requester=False,
             current_user_id=requester.id,
-        ).execute()
+        ).execute(),
+    )
 
     app_request = await CreateAppRequest(
         requester=requester,
@@ -194,7 +160,7 @@ async def post_app_request(
         requested_app_tags=body.requested_app_tags,
         requested_owner_user_ids=body.requested_owner_user_ids,
         requested_owner_role_ids=body.requested_owner_role_ids,
-        requested_app_groups=[g.model_dump() for g in body.requested_app_groups],
+        requested_app_groups=body.requested_app_groups,
         requested_ownership_ending_at=body.requested_ownership_ending_at,
         requested_membership_ending_at=body.requested_membership_ending_at,
         request_reason=body.request_reason or "",
@@ -214,7 +180,7 @@ async def put_app_request(
         raise HTTPException(404, "Not Found")
 
     # The requester may withdraw its own request; only Access admins resolve others.
-    is_requester = current_user_id in (app_request.requester_user_id, app_request.requester_service_principal_id)
+    is_requester = app_request.is_requested_by(current_user_id)
     if is_requester:
         if body.approved:
             raise HTTPException(403, "Users cannot approve their own requests")
@@ -225,13 +191,21 @@ async def put_app_request(
         raise HTTPException(409, "App request is not pending")
 
     if body.approved:
-        if body.resolved_ownership_ending_at is not None:
-            app_request.resolved_ownership_ending_at = body.resolved_ownership_ending_at
-        if body.resolved_membership_ending_at is not None:
-            app_request.resolved_membership_ending_at = body.resolved_membership_ending_at
-        await db.commit()
+        # A sent end date (null meaning indefinite) replaces the requested one.
         await ApproveAppRequest(
-            app_request=app_request_id, approver_user=current_user_id, approval_reason=body.reason or ""
+            app_request=app_request_id,
+            approver_user=current_user_id,
+            approval_reason=body.reason or "",
+            approver_ownership_ending_at=(
+                body.resolved_ownership_ending_at
+                if "resolved_ownership_ending_at" in body.model_fields_set
+                else USE_REQUESTED
+            ),
+            approver_membership_ending_at=(
+                body.resolved_membership_ending_at
+                if "resolved_membership_ending_at" in body.model_fields_set
+                else USE_REQUESTED
+            ),
         ).execute()
     else:
         await RejectAppRequest(

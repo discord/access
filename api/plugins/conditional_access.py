@@ -47,7 +47,7 @@ class ConditionalAccessResponse:
         reason: Recorded as the resolution reason.
         ending_at: Caps the access the approval grants. For a group request,
             it caps the owner grants.
-        membership_ending_at: For a group request, caps the member grants.
+        membership_ending_at: For a group or app request, caps the member grants.
             Ignored for other request types.
         allow_named_grants: For a group request, confirms the approval covers the
             owners and members the request names. An approval of a request that

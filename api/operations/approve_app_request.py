@@ -1,40 +1,29 @@
 import logging
 from datetime import UTC, datetime
-from typing import Any
 
 from sqlalchemy import func, select
 
 from api.context import get_request_context
 from api.exceptions import ConflictError, InvalidRequestError
 from api.extensions import db
-from api.models import AccessRequestStatus, App, AppGroup, AppRequest, OktaUser, ServicePrincipal
+from api.models import AccessRequestStatus, App, AppGroup, AppRequest, OktaGroup, OktaUser, Tag
 from api.models.app_group import get_access_owners
+from api.models.tag import coalesce_ended_at
 from api.operations._active_ids import require_active_role_ids, require_active_user_ids
+from api.operations._ending_at import USE_REQUESTED, EndingAtChoice, choose_ending_at
 from api.operations._fan_out import defer_notification
-from api.operations._requesters import load_active_requester
+from api.operations._requesters import load_active_requester, split_requester
 from api.operations._service_principals import audit_ref
+from api.operations.constraints.check_group_request_self_add import missing_reason_message
 from api.operations.create_app import CreateApp, owner_group_conflict
 from api.operations.create_group import GroupDict
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_role_groups import ModifyRoleGroups
 from api.plugins import NotificationHook
 from api.schemas import AuditLogSchema, EventType
+from api.schemas.app_requests import AppRequestGroup
 
 logger = logging.getLogger(__name__)
-
-
-def _as_utc(value: datetime) -> datetime:
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
-
-
-def _capped(requested: datetime | None, cap: datetime | None) -> datetime | None:
-    """`requested`, shortened to `cap` when `cap` is earlier; a cap never extends it."""
-    if requested is not None:
-        requested = _as_utc(requested)
-    if cap is None:
-        return requested
-    cap = _as_utc(cap)
-    return cap if requested is None else min(requested, cap)
 
 
 class ApproveAppRequest:
@@ -50,13 +39,16 @@ class ApproveAppRequest:
         approval_reason: Recorded as the resolution reason.
         ending_at: Caps the owner grants; it never extends them.
         membership_ending_at: Caps the member grants; it never extends them.
+        approver_ownership_ending_at: The approver's end date for the owner grants, replacing
+            the requested one (None for indefinite), or `USE_REQUESTED` to keep it.
+        approver_membership_ending_at: The same for the member grants.
         notify: Whether to send notifications.
 
     Raises:
         ConflictError: The request is no longer pending, or the app can't be created
             under its name.
-        InvalidRequestError: An end date has passed, or a named owner or member is no
-            longer active.
+        InvalidRequestError: An end date has passed, a named owner or member is no
+            longer active, or the app's tags require a reason the request lacks.
     """
 
     def __init__(
@@ -67,6 +59,8 @@ class ApproveAppRequest:
         approval_reason: str = "",
         ending_at: datetime | None = None,
         membership_ending_at: datetime | None = None,
+        approver_ownership_ending_at: EndingAtChoice = USE_REQUESTED,
+        approver_membership_ending_at: EndingAtChoice = USE_REQUESTED,
         notify: bool = True,
     ):
         self.app_request_id = app_request if isinstance(app_request, str) else app_request.id
@@ -74,6 +68,8 @@ class ApproveAppRequest:
         self.approval_reason = approval_reason
         self.ending_at = ending_at
         self.membership_ending_at = membership_ending_at
+        self.approver_ownership_ending_at = approver_ownership_ending_at
+        self.approver_membership_ending_at = approver_membership_ending_at
         self.notify = notify
 
     async def execute(self) -> AppRequest | None:
@@ -95,34 +91,65 @@ class ApproveAppRequest:
             ).first()
             if approver is None or approver.id not in {u.id for u in await get_access_owners()}:
                 return app_request
-            if approver.id == app_request.requester_user_id:
+            if app_request.is_requested_by(approver.id):
                 return app_request
 
-        requester = await load_active_requester(
-            app_request.requester_service_principal_id or app_request.requester_user_id
-        )
+        requester = await load_active_requester(app_request.requester_id)
         if requester is None:
             return app_request
-        requester_user = requester if isinstance(requester, OktaUser) else None
-        requester_service_principal = requester if isinstance(requester, ServicePrincipal) else None
+        requester_user, requester_service_principal = split_requester(requester)
 
-        ownership_ending_at = _capped(
-            app_request.resolved_ownership_ending_at or app_request.requested_ownership_ending_at, self.ending_at
+        app_groups = [AppRequestGroup.model_validate(group) for group in app_request.requested_app_groups]
+        has_members = any(group.member_user_ids or group.member_role_ids for group in app_groups)
+        tags = list(
+            (
+                await db.session.scalars(
+                    select(Tag).where(Tag.id.in_(app_request.requested_app_tags)).where(Tag.deleted_at.is_(None))
+                )
+            ).all()
         )
-        membership_ending_at = _capped(
-            app_request.resolved_membership_ending_at or app_request.requested_membership_ending_at,
-            self.membership_ending_at,
+
+        # Every group of a new app carries exactly the app's tags, so the tag limits
+        # capping each grant are known before anything is created.
+        ownership_ending_at = coalesce_ended_at(
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY,
+            tags,
+            choose_ending_at(
+                app_request.resolved_ownership_ending_at or app_request.requested_ownership_ending_at,
+                self.approver_ownership_ending_at,
+                self.ending_at,
+            ),
+            group_is_managed=True,
+        )
+        membership_ending_at = (
+            coalesce_ended_at(
+                Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY,
+                tags,
+                choose_ending_at(
+                    app_request.resolved_membership_ending_at or app_request.requested_membership_ending_at,
+                    self.approver_membership_ending_at,
+                    self.membership_ending_at,
+                ),
+                group_is_managed=True,
+            )
+            if has_members
+            else None
         )
         now = datetime.now(UTC)
-        if ownership_ending_at is not None and ownership_ending_at <= now:
+        if ownership_ending_at is not None and ownership_ending_at.replace(tzinfo=UTC) <= now:
             raise InvalidRequestError(
                 "The ownership window for this request has already passed. Set an ownership end date when approving it."
             )
-        if membership_ending_at is not None and membership_ending_at <= now:
+        if membership_ending_at is not None and membership_ending_at.replace(tzinfo=UTC) <= now:
             raise InvalidRequestError(
                 "The membership window for this request has already passed. "
                 "Set a membership end date when approving it."
             )
+        reason_error = missing_reason_message(
+            tags, app_request.request_reason, grants_ownership=True, grants_membership=has_members
+        )
+        if reason_error is not None:
+            raise InvalidRequestError(reason_error)
 
         # The app may have been created, or its name claimed, since the request was filed.
         existing = (
@@ -140,16 +167,24 @@ class ApproveAppRequest:
 
         owner_user_ids = await require_active_user_ids(app_request.requested_owner_user_ids, "owner")
         owner_role_ids = await require_active_role_ids(app_request.requested_owner_role_ids, "owner")
-        app_groups: list[dict[str, Any]] = [
-            {
-                **group,
-                "owner_user_ids": await require_active_user_ids(group.get("owner_user_ids", []), "owner"),
-                "owner_role_ids": await require_active_role_ids(group.get("owner_role_ids", []), "owner"),
-                "member_user_ids": await require_active_user_ids(group.get("member_user_ids", []), "member"),
-                "member_role_ids": await require_active_role_ids(group.get("member_role_ids", []), "member"),
-            }
-            for group in app_request.requested_app_groups
-        ]
+        for group in app_groups:
+            await require_active_user_ids(group.owner_user_ids + group.member_user_ids, "app group")
+            await require_active_role_ids(group.owner_role_ids + group.member_role_ids, "app group")
+
+        prefix = (
+            f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_request.requested_app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        )
+        # Creating the app absorbs any existing groups already carrying its prefix;
+        # only the groups it creates are credited to the requesting service principal.
+        preexisting_group_ids = set(
+            (
+                await db.session.scalars(
+                    select(OktaGroup.id)
+                    .where(OktaGroup.name.istartswith(prefix, autoescape=True))
+                    .where(OktaGroup.deleted_at.is_(None))
+                )
+            ).all()
+        )
 
         approver_id = approver.id if approver else None
         _ctx = get_request_context()
@@ -163,13 +198,13 @@ class ApproveAppRequest:
                     "current_user_email": approver.email if approver else None,
                     "app_request": app_request,
                     "requester": requester_user,
-                    "service_principal": audit_ref(requester_service_principal),
+                    "requester_service_principal": audit_ref(requester_service_principal),
                 }
             )
         )
 
         additional_app_groups: list[GroupDict] = [
-            {"name": group["name"], "description": group["description"]} for group in app_groups
+            {"name": group.name, "description": group.description} for group in app_groups
         ]
         created_app = await CreateApp(
             app=App(
@@ -183,7 +218,7 @@ class ApproveAppRequest:
         ).execute()
         app_id = created_app.id
 
-        groups_by_name = {
+        app_groups_by_name = {
             g.name.lower(): g
             for g in (
                 await db.session.scalars(
@@ -191,9 +226,14 @@ class ApproveAppRequest:
                 )
             ).all()
         }
-        owners_group = next(g for g in groups_by_name.values() if g.is_owner)
+        owners_group = next(g for g in app_groups_by_name.values() if g.is_owner)
         owners_group_id = owners_group.id
-        group_ids = {group["name"]: groups_by_name[group["name"].lower()].id for group in app_groups}
+        group_ids = {group.name: app_groups_by_name[group.name.lower()].id for group in app_groups}
+        if app_request.requester_service_principal_id is not None:
+            for created in app_groups_by_name.values():
+                if created.id not in preexisting_group_ids:
+                    created.created_by_service_principal_id = app_request.requester_service_principal_id
+            await db.session.commit()
 
         created_reason = f"App request approved: {app_request.request_reason}"
 
@@ -220,26 +260,26 @@ class ApproveAppRequest:
             ).execute()
 
         for group in app_groups:
-            group_id = group_ids[group["name"]]
-            if group["owner_user_ids"]:
+            group_id = group_ids[group.name]
+            if group.owner_user_ids:
                 await ModifyGroupUsers(
                     group=group_id,
-                    owners_to_add=group["owner_user_ids"],
+                    owners_to_add=group.owner_user_ids,
                     users_added_ended_at=ownership_ending_at,
                     current_user_id=approver_id,
                     created_reason=created_reason,
                     notify=self.notify,
                 ).execute()
-            if group["member_user_ids"]:
+            if group.member_user_ids:
                 await ModifyGroupUsers(
                     group=group_id,
-                    members_to_add=group["member_user_ids"],
+                    members_to_add=group.member_user_ids,
                     users_added_ended_at=membership_ending_at,
                     current_user_id=approver_id,
                     created_reason=created_reason,
                     notify=self.notify,
                 ).execute()
-            for role_id in group["owner_role_ids"]:
+            for role_id in group.owner_role_ids:
                 await ModifyRoleGroups(
                     role_group=role_id,
                     owner_groups_to_add=[group_id],
@@ -248,7 +288,7 @@ class ApproveAppRequest:
                     created_reason=created_reason,
                     notify=self.notify,
                 ).execute()
-            for role_id in group["member_role_ids"]:
+            for role_id in group.member_role_ids:
                 await ModifyRoleGroups(
                     role_group=role_id,
                     groups_to_add=[group_id],

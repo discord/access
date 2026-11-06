@@ -323,8 +323,9 @@ export type AppRequestDetail = {
   created_at: string | null;
   updated_at: string | null;
   requester?: OktaUserSummary | null;
-  requester_service_principal?: ServicePrincipalDetail | null;
+  requester_service_principal?: ServicePrincipalSummary | null;
   resolver?: OktaUserSummary | null;
+  resolver_service_principal?: ServicePrincipalSummary | null;
   named_users?: OktaUserSummary[];
   named_roles?: RoleGroupRef[];
 };
@@ -334,7 +335,9 @@ export type AppRequestDetail = {
  */
 export type AppRequestGroup = {
   /**
+   * @maxLength 255
    * @minLength 1
+   * @pattern ^[A-Z][A-Za-z0-9-]*$
    */
   name: string;
   /**
@@ -1214,7 +1217,10 @@ export type ResolveAccessRequestBody = {
 };
 
 /**
- * Body for PUT /api/app-requests/{id}. The end dates, when sent, replace the requested ones.
+ * Body for PUT /api/app-requests/{id}.
+ *
+ * Each end date, when sent, replaces the requested one on approval; an explicit
+ * null means indefinite. The app's tag limits still cap the result.
  */
 export type ResolveAppRequestBody = {
   approved: boolean;

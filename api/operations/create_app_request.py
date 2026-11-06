@@ -2,7 +2,6 @@ import logging
 import random
 import string
 from datetime import datetime
-from typing import Any
 
 from sqlalchemy import func, select
 
@@ -13,20 +12,22 @@ from api.models import AccessRequestStatus, App, AppGroup, AppRequest, OktaUser,
 from api.models.app_group import get_access_owners
 from api.models.tag import coalesce_ended_at
 from api.operations._active_ids import require_active_role_ids, require_active_user_ids
+from api.operations._conditional_access import apply_conditional_access, current_status
 from api.operations._fan_out import defer_notification
-from api.operations._requesters import load_active_requester
+from api.operations._requesters import load_active_requester, split_requester
 from api.operations._service_principals import audit_ref
 from api.operations.approve_app_request import ApproveAppRequest
 from api.operations.create_app import owner_group_conflict
 from api.operations.reject_app_request import RejectAppRequest
 from api.plugins import ConditionalAccessHook, NotificationHook, evaluate_conditional_access
 from api.schemas import AuditLogSchema, EventType
+from api.schemas.app_requests import AppRequestGroup
 
 logger = logging.getLogger(__name__)
 
 
-async def validate_app_groups(app_name: str, app_groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Check an app request's initial app groups and return them normalized.
+async def validate_app_groups(app_name: str, app_groups: list[AppRequestGroup]) -> list[AppRequestGroup]:
+    """Check an app request's initial app groups and return them with their ids deduplicated.
 
     Raises:
         InvalidRequestError: A name lacks the app's prefix, names its owners group,
@@ -37,25 +38,29 @@ async def validate_app_groups(app_name: str, app_groups: list[dict[str, Any]]) -
     seen: set[str] = set()
     normalized = []
     for group in app_groups:
-        name = group["name"]
-        if not name.startswith(prefix):
+        if not group.name.startswith(prefix):
             raise InvalidRequestError(f"App group name must be prefixed with {prefix}")
-        if name.lower() == owners_group_name.lower():
+        if group.name.lower() == owners_group_name.lower():
             raise InvalidRequestError(f"{owners_group_name} is created with the app; name its owners on the app")
-        if name.lower() in seen:
-            raise InvalidRequestError(f"App group {name} is named more than once")
-        seen.add(name.lower())
+        if group.name.lower() in seen:
+            raise InvalidRequestError(f"App group {group.name} is named more than once")
+        seen.add(group.name.lower())
         normalized.append(
-            {
-                "name": name,
-                "description": group.get("description") or "",
-                "owner_user_ids": await require_active_user_ids(group.get("owner_user_ids", []), "owner"),
-                "owner_role_ids": await require_active_role_ids(group.get("owner_role_ids", []), "owner"),
-                "member_user_ids": await require_active_user_ids(group.get("member_user_ids", []), "member"),
-                "member_role_ids": await require_active_role_ids(group.get("member_role_ids", []), "member"),
-            }
+            group.model_copy(
+                update={
+                    "owner_user_ids": await require_active_user_ids(group.owner_user_ids, "owner"),
+                    "owner_role_ids": await require_active_role_ids(group.owner_role_ids, "owner"),
+                    "member_user_ids": await require_active_user_ids(group.member_user_ids, "member"),
+                    "member_role_ids": await require_active_role_ids(group.member_role_ids, "member"),
+                }
+            )
         )
     return normalized
+
+
+def has_member_grants(app_groups: list[AppRequestGroup]) -> bool:
+    """Whether any initial app group names members."""
+    return any(group.member_user_ids or group.member_role_ids for group in app_groups)
 
 
 async def ensure_app_name_available(app_name: str) -> None:
@@ -94,7 +99,7 @@ class CreateAppRequest:
         requested_app_tags: list[str] | None = None,
         requested_owner_user_ids: list[str] | None = None,
         requested_owner_role_ids: list[str] | None = None,
-        requested_app_groups: list[dict[str, Any]] | None = None,
+        requested_app_groups: list[AppRequestGroup] | None = None,
         requested_ownership_ending_at: datetime | None = None,
         requested_membership_ending_at: datetime | None = None,
         request_reason: str = "",
@@ -115,8 +120,7 @@ class CreateAppRequest:
         """Create the request and return it."""
         requester = await load_active_requester(self.requester_id)
         assert requester is not None
-        requester_user = requester if isinstance(requester, OktaUser) else None
-        requester_service_principal = requester if isinstance(requester, ServicePrincipal) else None
+        requester_user, requester_service_principal = split_requester(requester)
 
         await ensure_app_name_available(self.requested_app_name)
 
@@ -145,17 +149,26 @@ class CreateAppRequest:
             requested_app_tags=tag_ids,
             requested_owner_user_ids=owner_user_ids,
             requested_owner_role_ids=owner_role_ids,
-            requested_app_groups=app_groups,
+            requested_app_groups=[group.model_dump() for group in app_groups],
             requested_ownership_ending_at=coalesce_ended_at(
                 Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY, tags, self.requested_ownership_ending_at, group_is_managed=True
             ),
-            requested_membership_ending_at=coalesce_ended_at(
-                Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, tags, self.requested_membership_ending_at, group_is_managed=True
+            # A request without members grants no membership, so it has no membership window.
+            requested_membership_ending_at=(
+                coalesce_ended_at(
+                    Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY,
+                    tags,
+                    self.requested_membership_ending_at,
+                    group_is_managed=True,
+                )
+                if has_member_grants(app_groups)
+                else None
             ),
             request_reason=self.request_reason,
         )
         db.session.add(app_request)
         await db.session.commit()
+        app_request_id = app_request.id
 
         _ctx = get_request_context()
         logging.getLogger("access.audit").info(
@@ -168,35 +181,28 @@ class CreateAppRequest:
                     "current_user_email": requester_user.email if requester_user else None,
                     "app_request": app_request,
                     "requester": requester_user,
-                    "service_principal": audit_ref(requester_service_principal),
+                    "requester_service_principal": audit_ref(requester_service_principal),
                 }
             )
         )
 
-        for response in await evaluate_conditional_access(
-            ConditionalAccessHook.APP_REQUEST_CREATED, app_request=app_request, requester=requester
+        if await apply_conditional_access(
+            await evaluate_conditional_access(
+                ConditionalAccessHook.APP_REQUEST_CREATED, app_request=app_request, requester=requester
+            ),
+            request_label=f"app request {app_request.id}",
+            approve=lambda r: ApproveAppRequest(
+                app_request=app_request,
+                approval_reason=r.reason,
+                ending_at=r.ending_at,
+                membership_ending_at=r.membership_ending_at,
+                notify=False,
+            ).execute(),
+            reject=lambda r: RejectAppRequest(
+                app_request=app_request, rejection_reason=r.reason, notify=False
+            ).execute(),
+            status=lambda: current_status(AppRequest, app_request_id),
         ):
-            if response is None:
-                continue
-            if response.approved:
-                try:
-                    await ApproveAppRequest(
-                        app_request=app_request,
-                        approval_reason=response.reason,
-                        ending_at=response.ending_at,
-                        membership_ending_at=response.membership_ending_at,
-                        notify=False,
-                    ).execute()
-                except (ConflictError, InvalidRequestError) as e:
-                    logger.warning("Conditional access approval of app request %s failed: %s", app_request.id, e)
-                # An approval that couldn't create the app as requested leaves the
-                # request pending; route it to Access admins.
-                if app_request.status == AccessRequestStatus.PENDING:
-                    break
-            else:
-                await RejectAppRequest(
-                    app_request=app_request, rejection_reason=response.reason, notify=False
-                ).execute()
             return app_request
 
         approvers = await get_access_owners()
