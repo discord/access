@@ -15,7 +15,6 @@ from api.auth.dependencies import CurrentUserId
 from api.database import DbSession
 from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, RoleGroup, Tag
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
-from api.operations._ending_at import USE_REQUESTED
 from api.pagination import Page, validated
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginFilteringError,
@@ -377,8 +376,12 @@ async def put_group_request(
         gr.resolved_app_id = body.resolved_app_id
     if body.resolved_group_tags is not None:
         gr.resolved_group_tags = body.resolved_group_tags
+    if body.resolved_ownership_ending_at is not None:
+        gr.resolved_ownership_ending_at = body.resolved_ownership_ending_at
     if body.resolved_plugin_data is not None:
         gr.resolved_plugin_data = body.resolved_plugin_data
+    if body.resolved_membership_ending_at is not None:
+        gr.resolved_membership_ending_at = body.resolved_membership_ending_at
 
     await db.commit()
 
@@ -389,17 +392,6 @@ async def put_group_request(
                 group_request=gr,
                 approver_user=current_user_id,
                 approval_reason=resolution_reason,
-                # A sent end date (null meaning indefinite) replaces the requested one.
-                approver_ownership_ending_at=(
-                    body.resolved_ownership_ending_at
-                    if "resolved_ownership_ending_at" in body.model_fields_set
-                    else USE_REQUESTED
-                ),
-                approver_membership_ending_at=(
-                    body.resolved_membership_ending_at
-                    if "resolved_membership_ending_at" in body.model_fields_set
-                    else USE_REQUESTED
-                ),
                 owner_user_ids=body.resolved_owner_user_ids,
                 owner_role_ids=body.resolved_owner_role_ids,
                 member_user_ids=body.resolved_member_user_ids,
