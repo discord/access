@@ -6,7 +6,17 @@ from typing import Any
 
 import pluggy
 
-from api.models import AccessRequest, App, GroupRequest, OktaGroup, OktaUser, RoleGroup, RoleRequest, Tag
+from api.models import (
+    AccessRequest,
+    App,
+    GroupRequest,
+    OktaGroup,
+    OktaUser,
+    RoleGroup,
+    RoleRequest,
+    ServicePrincipal,
+    Tag,
+)
 from api.plugins._async_dispatch import run_hooks_to_completion, verify_async_impls
 
 conditional_access_plugin_name = "access_conditional_access"
@@ -67,17 +77,24 @@ class ConditionalAccessPluginSpec:
     async def group_request_created(
         self,
         group_request: GroupRequest,
-        requester: OktaUser,
+        requester: OktaUser | ServicePrincipal,
         app: App | None = None,
     ) -> ConditionalAccessResponse | None:
         """Automatically approve, deny, or continue the group request.
 
+        ``requester`` is the user or service principal that filed the request. A
+        rule that reads user-only attributes (such as ``email``) must check the
+        type first; one keyed only on the app or group name applies to service
+        principals' requests too.
+
         An approval creates the requested group with the owners and members the
-        request names (users and roles; a request that names no owners names its
-        requester). An approval of a request that names anything beyond its
-        requester as the sole owner takes effect only when the response sets
-        ``allow_named_grants``; otherwise it is ignored and the request stays
-        pending. It is recorded with no resolver. When the group can't be
+        request names (users and roles; a user's request that names no owners
+        names its requester). A service principal is never made an owner. An
+        approval of a request that names anything beyond its requester as the
+        sole owner (which every service principal's request does) takes effect
+        only when the response sets ``allow_named_grants``; otherwise it is
+        ignored and the request stays pending. The approval is recorded with no
+        resolver. When the group can't be
         created as requested (for example, its name is already taken), the
         request stays pending and goes to its reviewers. The response's
         ``ending_at`` caps the owner grants and ``membership_ending_at`` caps the

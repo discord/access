@@ -28,6 +28,8 @@ from api.models.tag import effective_ended_at
 from api.operations._active_ids import require_active_role_ids, require_active_user_ids
 from api.operations._fan_out import defer_notification
 from api.operations._grants import carry_out_grants, failed_grants_note
+from api.operations._requesters import load_active_requester, split_requester
+from api.operations._service_principals import audit_ref
 from api.operations.constraints.check_group_request_self_add import CheckGroupRequestSelfAdd
 from api.operations.create_group import CreateGroup
 from api.operations.modify_group_users import ModifyGroupUsers
@@ -56,6 +58,12 @@ class ApproveGroupRequest:
         owner_role_ids: Replaces the requested owner roles, or None to keep them.
         member_user_ids: Replaces the requested member users, or None to keep them.
         member_role_ids: Replaces the requested member roles, or None to keep them.
+
+    Raises:
+        ConflictError: The request is no longer pending, its requester is no longer active,
+            or its group name is taken.
+        InvalidRequestError: The request can't be carried out as resolved, for example because
+            an end date has passed or no owner is named.
     """
 
     def __init__(
@@ -122,16 +130,14 @@ class ApproveGroupRequest:
             raise ConflictError("Group request is no longer pending")
 
         # Don't allow requester to approve their own request
-        if group_request.requester_user_id == approver_id and not self.bypass_self_approval:
+        if approver_id is not None and group_request.requester_user_id == approver_id and not self.bypass_self_approval:
             return group_request
 
-        # Don't allow approving a request if the requester is deleted. (Note:
-        # a deleted requester usually can't even load above — active_requester
-        # is an inner join filtering deleted_at — so this is a belt-and-braces
-        # check that mirrors the historical no-op rather than a 4xx path.)
-        requester = await db.session.get(OktaUser, group_request.requester_user_id)
-        if requester is None or requester.deleted_at is not None:
-            return group_request
+        # Don't allow approving a request whose requester is deleted.
+        requester = await load_active_requester(group_request.requester_id)
+        if requester is None:
+            raise ConflictError("The requester is no longer active")
+        requester_user, requester_service_principal = split_requester(requester)
 
         # Resolve group fields: use resolved_* if set, otherwise fall back to requested_*
         resolved_name = (
@@ -379,7 +385,8 @@ class ApproveGroupRequest:
                     "current_user_id": approver_id,
                     "current_user_email": approver_email,
                     "group_request": group_request,
-                    "requester": await db.session.get(OktaUser, group_request.requester_user_id),
+                    "requester": requester_user,
+                    "requester_service_principal": audit_ref(requester_service_principal),
                 }
             )
         )
@@ -405,6 +412,8 @@ class ApproveGroupRequest:
                 name=resolved_name,
                 description=resolved_description,
             )
+
+        new_group.created_by_service_principal_id = group_request.requester_service_principal_id
 
         created_group: AppGroup | OktaGroup | RoleGroup = await CreateGroup(
             group=new_group,
@@ -507,7 +516,9 @@ class ApproveGroupRequest:
 
         await db.session.commit()
 
-        if self.notify:
+        # A service principal learns the outcome by polling the request, so only a
+        # user requester is notified.
+        if self.notify and group_request.requester_user_id is not None:
             created_group = (
                 await db.session.scalars(
                     select(OktaGroup)

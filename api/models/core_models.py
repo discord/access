@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 from sqlalchemy import (
     JSON,
@@ -348,6 +348,9 @@ class OktaGroup(Base):
         nullable=False,
         server_default="{}",
     )
+
+    # The service principal whose approved request created this group, if any.
+    created_by_service_principal_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("service_principal.id"))
 
     # See more details on specifying alternative join conditions for relationships at
     # https://docs.sqlalchemy.org/en/14/orm/join_conditions.html#specifying-alternate-join-conditions
@@ -942,7 +945,37 @@ class RoleRequest(Base):
     )
 
 
-class GroupRequest(Base):
+class RequestedByMixin:
+    """Who filed a request: exactly one of a user and a service principal.
+
+    For the request models, which each declare `requester_user_id` and
+    `requester_service_principal_id`.
+    """
+
+    if TYPE_CHECKING:
+        requester_user_id: str | None
+        requester_service_principal_id: str | None
+
+    @property
+    def requester_id(self) -> str:
+        """The id of the user or service principal that filed the request."""
+        requester_id = self.requester_user_id or self.requester_service_principal_id
+        assert requester_id is not None
+        return requester_id
+
+    def is_requested_by(self, caller_id: str | None) -> bool:
+        """Whether `caller_id` (a user or service principal id) filed the request."""
+        return caller_id is not None and caller_id == self.requester_id
+
+
+class GroupRequest(Base, RequestedByMixin):
+    __table_args__ = (
+        CheckConstraint(
+            "(requester_user_id IS NULL) != (requester_service_principal_id IS NULL)",
+            name="exactly_one_requester",
+        ),
+    )
+
     # A 20 character random string like Okta IDs
     id: Mapped[str] = mapped_column(Unicode(20), primary_key=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
@@ -957,7 +990,9 @@ class GroupRequest(Base):
         default=AccessRequestStatus.PENDING,
     )
 
-    requester_user_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
+    # Exactly one of the two requester columns is set.
+    requester_user_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
+    requester_service_principal_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("service_principal.id"))
     # https://developer.okta.com/docs/reference/api/groups/#default-profile-properties
     requested_group_name: Mapped[str] = mapped_column(Unicode(255), nullable=False)
     requested_group_description: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
@@ -1018,6 +1053,8 @@ class GroupRequest(Base):
 
     # Since resolver can edit all fields before group is created, have 'resolved' version
     resolver_user_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
+    # Set instead of `resolver_user_id` when a service principal withdraws its own request.
+    resolver_service_principal_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("service_principal.id"))
     # https://developer.okta.com/docs/reference/api/groups/#default-profile-properties
     resolved_group_name: Mapped[str] = mapped_column(Unicode(255), nullable=False, default="")
     resolved_group_description: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
@@ -1079,20 +1116,25 @@ class GroupRequest(Base):
         ForeignKey("okta_group.id"),
     )
 
-    requester: Mapped[OktaUser] = relationship(
+    requester: Mapped[OktaUser | None] = relationship(
         "OktaUser",
         primaryjoin="OktaUser.id == GroupRequest.requester_user_id",
         viewonly=True,
         lazy="raise_on_sql",
-        innerjoin=True,
     )
 
-    active_requester: Mapped[OktaUser] = relationship(
+    active_requester: Mapped[OktaUser | None] = relationship(
         "OktaUser",
         primaryjoin="and_(OktaUser.id == GroupRequest.requester_user_id, OktaUser.deleted_at.is_(None))",
         viewonly=True,
         lazy="raise_on_sql",
-        innerjoin=True,
+    )
+
+    requester_service_principal: Mapped[Optional["ServicePrincipal"]] = relationship(
+        "ServicePrincipal",
+        primaryjoin="ServicePrincipal.id == GroupRequest.requester_service_principal_id",
+        viewonly=True,
+        lazy="raise_on_sql",
     )
 
     resolver: Mapped[OktaUser] = relationship(
@@ -1105,6 +1147,13 @@ class GroupRequest(Base):
     active_resolver: Mapped[OktaUser] = relationship(
         "OktaUser",
         primaryjoin="and_(OktaUser.id == GroupRequest.resolver_user_id, OktaUser.deleted_at.is_(None))",
+        viewonly=True,
+        lazy="raise_on_sql",
+    )
+
+    resolver_service_principal: Mapped[Optional["ServicePrincipal"]] = relationship(
+        "ServicePrincipal",
+        primaryjoin="ServicePrincipal.id == GroupRequest.resolver_service_principal_id",
         viewonly=True,
         lazy="raise_on_sql",
     )
@@ -1393,6 +1442,11 @@ class ServicePrincipal(Base):
     """
 
     ID_PREFIX = "sp_"
+
+    @classmethod
+    def is_service_principal_id(cls, caller_id: str | None) -> bool:
+        """Whether `caller_id` is a service principal id rather than a user id."""
+        return caller_id is not None and caller_id.startswith(cls.ID_PREFIX)
 
     # `ID_PREFIX` followed by random characters, so a service principal id can
     # never equal an Okta user id.

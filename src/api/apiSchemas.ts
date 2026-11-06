@@ -598,7 +598,9 @@ export type GroupRequestDetail = {
   created_at: string | null;
   updated_at: string | null;
   requester?: OktaUserSummary | null;
+  requester_service_principal?: ServicePrincipalSummary | null;
   resolver?: OktaUserSummary | null;
+  resolver_service_principal?: ServicePrincipalSummary | null;
   named_users?: OktaUserSummary[];
   named_roles?: RoleGroupRef[];
 };
@@ -1459,6 +1461,21 @@ export type ServicePrincipalOwnerDetail = {
 };
 
 export type ServicePrincipalProvider = 'cloudflare';
+
+/**
+ * A service principal and the users and roles accountable for it, without its credential's subject.
+ *
+ * The shape embedded wherever a service principal appears, such as a request's requester.
+ */
+export type ServicePrincipalSummary = {
+  id: string;
+  display_name: string;
+  provider: ServicePrincipalProvider;
+  created_at: string | null;
+  updated_at: string | null;
+  deleted_at?: string | null;
+  owners?: ServicePrincipalOwnerDetail[];
+};
 
 export type TagDetail = {
   id: string;

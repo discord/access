@@ -10,7 +10,7 @@ from sqlalchemy import String, and_, cast, false, not_, or_, select
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload
 from starlette.requests import Request
 
-from api.auth.dependencies import CurrentUserId
+from api.auth.dependencies import CurrentUserId, reject_service_principal
 from api.database import DbSession
 from api.models import (
     AccessRequestStatus,
@@ -353,7 +353,7 @@ async def get_role_request(role_request_id: str, db: DbSession, current_user_id:
     return RoleRequestDetail.model_validate(rr, from_attributes=True)
 
 
-@router.post("", name="role_requests_create", status_code=201)
+@router.post("", name="role_requests_create", status_code=201, dependencies=[Depends(reject_service_principal)])
 async def post_role_request(
     body: CreateRoleRequestBody,
     db: DbSession,

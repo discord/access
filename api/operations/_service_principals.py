@@ -102,6 +102,13 @@ def audit_snapshot(service_principal: ServicePrincipal) -> dict[str, Any]:
     }
 
 
+def audit_ref(service_principal: ServicePrincipal | None) -> dict[str, Any] | None:
+    """Identify a service principal acting as a requester in an audit-log entry."""
+    if service_principal is None:
+        return None
+    return {"id": service_principal.id, "display_name": service_principal.display_name}
+
+
 async def emit_audit_log(
     event_type: EventType,
     current_user_id: str | None,

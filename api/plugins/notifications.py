@@ -14,6 +14,7 @@ from api.models import (
     RoleGroup,
     RoleGroupMap,
     RoleRequest,
+    ServicePrincipal,
 )
 from api.plugins._async_dispatch import run_hooks_to_completion, verify_async_impls
 from api.plugins.metrics_reporter import get_metrics_reporter_hook
@@ -162,10 +163,14 @@ class NotificationPluginSpec:
     async def access_group_request_created(
         self,
         group_request: GroupRequest,
-        requester: OktaUser,
+        requester: OktaUser | ServicePrincipal,
         approvers: list[OktaUser],
     ) -> None:
-        """Notify the approvers of the group request."""
+        """Notify the approvers of the group request.
+
+        ``requester`` is the user or service principal that filed it; a service
+        principal has no ``email``.
+        """
 
     @hookspec
     async def access_group_request_completed(
@@ -176,7 +181,11 @@ class NotificationPluginSpec:
         approvers: list[OktaUser],
         notify_requester: bool,
     ) -> None:
-        """Notify the requester that their group request has been processed."""
+        """Notify the requester that their group request has been processed.
+
+        Fired only for a user's request: a service principal learns the outcome
+        by reading the request.
+        """
 
 
 async def send_notification(hook: NotificationHook, /, **kwargs: Any) -> None:

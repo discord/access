@@ -29,6 +29,7 @@ import CreateGroupRequest from './Create';
 import {useGroupRequests} from '../../api/apiComponents';
 import {emptyTableRows, displayUserName, perPage} from '../../helpers';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
+import RequesterLink, {requesterName} from '../../components/RequesterLink';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import StatusFilter, {StatusFilterValue} from '../../components/StatusFilter';
 import {OktaUserGroupMemberDetail, GroupRequestDetail} from '../../api/apiSchemas';
@@ -162,13 +163,13 @@ export default function ListGroupRequests() {
               (row: GroupRequestDetail) =>
                 row.id +
                 ';' +
-                displayUserName(row.requester) +
+                requesterName(row.requester, row.requester_service_principal) +
                 ';' +
                 (row.requested_group_name ?? '') +
                 ';' +
                 (row.status ?? '') +
                 ';' +
-                displayUserName(row.resolver),
+                (row.resolver_service_principal?.display_name ?? displayUserName(row.resolver)),
             )}
             onChange={handleSearchSubmit}
             onInputChange={(event, newInputValue) => {
@@ -237,24 +238,12 @@ export default function ListGroupRequests() {
                   )}
                 </TableCell>
                 <TableCell>
-                  {(row.requester?.deleted_at ?? null) != null ? (
-                    <Link
-                      to={`/users/${row.requester?.id ?? ''}`}
-                      sx={{textDecoration: 'line-through', color: 'inherit'}}
-                      component={RouterLink}>
-                      {displayUserName(row.requester)}
-                    </Link>
-                  ) : (
-                    <Link
-                      to={`/users/${row.requester?.email.toLowerCase() ?? ''}`}
-                      sx={{textDecoration: 'none', color: 'inherit'}}
-                      component={RouterLink}>
-                      {displayUserName(row.requester)}
-                    </Link>
-                  )}
+                  <RequesterLink user={row.requester} servicePrincipal={row.requester_service_principal} />
                 </TableCell>
                 <TableCell>
-                  {row.resolver == null && row.status != 'PENDING' ? (
+                  {row.resolver_service_principal != null ? (
+                    <RequesterLink servicePrincipal={row.resolver_service_principal} />
+                  ) : row.resolver == null && row.status != 'PENDING' ? (
                     'Access'
                   ) : (row.resolver?.deleted_at ?? null) != null ? (
                     <Link
