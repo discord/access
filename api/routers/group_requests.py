@@ -7,15 +7,15 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from sqlalchemy import String, cast, false, or_, select
+from sqlalchemy import String, and_, cast, false, func, or_, select
 from sqlalchemy.orm import aliased, joinedload
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentRequester, CurrentUserId
 from api.database import DbSession
-from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, RoleGroup, ServicePrincipal, Tag
-from api.models.request_reviewers import is_assigned_reviewer
+from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, RoleGroup, Tag
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
+from api.operations._ending_at import USE_REQUESTED
 from api.pagination import Page, validated
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginFilteringError,
@@ -24,12 +24,11 @@ from api.plugins.app_group_lifecycle import (
 )
 from api.routers._eager import service_principal_options
 from api.routers._fan_out import defer_fan_out
-from api.routers._reviewers import request_reviewers_response
+from api.routers._requests import filter_by_requester, join_requester_for_search, withdraw_prior_requests
 from api.schemas import (
     CreateGroupRequestBody,
     GroupRequestDetail,
     OktaUserSummary,
-    RequestReviewers,
     ResolveGroupRequestBody,
     RoleGroupRef,
     SearchGroupRequestQuery,
@@ -49,6 +48,7 @@ def _load_options() -> tuple:
     return (
         joinedload(GroupRequest.requester),
         joinedload(GroupRequest.requester_service_principal).options(*service_principal_options()),
+        joinedload(GroupRequest.resolver_service_principal).options(*service_principal_options()),
         joinedload(GroupRequest.resolver),
     )
 
@@ -113,34 +113,16 @@ async def list_group_requests(
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchGroupRequestQuery, Query()],
 ) -> Page[GroupRequestDetail]:
+    from api.auth.permissions import is_access_admin
+    from api.models.app_group import get_app_managers
+
     stmt = select(GroupRequest).options(*_load_options()).order_by(GroupRequest.created_at.desc())
 
     if q_args.status:
         stmt = stmt.where(GroupRequest.status == q_args.status)
 
     if q_args.requester_user_id:
-        if q_args.requester_user_id == "@me":
-            stmt = stmt.where(
-                or_(
-                    GroupRequest.requester_user_id == current_user_id,
-                    GroupRequest.requester_service_principal_id == current_user_id,
-                )
-            )
-        else:
-            requester_alias = aliased(OktaUser)
-            requester_sp_alias = aliased(ServicePrincipal)
-            stmt = (
-                stmt.outerjoin(GroupRequest.requester.of_type(requester_alias))
-                .outerjoin(GroupRequest.requester_service_principal.of_type(requester_sp_alias))
-                .where(
-                    or_(
-                        GroupRequest.requester_user_id == q_args.requester_user_id,
-                        requester_alias.email.ilike(q_args.requester_user_id),
-                        GroupRequest.requester_service_principal_id == q_args.requester_user_id,
-                        requester_sp_alias.display_name.ilike(q_args.requester_user_id),
-                    )
-                )
-            )
+        stmt = filter_by_requester(stmt, GroupRequest, q_args.requester_user_id, current_user_id)
 
     if q_args.requested_group_type:
         stmt = stmt.where(GroupRequest.requested_group_type == q_args.requested_group_type)
@@ -149,7 +131,9 @@ async def list_group_requests(
         stmt = stmt.where(GroupRequest.requested_app_id == q_args.requested_app_id)
 
     if q_args.assignee_user_id:
-        # Requests whose assigned reviewers include the assignee.
+        # "Requests I can resolve". Admins see every pending request; app
+        # owners see app-group requests for apps they own. In both cases the
+        # assignee's own requests are stripped out.
         assignee_user_id = current_user_id if q_args.assignee_user_id == "@me" else q_args.assignee_user_id
         assignee_user = (
             await db.scalars(
@@ -157,7 +141,25 @@ async def list_group_requests(
             )
         ).first()
         if assignee_user is not None:
-            stmt = stmt.where(is_assigned_reviewer(GroupRequest, assignee_user.id))
+            if not await is_access_admin(db, assignee_user.id):
+                owned_app_ids: list[str] = []
+                for app in (await db.scalars(select(App).where(App.deleted_at.is_(None)))).all():
+                    manager_ids = [m.id for m in await get_app_managers(app.id)]
+                    if assignee_user.id in manager_ids:
+                        owned_app_ids.append(app.id)
+                if owned_app_ids:
+                    stmt = stmt.where(
+                        and_(
+                            GroupRequest.requested_app_id.in_(owned_app_ids),
+                            GroupRequest.requested_group_type == "app_group",
+                        )
+                    )
+                else:
+                    stmt = stmt.where(false())
+            # A NULL user requester (a service principal's request) is never the assignee's own.
+            stmt = stmt.where(
+                or_(GroupRequest.requester_user_id.is_(None), GroupRequest.requester_user_id != assignee_user.id)
+            )
         else:
             stmt = stmt.where(false())
 
@@ -177,35 +179,24 @@ async def list_group_requests(
     # name+email, requested + resolved group name/description/type.
     if q_args.q:
         like = f"%{q_args.q}%"
-        q_requester_alias = aliased(OktaUser)
-        q_requester_sp_alias = aliased(ServicePrincipal)
         q_resolver_alias = aliased(OktaUser)
-        stmt = (
-            stmt.outerjoin(GroupRequest.requester.of_type(q_requester_alias))
-            .outerjoin(GroupRequest.requester_service_principal.of_type(q_requester_sp_alias))
-            .outerjoin(GroupRequest.resolver.of_type(q_resolver_alias))
-            .where(
-                or_(
-                    GroupRequest.id.like(f"{q_args.q}%"),
-                    cast(GroupRequest.status, String).ilike(like),
-                    q_requester_alias.email.ilike(like),
-                    q_requester_alias.first_name.ilike(like),
-                    q_requester_alias.last_name.ilike(like),
-                    q_requester_alias.display_name.ilike(like),
-                    (q_requester_alias.first_name + " " + q_requester_alias.last_name).ilike(like),
-                    q_requester_sp_alias.display_name.ilike(like),
-                    GroupRequest.requested_group_name.ilike(like),
-                    GroupRequest.requested_group_description.ilike(like),
-                    GroupRequest.requested_group_type.ilike(like),
-                    GroupRequest.resolved_group_name.ilike(like),
-                    GroupRequest.resolved_group_description.ilike(like),
-                    GroupRequest.resolved_group_type.ilike(like),
-                    q_resolver_alias.email.ilike(like),
-                    q_resolver_alias.first_name.ilike(like),
-                    q_resolver_alias.last_name.ilike(like),
-                    q_resolver_alias.display_name.ilike(like),
-                    (q_resolver_alias.first_name + " " + q_resolver_alias.last_name).ilike(like),
-                )
+        stmt, requester_clauses = join_requester_for_search(stmt, GroupRequest, like)
+        stmt = stmt.outerjoin(GroupRequest.resolver.of_type(q_resolver_alias)).where(
+            or_(
+                GroupRequest.id.like(f"{q_args.q}%"),
+                cast(GroupRequest.status, String).ilike(like),
+                *requester_clauses,
+                GroupRequest.requested_group_name.ilike(like),
+                GroupRequest.requested_group_description.ilike(like),
+                GroupRequest.requested_group_type.ilike(like),
+                GroupRequest.resolved_group_name.ilike(like),
+                GroupRequest.resolved_group_description.ilike(like),
+                GroupRequest.resolved_group_type.ilike(like),
+                q_resolver_alias.email.ilike(like),
+                q_resolver_alias.first_name.ilike(like),
+                q_resolver_alias.last_name.ilike(like),
+                q_resolver_alias.display_name.ilike(like),
+                (q_resolver_alias.first_name + " " + q_resolver_alias.last_name).ilike(like),
             )
         )
 
@@ -222,17 +213,6 @@ async def get_group_request(group_request_id: str, db: DbSession, current_user_i
     if gr is None:
         raise HTTPException(404, "Not Found")
     return await _detail(db, gr)
-
-
-@router.get("/{group_request_id}/reviewers", name="group_request_reviewers")
-async def get_group_request_reviewers(
-    group_request_id: str, db: DbSession, current_user_id: CurrentUserId
-) -> RequestReviewers:
-    """Eligible reviewers of a group request by owner level, nearest first; the first level is assigned."""
-    request = await db.get(GroupRequest, group_request_id)
-    if request is None:
-        raise HTTPException(404, "Not Found")
-    return await request_reviewers_response(request)
 
 
 @router.post("", name="group_requests_create", status_code=201)
@@ -271,30 +251,24 @@ async def post_group_request(
         if len(tags) != len(body.requested_group_tags):
             raise HTTPException(400, "One or more tags not found")
 
-    # Auto-cancel any prior PENDING request from the same requester for the same
-    # group name (and same app, for app-group requests). Without this a user
-    # clicking "Request" twice, or a service retrying, produces multiple PENDING rows.
-    requester_column = (
-        GroupRequest.requester_service_principal_id
-        if isinstance(requester, ServicePrincipal)
-        else GroupRequest.requester_user_id
-    )
-    existing_stmt = (
-        select(GroupRequest)
-        .where(GroupRequest.requested_group_name == body.requested_group_name)
-        .where(requester_column == current_user_id)
-        .where(GroupRequest.status == AccessRequestStatus.PENDING)
-        .where(GroupRequest.resolved_at.is_(None))
-    )
+    # A retry replaces the requester's pending request for the same group name
+    # (and app, for an app group), so clicking "Request" twice or a service
+    # retrying doesn't leave several pending.
+    same_target = [func.lower(GroupRequest.requested_group_name) == func.lower(body.requested_group_name)]
     if body.requested_group_type == "app_group":
-        existing_stmt = existing_stmt.where(GroupRequest.requested_app_id == requested_app_id)
-    for prior in (await db.scalars(existing_stmt)).all():
-        await RejectGroupRequest(
+        same_target.append(GroupRequest.requested_app_id == requested_app_id)
+    await withdraw_prior_requests(
+        db,
+        GroupRequest,
+        requester,
+        same_target,
+        lambda prior: RejectGroupRequest(
             group_request=prior,
             rejection_reason="Closed due to duplicate group request creation",
             notify_requester=False,
             current_user_id=current_user_id,
-        ).execute()
+        ).execute(),
+    )
 
     # execute() may auto-approve (app-owner self-approval / conditional access), which
     # re-validates plugin config; a ValueError is bad input, while a filtering error
@@ -352,7 +326,7 @@ async def put_group_request(
 
     # Authorization: requester can always reject their own; otherwise admin
     # or app-owner-of-the-target-app.
-    is_requester = current_user_id in (gr.requester_user_id, gr.requester_service_principal_id)
+    is_requester = gr.is_requested_by(current_user_id)
     if is_requester:
         if body.approved:
             raise HTTPException(403, "Users cannot approve their own requests")
@@ -387,14 +361,10 @@ async def put_group_request(
         gr.resolved_app_id = body.resolved_app_id
     if body.resolved_group_tags is not None:
         gr.resolved_group_tags = body.resolved_group_tags
-    if body.resolved_ownership_ending_at is not None:
-        gr.resolved_ownership_ending_at = body.resolved_ownership_ending_at
     if body.resolved_plugin_data is not None:
         gr.resolved_plugin_data = body.resolved_plugin_data
-    if body.resolved_membership_ending_at is not None:
-        gr.resolved_membership_ending_at = body.resolved_membership_ending_at
 
-    await db.commit()  # nosemgrep: router-direct-db-write
+    await db.commit()
 
     resolution_reason = body.reason or ""
     if body.approved:
@@ -403,6 +373,17 @@ async def put_group_request(
                 group_request=gr,
                 approver_user=current_user_id,
                 approval_reason=resolution_reason,
+                # A sent end date (null meaning indefinite) replaces the requested one.
+                approver_ownership_ending_at=(
+                    body.resolved_ownership_ending_at
+                    if "resolved_ownership_ending_at" in body.model_fields_set
+                    else USE_REQUESTED
+                ),
+                approver_membership_ending_at=(
+                    body.resolved_membership_ending_at
+                    if "resolved_membership_ending_at" in body.model_fields_set
+                    else USE_REQUESTED
+                ),
                 owner_user_ids=body.resolved_owner_user_ids,
                 owner_role_ids=body.resolved_owner_role_ids,
                 member_user_ids=body.resolved_member_user_ids,

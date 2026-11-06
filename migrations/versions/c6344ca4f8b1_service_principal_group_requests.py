@@ -26,6 +26,13 @@ def upgrade():
             ["requester_service_principal_id"],
             ["id"],
         )
+        batch_op.add_column(sa.Column("resolver_service_principal_id", sa.Unicode(length=50), nullable=True))
+        batch_op.create_foreign_key(
+            batch_op.f("fk_group_request_resolver_service_principal_id_service_principal"),
+            "service_principal",
+            ["resolver_service_principal_id"],
+            ["id"],
+        )
         batch_op.create_check_constraint(
             batch_op.f("ck_group_request_exactly_one_requester"),
             "(requester_user_id IS NULL) != (requester_service_principal_id IS NULL)",
@@ -52,6 +59,10 @@ def downgrade():
     op.execute("DELETE FROM group_request WHERE requester_user_id IS NULL")
     with op.batch_alter_table("group_request", schema=None) as batch_op:
         batch_op.drop_constraint(batch_op.f("ck_group_request_exactly_one_requester"), type_="check")
+        batch_op.drop_constraint(
+            batch_op.f("fk_group_request_resolver_service_principal_id_service_principal"), type_="foreignkey"
+        )
+        batch_op.drop_column("resolver_service_principal_id")
         batch_op.drop_constraint(
             batch_op.f("fk_group_request_requester_service_principal_id_service_principal"), type_="foreignkey"
         )
