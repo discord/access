@@ -1290,12 +1290,12 @@ async def test_cannot_approve_deleted_requester(
     user.deleted_at = func.now()
     await db.session.commit()
 
-    # Try to approve
-    await ApproveGroupRequest(
-        group_request=group_request,
-        approver_user=approver_user,
-        approval_reason="Should not work",
-    ).execute()
+    with pytest.raises(ConflictError):
+        await ApproveGroupRequest(
+            group_request=group_request,
+            approver_user=approver_user,
+            approval_reason="Should not work",
+        ).execute()
 
     await db.session.refresh(group_request)
     # Should still be pending
