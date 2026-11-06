@@ -9,6 +9,7 @@ from api.models import (
     AccessRequest,
     App,
     AppRequest,
+    DeletionRequest,
     GroupRequest,
     OktaGroup,
     OktaUser,
@@ -45,6 +46,8 @@ class NotificationHook(StrEnum):
     ACCESS_GROUP_REQUEST_COMPLETED = "access_group_request_completed"
     ACCESS_APP_REQUEST_CREATED = "access_app_request_created"
     ACCESS_APP_REQUEST_COMPLETED = "access_app_request_completed"
+    ACCESS_DELETION_REQUEST_CREATED = "access_deletion_request_created"
+    ACCESS_DELETION_REQUEST_COMPLETED = "access_deletion_request_completed"
 
 
 # hook -> (metric name, static tags) recorded once the hook fans out
@@ -62,6 +65,8 @@ _SENT_METRICS: dict[NotificationHook, tuple[str, dict[str, str] | None]] = {
     NotificationHook.ACCESS_GROUP_REQUEST_COMPLETED: ("notifications.group_request_completed.sent", None),
     NotificationHook.ACCESS_APP_REQUEST_CREATED: ("notifications.app_request_created.sent", None),
     NotificationHook.ACCESS_APP_REQUEST_COMPLETED: ("notifications.app_request_completed.sent", None),
+    NotificationHook.ACCESS_DELETION_REQUEST_CREATED: ("notifications.deletion_request_created.sent", None),
+    NotificationHook.ACCESS_DELETION_REQUEST_COMPLETED: ("notifications.deletion_request_completed.sent", None),
 }
 
 
@@ -220,6 +225,39 @@ class NotificationPluginSpec:
         ``app`` is the created app when the request was approved, else None.
         Fired only for a user's request: a service principal learns the outcome
         by reading the request.
+        """
+
+    @hookspec
+    async def access_deletion_request_created(
+        self,
+        deletion_request: DeletionRequest,
+        group: OktaGroup | None,
+        app: App | None,
+        requester: OktaUser | ServicePrincipal,
+        approvers: list[OktaUser],
+    ) -> None:
+        """Notify the approvers of a request to delete a group or an app.
+
+        Exactly one of ``group`` and ``app`` is set. ``approvers`` follow the usual
+        routing: the group's owners, then its app's owners, then Access admins.
+        ``requester`` is the user or service principal that filed it; a service
+        principal has no ``email``.
+        """
+
+    @hookspec
+    async def access_deletion_request_completed(
+        self,
+        deletion_request: DeletionRequest,
+        group: OktaGroup | None,
+        app: App | None,
+        requester: OktaUser,
+        approvers: list[OktaUser],
+        notify_requester: bool,
+    ) -> None:
+        """Notify the requester that their deletion request has been processed.
+
+        Exactly one of ``group`` and ``app`` is set. Fired only for a user's
+        request: a service principal learns the outcome by reading the request.
         """
 
 

@@ -1372,6 +1372,268 @@ export const useEffectiveConstraints = <TData = Schemas.EffectiveConstraintsResp
   });
 };
 
+export type DeletionRequestsQueryParams = {
+  q?: string | null;
+  status?: string | null;
+  requester_user_id?: string | null;
+  group_id?: string | null;
+  app_id?: string | null;
+  /**
+   * Page number
+   *
+   * @minimum 1
+   * @default 1
+   */
+  page?: number;
+  /**
+   * Items per page
+   *
+   * @maximum 1000
+   * @minimum 1
+   * @default 50
+   */
+  size?: number;
+};
+
+export type DeletionRequestsError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type DeletionRequestsVariables = {
+  queryParams?: DeletionRequestsQueryParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchDeletionRequests = (variables: DeletionRequestsVariables, signal?: AbortSignal) =>
+  apiFetch<
+    Schemas.PageTypeVarCustomizedDeletionRequestDetail,
+    DeletionRequestsError,
+    undefined,
+    {},
+    DeletionRequestsQueryParams,
+    {}
+  >({url: '/api/deletion-requests', method: 'get', ...variables, signal});
+
+export function deletionRequestsQuery(variables: DeletionRequestsVariables): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedDeletionRequestDetail>;
+};
+
+export function deletionRequestsQuery(variables: DeletionRequestsVariables | reactQuery.SkipToken): {
+  queryKey: reactQuery.QueryKey;
+  queryFn:
+    ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedDeletionRequestDetail>) | reactQuery.SkipToken;
+};
+
+export function deletionRequestsQuery(variables: DeletionRequestsVariables | reactQuery.SkipToken) {
+  return {
+    queryKey: queryKeyFn({
+      path: '/api/deletion-requests',
+      operationId: 'deletionRequests',
+      variables,
+    }),
+    queryFn:
+      variables === reactQuery.skipToken
+        ? reactQuery.skipToken
+        : ({signal}: QueryFnOptions) => fetchDeletionRequests(variables, signal),
+  };
+}
+
+export const useSuspenseDeletionRequests = <TData = Schemas.PageTypeVarCustomizedDeletionRequestDetail>(
+  variables: DeletionRequestsVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedDeletionRequestDetail, DeletionRequestsError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useSuspenseQuery<Schemas.PageTypeVarCustomizedDeletionRequestDetail, DeletionRequestsError, TData>({
+    ...deletionRequestsQuery(deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export const useDeletionRequests = <TData = Schemas.PageTypeVarCustomizedDeletionRequestDetail>(
+  variables: DeletionRequestsVariables | reactQuery.SkipToken,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedDeletionRequestDetail, DeletionRequestsError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.PageTypeVarCustomizedDeletionRequestDetail, DeletionRequestsError, TData>({
+    ...deletionRequestsQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export type DeletionRequestsCreateError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 201>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type DeletionRequestsCreateVariables = {
+  body?: Schemas.CreateDeletionRequestBody;
+} & ApiContext['fetcherOptions'];
+
+export const fetchDeletionRequestsCreate = (variables: DeletionRequestsCreateVariables, signal?: AbortSignal) =>
+  apiFetch<Schemas.DeletionRequestDetail, DeletionRequestsCreateError, Schemas.CreateDeletionRequestBody, {}, {}, {}>({
+    url: '/api/deletion-requests',
+    method: 'post',
+    ...variables,
+    signal,
+  });
+
+export const useDeletionRequestsCreate = (
+  options?: Omit<
+    reactQuery.UseMutationOptions<
+      Schemas.DeletionRequestDetail,
+      DeletionRequestsCreateError,
+      DeletionRequestsCreateVariables
+    >,
+    'mutationFn'
+  >,
+) => {
+  const {fetcherOptions} = useApiContext();
+  return reactQuery.useMutation<
+    Schemas.DeletionRequestDetail,
+    DeletionRequestsCreateError,
+    DeletionRequestsCreateVariables
+  >({
+    mutationFn: (variables: DeletionRequestsCreateVariables) =>
+      fetchDeletionRequestsCreate(deepMerge(fetcherOptions, variables)),
+    ...options,
+  });
+};
+
+export type DeletionRequestByIdPathParams = {
+  deletionRequestId: string;
+};
+
+export type DeletionRequestByIdError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type DeletionRequestByIdVariables = {
+  pathParams: DeletionRequestByIdPathParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchDeletionRequestById = (variables: DeletionRequestByIdVariables, signal?: AbortSignal) =>
+  apiFetch<Schemas.DeletionRequestDetail, DeletionRequestByIdError, undefined, {}, {}, DeletionRequestByIdPathParams>({
+    url: '/api/deletion-requests/{deletionRequestId}',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+export function deletionRequestByIdQuery(variables: DeletionRequestByIdVariables): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.DeletionRequestDetail>;
+};
+
+export function deletionRequestByIdQuery(variables: DeletionRequestByIdVariables | reactQuery.SkipToken): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.DeletionRequestDetail>) | reactQuery.SkipToken;
+};
+
+export function deletionRequestByIdQuery(variables: DeletionRequestByIdVariables | reactQuery.SkipToken) {
+  return {
+    queryKey: queryKeyFn({
+      path: '/api/deletion-requests/{deletionRequestId}',
+      operationId: 'deletionRequestById',
+      variables,
+    }),
+    queryFn:
+      variables === reactQuery.skipToken
+        ? reactQuery.skipToken
+        : ({signal}: QueryFnOptions) => fetchDeletionRequestById(variables, signal),
+  };
+}
+
+export const useSuspenseDeletionRequestById = <TData = Schemas.DeletionRequestDetail>(
+  variables: DeletionRequestByIdVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.DeletionRequestDetail, DeletionRequestByIdError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useSuspenseQuery<Schemas.DeletionRequestDetail, DeletionRequestByIdError, TData>({
+    ...deletionRequestByIdQuery(deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export const useDeletionRequestById = <TData = Schemas.DeletionRequestDetail>(
+  variables: DeletionRequestByIdVariables | reactQuery.SkipToken,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.DeletionRequestDetail, DeletionRequestByIdError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.DeletionRequestDetail, DeletionRequestByIdError, TData>({
+    ...deletionRequestByIdQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export type DeletionRequestByIdPutPathParams = {
+  deletionRequestId: string;
+};
+
+export type DeletionRequestByIdPutError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type DeletionRequestByIdPutVariables = {
+  body: Schemas.ResolveDeletionRequestBody;
+  pathParams: DeletionRequestByIdPutPathParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchDeletionRequestByIdPut = (variables: DeletionRequestByIdPutVariables, signal?: AbortSignal) =>
+  apiFetch<
+    Schemas.DeletionRequestDetail,
+    DeletionRequestByIdPutError,
+    Schemas.ResolveDeletionRequestBody,
+    {},
+    {},
+    DeletionRequestByIdPutPathParams
+  >({
+    url: '/api/deletion-requests/{deletionRequestId}',
+    method: 'put',
+    ...variables,
+    signal,
+  });
+
+export const useDeletionRequestByIdPut = (
+  options?: Omit<
+    reactQuery.UseMutationOptions<
+      Schemas.DeletionRequestDetail,
+      DeletionRequestByIdPutError,
+      DeletionRequestByIdPutVariables
+    >,
+    'mutationFn'
+  >,
+) => {
+  const {fetcherOptions} = useApiContext();
+  return reactQuery.useMutation<
+    Schemas.DeletionRequestDetail,
+    DeletionRequestByIdPutError,
+    DeletionRequestByIdPutVariables
+  >({
+    mutationFn: (variables: DeletionRequestByIdPutVariables) =>
+      fetchDeletionRequestByIdPut(deepMerge(fetcherOptions, variables)),
+    ...options,
+  });
+};
+
 export type GroupRequestsQueryParams = {
   q?: string | null;
   status?: string | null;
@@ -4289,6 +4551,16 @@ export type QueryOperation =
       path: '/api/constraints/effective';
       operationId: 'effectiveConstraints';
       variables: EffectiveConstraintsVariables | reactQuery.SkipToken;
+    }
+  | {
+      path: '/api/deletion-requests';
+      operationId: 'deletionRequests';
+      variables: DeletionRequestsVariables | reactQuery.SkipToken;
+    }
+  | {
+      path: '/api/deletion-requests/{deletionRequestId}';
+      operationId: 'deletionRequestById';
+      variables: DeletionRequestByIdVariables | reactQuery.SkipToken;
     }
   | {
       path: '/api/group-requests';

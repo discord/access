@@ -10,6 +10,7 @@ from api.models import (
     AccessRequest,
     App,
     AppRequest,
+    DeletionRequest,
     GroupRequest,
     OktaGroup,
     OktaUser,
@@ -36,6 +37,8 @@ class ConditionalAccessHook(StrEnum):
     ROLE_REQUEST_CREATED = "role_request_created"
     GROUP_REQUEST_CREATED = "group_request_created"
     APP_REQUEST_CREATED = "app_request_created"
+    GROUP_DELETION_REQUEST_CREATED = "group_deletion_request_created"
+    APP_DELETION_REQUEST_CREATED = "app_deletion_request_created"
 
 
 @dataclass
@@ -114,6 +117,38 @@ class ConditionalAccessPluginSpec:
         the request asked for, and tag limits still apply. When the app can't be
         created as requested (for example, its name is taken), the request stays
         pending for Access admins.
+        """
+
+    @hookspec
+    async def group_deletion_request_created(
+        self,
+        deletion_request: DeletionRequest,
+        group: OktaGroup,
+        requester: OktaUser | ServicePrincipal,
+    ) -> ConditionalAccessResponse | None:
+        """Automatically approve, deny, or continue a request to delete ``group``.
+
+        ``requester`` is the user or service principal that filed the request; a
+        service principal has no ``email``. ``group.created_by_service_principal_id``
+        names the service principal whose request created the group, if any, so a
+        rule can limit a service to deleting what it created. An approval deletes
+        the group as a direct delete would and is recorded with no resolver.
+        """
+
+    @hookspec
+    async def app_deletion_request_created(
+        self,
+        deletion_request: DeletionRequest,
+        app: App,
+        requester: OktaUser | ServicePrincipal,
+    ) -> ConditionalAccessResponse | None:
+        """Automatically approve, deny, or continue a request to delete ``app``.
+
+        ``requester`` is the user or service principal that filed the request; a
+        service principal has no ``email``. ``app.created_by_service_principal_id``
+        names the service principal whose request created the app, if any. An
+        approval deletes the app and its groups as a direct delete would and is
+        recorded with no resolver.
         """
 
 

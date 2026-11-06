@@ -1235,6 +1235,76 @@ class AppRequest(Base):
     )
 
 
+class DeletionRequest(Base):
+    """A request to delete a group or an app.
+
+    Approved by anyone who could delete the target directly. The requester is a
+    user or a service principal, and the target is a group or an app; exactly one
+    column of each pair is set.
+    """
+
+    __table_args__ = (
+        CheckConstraint(
+            "(requester_user_id IS NULL) != (requester_service_principal_id IS NULL)",
+            name="exactly_one_requester",
+        ),
+        CheckConstraint("(group_id IS NULL) != (app_id IS NULL)", name="exactly_one_target"),
+    )
+
+    # A 20 character random string like Okta IDs
+    id: Mapped[str] = mapped_column(Unicode(20), primary_key=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        NaiveUTCDateTime(), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(NaiveUTCDateTime())
+    status: Mapped[AccessRequestStatus] = mapped_column(
+        Enum(AccessRequestStatus),
+        nullable=False,
+        default=AccessRequestStatus.PENDING,
+    )
+
+    requester_user_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
+    requester_service_principal_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("service_principal.id"))
+    group_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("okta_group.id"))
+    app_id: Mapped[str | None] = mapped_column(Unicode(20), ForeignKey("app.id"))
+    request_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
+
+    resolver_user_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
+    resolution_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
+
+    requester: Mapped[OktaUser | None] = relationship(
+        "OktaUser",
+        primaryjoin="OktaUser.id == DeletionRequest.requester_user_id",
+        viewonly=True,
+        lazy="raise_on_sql",
+    )
+    requester_service_principal: Mapped[Optional["ServicePrincipal"]] = relationship(
+        "ServicePrincipal",
+        primaryjoin="ServicePrincipal.id == DeletionRequest.requester_service_principal_id",
+        viewonly=True,
+        lazy="raise_on_sql",
+    )
+    resolver: Mapped[OktaUser | None] = relationship(
+        "OktaUser",
+        primaryjoin="OktaUser.id == DeletionRequest.resolver_user_id",
+        viewonly=True,
+        lazy="raise_on_sql",
+    )
+    group: Mapped[OktaGroup | None] = relationship(
+        "OktaGroup",
+        primaryjoin="OktaGroup.id == DeletionRequest.group_id",
+        viewonly=True,
+        lazy="raise_on_sql",
+    )
+    app: Mapped[Optional["App"]] = relationship(
+        "App",
+        primaryjoin="App.id == DeletionRequest.app_id",
+        viewonly=True,
+        lazy="raise_on_sql",
+    )
+
+
 class TagConstraint:
     """How one tag constraint is validated and combined across tags.
 

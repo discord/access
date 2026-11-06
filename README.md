@@ -225,6 +225,20 @@ joins, or approves anything, so it fails every ownership and admin check. A serv
 passed through by its client ID, which is how the `APP_CREATOR_ID` and `APP_GROUP_DELETER_ID` allowlists match it.
 Registering a token as a service principal ends its allowlist access.
 
+A service principal changes things only by filing the same requests users file, each routed to the usual approvers:
+
+- **Group requests** (`POST /api/group-requests`) and **app requests** (`POST /api/app-requests`) create a group or
+  an app with the owners and members the request names. A service principal's request must name at least one owner,
+  since a service principal never owns anything. The created group or app records the service principal in
+  `created_by_service_principal_id`.
+- **Deletion requests** (`POST /api/deletion-requests`) delete a group or an app, and are approved by anyone who could
+  delete it directly.
+
+A [conditional-access plugin](#plugins) can approve or deny these requests as they are created, for example to let a
+service create groups in one app, or delete only the groups it created. Without one, every request waits for a human
+approver. Requester-facing notifications are not sent to service principals; a service reads the request to learn its
+outcome.
+
 ### Docker Build and Run
 
 Build the Docker image:
