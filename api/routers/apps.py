@@ -20,7 +20,6 @@ from api.models import (
     App,
     AppGroup,
     AppTagMap,
-    OktaGroup,
     OktaUser,
     OktaUserGroupMember,
 )
@@ -167,9 +166,9 @@ async def post_app(
     db: DbSession,
     current_user_id: str = Depends(require_access_admin_or_app_creator),
 ) -> AppDetail:
-    from api.models import AppGroup as _AppGroup
     from api.models import OktaUser, RoleGroup
     from api.operations import CreateApp
+    from api.operations.create_app import owner_group_conflict
     from api.operations.create_group import GroupDict
 
     description = body.description if body.description is not None else ""
@@ -221,32 +220,13 @@ async def post_app(
             raise HTTPException(400, "Given App initial_owner_role_ids contains invalid role ids")
 
     name = body.name
-    app_group_prefix = f"{_AppGroup.APP_GROUP_NAME_PREFIX}{name}{_AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
-    owner_group_name = f"{app_group_prefix}{_AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
 
     # If an owner-named group already exists *with owners*, refuse to create
-    # the app — otherwise CreateApp would silently absorb that group and its
-    # owners, which is confusing if a previous owner was squatting on the
-    # name. An empty pre-existing group, or one with members but no owners,
+    # the app; an empty pre-existing group, or one with members but no owners,
     # is fine to absorb.
-    from sqlalchemy.orm import with_polymorphic
-
-    poly_group = with_polymorphic(OktaGroup, [_AppGroup, RoleGroup])
-    existing_owner_group = (
-        await db.scalars(
-            select(poly_group)
-            .options(selectinload(poly_group.active_user_ownerships))
-            .where(func.lower(OktaGroup.name) == func.lower(owner_group_name))
-            .where(OktaGroup.deleted_at.is_(None))
-        )
-    ).first()
-    if existing_owner_group is not None and len(existing_owner_group.active_user_ownerships) > 0:
-        raise HTTPException(
-            409,
-            f"An owner group with existing owners already exists for this app name. Select a different app"
-            f" name, change the name of {owner_group_name}, or remove the existing owners of"
-            f" {owner_group_name} to be able to proceed.",
-        )
+    conflict = await owner_group_conflict(name)
+    if conflict is not None:
+        raise HTTPException(409, conflict)
 
     # CreateApp only reads `name`/`description` off each entry, so build the
     # GroupDict it expects directly rather than a loose `model_dump()` dict.

@@ -13,7 +13,7 @@ from starlette.requests import Request
 
 from api.auth.dependencies import CurrentRequester, CurrentUserId
 from api.database import DbSession
-from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, RoleGroup, ServicePrincipal, Tag
+from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, ServicePrincipal, Tag
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
 from api.pagination import Page, validated
 from api.plugins.app_group_lifecycle import (
@@ -23,12 +23,11 @@ from api.plugins.app_group_lifecycle import (
 )
 from api.routers._eager import service_principal_options
 from api.routers._fan_out import defer_fan_out
+from api.routers._named_principals import attach_named_principals
 from api.schemas import (
     CreateGroupRequestBody,
     GroupRequestDetail,
-    OktaUserSummary,
     ResolveGroupRequestBody,
-    RoleGroupRef,
     SearchGroupRequestQuery,
 )
 from api.schemas.requests_schemas import _AppGroupRequestBody
@@ -65,36 +64,12 @@ _NAMED_ROLE_FIELDS = (
 
 
 async def _attach_named_principals(db: DbSession, details: Sequence[GroupRequestDetail]) -> None:
-    """Fill each detail's `named_users` / `named_roles` with two queries for the whole batch."""
-    user_ids = {uid for d in details for f in _NAMED_USER_FIELDS for uid in getattr(d, f)}
-    role_ids = {rid for d in details for f in _NAMED_ROLE_FIELDS for rid in getattr(d, f)}
-    users = (
-        {
-            u.id: OktaUserSummary.model_validate(u, from_attributes=True)
-            for u in (
-                await db.scalars(select(OktaUser).where(OktaUser.id.in_(user_ids)).where(OktaUser.deleted_at.is_(None)))
-            ).all()
-        }
-        if user_ids
-        else {}
+    await attach_named_principals(
+        db,
+        details,
+        lambda d: (uid for f in _NAMED_USER_FIELDS for uid in getattr(d, f)),
+        lambda d: (rid for f in _NAMED_ROLE_FIELDS for rid in getattr(d, f)),
     )
-    roles = (
-        {
-            r.id: RoleGroupRef.model_validate(r, from_attributes=True)
-            for r in (
-                await db.scalars(
-                    select(RoleGroup).where(RoleGroup.id.in_(role_ids)).where(RoleGroup.deleted_at.is_(None))
-                )
-            ).all()
-        }
-        if role_ids
-        else {}
-    )
-    for d in details:
-        wanted_users = dict.fromkeys(uid for f in _NAMED_USER_FIELDS for uid in getattr(d, f))
-        wanted_roles = dict.fromkeys(rid for f in _NAMED_ROLE_FIELDS for rid in getattr(d, f))
-        d.named_users = [users[u] for u in wanted_users if u in users]
-        d.named_roles = [roles[r] for r in wanted_roles if r in roles]
 
 
 async def _detail(db: DbSession, gr: GroupRequest) -> GroupRequestDetail:

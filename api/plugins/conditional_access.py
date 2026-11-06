@@ -9,6 +9,7 @@ import pluggy
 from api.models import (
     AccessRequest,
     App,
+    AppRequest,
     GroupRequest,
     OktaGroup,
     OktaUser,
@@ -34,6 +35,7 @@ class ConditionalAccessHook(StrEnum):
     ACCESS_REQUEST_CREATED = "access_request_created"
     ROLE_REQUEST_CREATED = "role_request_created"
     GROUP_REQUEST_CREATED = "group_request_created"
+    APP_REQUEST_CREATED = "app_request_created"
 
 
 @dataclass
@@ -92,6 +94,26 @@ class ConditionalAccessPluginSpec:
         member grants: each can shorten the end date the request asked for but
         never extend it, and the new group's tag limits still apply. An end date
         that has already passed leaves the request pending for its reviewers.
+        """
+
+    @hookspec
+    async def app_request_created(
+        self,
+        app_request: AppRequest,
+        requester: OktaUser | ServicePrincipal,
+    ) -> ConditionalAccessResponse | None:
+        """Automatically approve, deny, or continue the app request.
+
+        ``requester`` is the user or service principal that filed the request; a
+        service principal has no ``email``.
+
+        An approval creates the app with the owners, tags, and initial app groups
+        the request names, recorded with no resolver. The response's
+        ``ending_at`` caps the owner grants (including the app's owners) and
+        ``membership_ending_at`` caps the member grants; neither can extend what
+        the request asked for, and tag limits still apply. When the app can't be
+        created as requested (for example, its name is taken), the request stays
+        pending for Access admins.
         """
 
 

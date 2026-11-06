@@ -294,6 +294,60 @@ export type AppIdRef = {
   app_group_lifecycle_plugin?: string | null;
 };
 
+export type AppRequestDetail = {
+  id: string;
+  status: string;
+  requested_app_name: string;
+  /**
+   * @default
+   */
+  requested_app_description?: string | null;
+  requested_app_tags?: string[];
+  requested_owner_user_ids?: string[];
+  requested_owner_role_ids?: string[];
+  requested_app_groups?: AppRequestGroup[];
+  requested_ownership_ending_at?: string | null;
+  requested_membership_ending_at?: string | null;
+  /**
+   * @default
+   */
+  request_reason?: string | null;
+  resolved_ownership_ending_at?: string | null;
+  resolved_membership_ending_at?: string | null;
+  /**
+   * @default
+   */
+  resolution_reason?: string | null;
+  resolved_at?: string | null;
+  approved_app_id?: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  requester?: OktaUserSummary | null;
+  requester_service_principal?: ServicePrincipalDetail | null;
+  resolver?: OktaUserSummary | null;
+  named_users?: OktaUserSummary[];
+  named_roles?: RoleGroupRef[];
+};
+
+/**
+ * An initial app group named by an app request, with its owners and members.
+ */
+export type AppRequestGroup = {
+  /**
+   * @minLength 1
+   */
+  name: string;
+  /**
+   * @maxLength 1024
+   * @default
+   */
+  description?: string;
+  owner_user_ids?: string[];
+  owner_role_ids?: string[];
+  member_user_ids?: string[];
+  member_role_ids?: string[];
+};
+
 export type AppSummary = {
   id: string;
   name: string;
@@ -399,6 +453,36 @@ export type CreateAppBody = {
   plugin_data?: {
     [key: string]: any;
   } | null;
+};
+
+/**
+ * Body for POST /api/app-requests.
+ *
+ * `requested_owner_*` name the app's owners, who own and are members of its
+ * owners group. A user's request that names no owners makes the requester the
+ * owner; a service principal's request must name one.
+ */
+export type CreateAppRequestBody = {
+  /**
+   * @maxLength 255
+   * @minLength 1
+   */
+  requested_app_name: string;
+  /**
+   * @maxLength 1024
+   * @default
+   */
+  requested_app_description?: string;
+  requested_app_tags?: string[];
+  requested_owner_user_ids?: string[];
+  requested_owner_role_ids?: string[];
+  requested_app_groups?: AppRequestGroup[];
+  requested_ownership_ending_at?: string | null;
+  requested_membership_ending_at?: string | null;
+  /**
+   * @default
+   */
+  request_reason?: string | null;
 };
 
 export type CreateRoleRequestBody = {
@@ -798,6 +882,26 @@ export type PageTypeVarCustomizedAppGroupForAppDetail = {
   pages: number;
 };
 
+export type PageTypeVarCustomizedAppRequestDetail = {
+  items: AppRequestDetail[];
+  /**
+   * @minimum 0
+   */
+  total: number;
+  /**
+   * @minimum 1
+   */
+  page: number;
+  /**
+   * @minimum 1
+   */
+  size: number;
+  /**
+   * @minimum 0
+   */
+  pages: number;
+};
+
 export type PageTypeVarCustomizedAppSummary = {
   items: AppSummary[];
   /**
@@ -1106,6 +1210,19 @@ export type ResolveAccessRequestBody = {
    */
   reason?: string | null;
   ending_at?: string | null;
+};
+
+/**
+ * Body for PUT /api/app-requests/{id}. The end dates, when sent, replace the requested ones.
+ */
+export type ResolveAppRequestBody = {
+  approved: boolean;
+  /**
+   * @default
+   */
+  reason?: string | null;
+  resolved_ownership_ending_at?: string | null;
+  resolved_membership_ending_at?: string | null;
 };
 
 export type ResolveGroupRequestBody = {

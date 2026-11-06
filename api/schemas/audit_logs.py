@@ -27,6 +27,9 @@ class EventType(Enum):
     app_modify_name = "APP_MODIFY_NAME"
     app_modify_plugin = "APP_MODIFY_PLUGIN"
     app_modify_tags = "APP_MODIFY_TAG"
+    app_request_approve = "APP_REQUEST_APPROVE"
+    app_request_create = "APP_REQUEST_CREATE"
+    app_request_reject = "APP_REQUEST_REJECT"
     group_create = "GROUP_CREATE"
     group_delete = "GROUP_DELETE"
     group_modify_name = "GROUP_MODIFY_NAME"
@@ -219,6 +222,25 @@ class _AuditGroupRequestRef(BaseModel):
     resolution_reason: str | None = None
 
 
+class _AuditAppRequestRef(BaseModel):
+    """AppRequest projection for the `app_request` field."""
+
+    model_config = ConfigDict(extra="ignore")
+    id: str | None = None
+    requested_app_name: str | None = None
+    requested_app_tags: list[str] | None = None
+    requested_owner_user_ids: list[str] | None = None
+    requested_owner_role_ids: list[str] | None = None
+    requested_app_groups: list[dict[str, Any]] | None = None
+    requested_ownership_ending_at: datetime | None = None
+    requested_membership_ending_at: datetime | None = None
+    request_reason: str | None = None
+    resolved_ownership_ending_at: datetime | None = None
+    resolved_membership_ending_at: datetime | None = None
+    resolution_reason: str | None = None
+    approved_app_id: str | None = None
+
+
 class _AuditTagRef(BaseModel):
     """Tag projection for `tag` / `tags_added` / `tags_removed`."""
 
@@ -371,6 +393,12 @@ def _as_group_request_ref(v: Any) -> Any:
     )
 
 
+def _as_app_request_ref(v: Any) -> Any:
+    if v is None or isinstance(v, dict):
+        return v
+    return _project(v, *_AuditAppRequestRef.model_fields)
+
+
 def _as_tag_ref(v: Any) -> Any:
     if v is None or isinstance(v, dict):
         return v
@@ -441,6 +469,7 @@ class AuditLogPayload(BaseModel):
     request: _AuditAccessRequestRef | None = None
     role_request: _AuditRoleRequestRef | None = None
     group_request: _AuditGroupRequestRef | None = None
+    app_request: _AuditAppRequestRef | None = None
     requester: _AuditUserRef | None = None
 
     # App-related fields
@@ -498,6 +527,9 @@ class AuditLogPayload(BaseModel):
     )
     _coerce_group_request = field_validator("group_request", mode="before")(
         classmethod(lambda cls, v: _as_group_request_ref(v))
+    )
+    _coerce_app_request = field_validator("app_request", mode="before")(
+        classmethod(lambda cls, v: _as_app_request_ref(v))
     )
     _coerce_tag = field_validator("tag", mode="before")(classmethod(lambda cls, v: _as_tag_ref(v)))
     _coerce_old_tag = field_validator("old_tag", mode="before")(classmethod(lambda cls, v: _as_old_tag_ref(v)))
