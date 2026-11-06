@@ -24,15 +24,6 @@ def coalesce_constraints(constraint_key: str, tags: list[Tag]) -> ConstraintValu
     return coalesced_constraint_value
 
 
-def earliest_ended_at(*ended_ats: datetime | None) -> datetime | None:
-    """Return the earliest of `ended_ats` as an aware UTC datetime, reading None as indefinite.
-
-    Naive values are read as UTC. Returns None only when every value is None.
-    """
-    dated = [e.replace(tzinfo=UTC) if e.tzinfo is None else e.astimezone(UTC) for e in ended_ats if e is not None]
-    return min(dated) if dated else None
-
-
 def coalesce_ended_at(
     constraint_key: str, tags: list[Tag], initial_ended_at: datetime | None, group_is_managed: bool
 ) -> datetime | None:
