@@ -118,6 +118,20 @@ async def can_delete_group(db: AsyncSession, current_user_id: str, group: OktaGr
     return await can_manage_group(db, current_user_id, group)
 
 
+async def can_approve_deletion(
+    db: AsyncSession, current_user_id: str, *, group: OktaGroup | None = None, app: App | None = None
+) -> bool:
+    """Whether `current_user_id` may approve a request to delete `group` or `app`.
+
+    Anyone who could delete the target directly may, except through the
+    `APP_GROUP_DELETER_ID` allowlist, which `can_delete_group` also honors.
+    """
+    if group is not None:
+        return await can_manage_group(db, current_user_id, group)
+    assert app is not None
+    return await is_app_owner_group_owner(db, current_user_id, app=app) or await is_access_admin(db, current_user_id)
+
+
 # --- Depends factories -----------------------------------------------------
 
 

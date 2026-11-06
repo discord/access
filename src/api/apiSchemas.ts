@@ -576,8 +576,9 @@ export type DeletionRequestDetail = {
   created_at: string | null;
   updated_at: string | null;
   requester?: OktaUserSummary | null;
-  requester_service_principal?: ServicePrincipalDetail | null;
+  requester_service_principal?: ServicePrincipalSummary | null;
   resolver?: OktaUserSummary | null;
+  resolver_service_principal?: ServicePrincipalSummary | null;
 };
 
 export type EffectiveConstraintDetail = {

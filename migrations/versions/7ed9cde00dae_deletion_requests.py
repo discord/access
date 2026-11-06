@@ -38,6 +38,7 @@ def upgrade():
         sa.Column("app_id", sa.Unicode(length=20), nullable=True),
         sa.Column("request_reason", sa.Unicode(length=1024), nullable=False),
         sa.Column("resolver_user_id", sa.Unicode(length=50), nullable=True),
+        sa.Column("resolver_service_principal_id", sa.Unicode(length=50), nullable=True),
         sa.Column("resolution_reason", sa.Unicode(length=1024), nullable=False),
         sa.CheckConstraint(
             "(requester_user_id IS NULL) != (requester_service_principal_id IS NULL)",
@@ -58,6 +59,11 @@ def upgrade():
         ),
         sa.ForeignKeyConstraint(
             ["resolver_user_id"], ["okta_user.id"], name=op.f("fk_deletion_request_resolver_user_id_okta_user")
+        ),
+        sa.ForeignKeyConstraint(
+            ["resolver_service_principal_id"],
+            ["service_principal.id"],
+            name=op.f("fk_deletion_request_resolver_service_principal_id_service_principal"),
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_deletion_request")),
     )

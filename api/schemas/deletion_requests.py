@@ -10,7 +10,7 @@ from api.schemas.core_schemas import AppSummary, GroupRef, OktaUserSummary
 from api.schemas.datetimes import FlexibleDatetime
 from api.schemas.pagination import SearchQuery
 from api.schemas.requests_schemas import ReasonStr, RequestReasonStr
-from api.schemas.service_principals import ServicePrincipalDetail
+from api.schemas.service_principals import ServicePrincipalSummary
 
 
 class CreateDeletionRequestBody(BaseModel):
@@ -52,8 +52,10 @@ class DeletionRequestDetail(BaseModel):
     updated_at: FlexibleDatetime
     # Exactly one of `requester` and `requester_service_principal` is set.
     requester: OktaUserSummary | None = None
-    requester_service_principal: ServicePrincipalDetail | None = None
+    requester_service_principal: ServicePrincipalSummary | None = None
+    # Set when a service principal withdrew its own request; `resolver` names a user resolver.
     resolver: OktaUserSummary | None = None
+    resolver_service_principal: ServicePrincipalSummary | None = None
 
 
 class SearchDeletionRequestQuery(SearchQuery):

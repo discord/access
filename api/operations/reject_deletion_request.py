@@ -3,6 +3,7 @@ import logging
 from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload, with_polymorphic
 
+from api.auth.permissions import can_approve_deletion
 from api.context import get_request_context
 from api.exceptions import ConflictError
 from api.extensions import db
@@ -16,7 +17,7 @@ from api.models import (
     RoleGroup,
     ServicePrincipal,
 )
-from api.operations._deletion_requests import approvers_for, can_approve, lock_pending
+from api.operations._deletion_requests import approvers_for, lock_pending
 from api.operations._fan_out import defer_notification
 from api.operations._service_principals import audit_ref
 from api.plugins import NotificationHook
@@ -79,10 +80,7 @@ class RejectDeletionRequest:
             app = await db.session.get(App, deletion_request.app_id)
 
         rejecter: OktaUser | None = None
-        is_requester = self.current_user_id in (
-            deletion_request.requester_user_id,
-            deletion_request.requester_service_principal_id,
-        )
+        is_requester = deletion_request.is_requested_by(self.current_user_id)
         if self.current_user_id is not None:
             if not is_requester:
                 rejecter = (
@@ -90,7 +88,7 @@ class RejectDeletionRequest:
                         select(OktaUser).where(OktaUser.id == self.current_user_id).where(OktaUser.deleted_at.is_(None))
                     )
                 ).first()
-                if rejecter is None or not await can_approve(rejecter.id, group, app):
+                if rejecter is None or not await can_approve_deletion(db.session, rejecter.id, group=group, app=app):
                     return deletion_request
             elif not ServicePrincipal.is_service_principal_id(self.current_user_id):
                 rejecter = await db.session.get(OktaUser, self.current_user_id)
@@ -119,16 +117,16 @@ class RejectDeletionRequest:
                     "group": group,
                     "app": app,
                     "requester": requester_user,
-                    "service_principal": audit_ref(requester_service_principal),
+                    "requester_service_principal": audit_ref(requester_service_principal),
                 }
             )
         )
 
         deletion_request.status = AccessRequestStatus.REJECTED
         deletion_request.resolved_at = func.now()
-        # `resolver_user_id` names a user; a service principal withdrawing its own
-        # request leaves it empty, and the audit log records who acted.
         deletion_request.resolver_user_id = rejecter.id if rejecter else None
+        if ServicePrincipal.is_service_principal_id(self.current_user_id):
+            deletion_request.resolver_service_principal_id = self.current_user_id
         deletion_request.resolution_reason = self.rejection_reason
         await db.session.commit()
 
@@ -148,3 +146,29 @@ class RejectDeletionRequest:
                 notify_requester=self.notify_requester,
             )
         return deletion_request
+
+
+async def reject_pending_deletion_requests(
+    *, group_id: str | None = None, app_id: str | None = None, except_id: str | None = None
+) -> None:
+    """Close the pending deletion requests for a group or app that is being deleted.
+
+    Args:
+        group_id: The deleted group. Exactly one of `group_id` and `app_id` is given.
+        app_id: The deleted app.
+        except_id: A request being approved by this deletion, left for its approval to resolve.
+    """
+    target = DeletionRequest.group_id == group_id if group_id is not None else DeletionRequest.app_id == app_id
+    stmt = (
+        select(DeletionRequest.id)
+        .where(target)
+        .where(DeletionRequest.status == AccessRequestStatus.PENDING)
+        .where(DeletionRequest.resolved_at.is_(None))
+    )
+    if except_id is not None:
+        stmt = stmt.where(DeletionRequest.id != except_id)
+    for deletion_request_id in (await db.session.scalars(stmt)).all():
+        await RejectDeletionRequest(
+            deletion_request=deletion_request_id,
+            rejection_reason=f"Closed because the {'group' if group_id is not None else 'app'} was deleted",
+        ).execute()

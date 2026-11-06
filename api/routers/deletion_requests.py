@@ -11,17 +11,19 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from sqlalchemy import or_, select
+from sqlalchemy import String, cast, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 
 from api.auth.dependencies import CurrentRequester, CurrentUserId
+from api.auth.permissions import can_approve_deletion
 from api.database import DbSession
 from api.models import AccessRequestStatus, DeletionRequest, ServicePrincipal
 from api.operations import ApproveDeletionRequest, CreateDeletionRequest, RejectDeletionRequest
-from api.operations._deletion_requests import can_approve, load_deletable_target
+from api.operations._deletion_requests import load_deletable_target
 from api.pagination import Page, validated
 from api.routers._eager import polymorphic_group_options, service_principal_options
 from api.routers._fan_out import defer_fan_out
+from api.routers._requests import filter_by_requester, join_requester_for_search, withdraw_prior_requests
 from api.schemas.deletion_requests import (
     CreateDeletionRequestBody,
     DeletionRequestDetail,
@@ -39,6 +41,7 @@ def _load_options() -> tuple:
         joinedload(DeletionRequest.requester),
         joinedload(DeletionRequest.requester_service_principal).options(*service_principal_options()),
         joinedload(DeletionRequest.resolver),
+        joinedload(DeletionRequest.resolver_service_principal).options(*service_principal_options()),
     )
 
 
@@ -64,20 +67,21 @@ async def list_deletion_requests(
     if q_args.status:
         stmt = stmt.where(DeletionRequest.status == q_args.status)
     if q_args.requester_user_id:
-        requester_id = current_user_id if q_args.requester_user_id == "@me" else q_args.requester_user_id
-        stmt = stmt.where(
-            or_(
-                DeletionRequest.requester_user_id == requester_id,
-                DeletionRequest.requester_service_principal_id == requester_id,
-            )
-        )
+        stmt = filter_by_requester(stmt, DeletionRequest, q_args.requester_user_id, current_user_id)
     if q_args.group_id:
         stmt = stmt.where(DeletionRequest.group_id == q_args.group_id)
     if q_args.app_id:
         stmt = stmt.where(DeletionRequest.app_id == q_args.app_id)
     if q_args.q:
+        like = f"%{q_args.q}%"
+        stmt, requester_clauses = join_requester_for_search(stmt, DeletionRequest, like)
         stmt = stmt.where(
-            or_(DeletionRequest.id.like(f"{q_args.q}%"), DeletionRequest.request_reason.ilike(f"%{q_args.q}%"))
+            or_(
+                DeletionRequest.id.like(f"{q_args.q}%"),
+                cast(DeletionRequest.status, String).ilike(like),
+                DeletionRequest.request_reason.ilike(like),
+                *requester_clauses,
+            )
         )
     return await apaginate(db, stmt, transformer=validated(DeletionRequestDetail))
 
@@ -98,29 +102,23 @@ async def post_deletion_request(
     # Validate the target before cancelling anything, so a bad retry leaves the pending one alone.
     await load_deletable_target(group_id=body.group_id, app_id=body.app_id)
 
-    # A retry replaces the same requester's pending request for the same target.
-    requester_column = (
-        DeletionRequest.requester_service_principal_id
-        if isinstance(requester, ServicePrincipal)
-        else DeletionRequest.requester_user_id
-    )
-    target_column = DeletionRequest.group_id if body.group_id is not None else DeletionRequest.app_id
-    priors = (
-        await db.scalars(
-            select(DeletionRequest)
-            .where(requester_column == requester.id)
-            .where(target_column == (body.group_id or body.app_id))
-            .where(DeletionRequest.status == AccessRequestStatus.PENDING)
-            .where(DeletionRequest.resolved_at.is_(None))
-        )
-    ).all()
-    for prior in priors:
-        await RejectDeletionRequest(
+    # A retry replaces the requester's pending request for the same target.
+    await withdraw_prior_requests(
+        db,
+        DeletionRequest,
+        requester,
+        [
+            DeletionRequest.group_id == body.group_id
+            if body.group_id is not None
+            else DeletionRequest.app_id == body.app_id
+        ],
+        lambda prior: RejectDeletionRequest(
             deletion_request=prior,
             rejection_reason="Closed due to duplicate deletion request creation",
             notify_requester=False,
             current_user_id=requester.id,
-        ).execute()
+        ).execute(),
+    )
 
     deletion_request = await CreateDeletionRequest(
         requester=requester,
@@ -147,15 +145,12 @@ async def put_deletion_request(
         raise HTTPException(404, "Not Found")
 
     # The requester may withdraw its own request; others need the right to delete the target.
-    is_requester = current_user_id in (
-        deletion_request.requester_user_id,
-        deletion_request.requester_service_principal_id,
-    )
+    is_requester = deletion_request.is_requested_by(current_user_id)
     if is_requester:
         if body.approved:
             raise HTTPException(403, "Users cannot approve their own requests")
-    elif ServicePrincipal.is_service_principal_id(current_user_id) or not await can_approve(
-        current_user_id, deletion_request.group, deletion_request.app
+    elif ServicePrincipal.is_service_principal_id(current_user_id) or not await can_approve_deletion(
+        db, current_user_id, group=deletion_request.group, app=deletion_request.app
     ):
         raise HTTPException(403, "Current user is not allowed to perform this action")
 
