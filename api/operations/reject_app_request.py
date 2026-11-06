@@ -57,7 +57,7 @@ class RejectAppRequest:
 
         rejecter: OktaUser | None = None
         if self.current_user_id is not None:
-            if self.current_user_id not in (app_request.requester_user_id, app_request.requester_service_principal_id):
+            if not app_request.is_requested_by(self.current_user_id):
                 rejecter = (
                     await db.session.scalars(
                         select(OktaUser).where(OktaUser.id == self.current_user_id).where(OktaUser.deleted_at.is_(None))
@@ -88,16 +88,16 @@ class RejectAppRequest:
                     "current_user_email": rejecter.email if rejecter else None,
                     "app_request": app_request,
                     "requester": requester_user,
-                    "service_principal": audit_ref(requester_service_principal),
+                    "requester_service_principal": audit_ref(requester_service_principal),
                 }
             )
         )
 
         app_request.status = AccessRequestStatus.REJECTED
         app_request.resolved_at = func.now()
-        # `resolver_user_id` names a user; a service principal withdrawing its own
-        # request leaves it empty, and the audit log records who acted.
         app_request.resolver_user_id = rejecter.id if rejecter else None
+        if ServicePrincipal.is_service_principal_id(self.current_user_id):
+            app_request.resolver_service_principal_id = self.current_user_id
         app_request.resolution_reason = self.rejection_reason
         await db.session.commit()
 

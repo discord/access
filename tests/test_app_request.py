@@ -17,6 +17,7 @@ from api.models import (
     App,
     AppGroup,
     AppRequest,
+    OktaGroup,
     OktaUser,
     OktaUserGroupMember,
     RoleGroupMap,
@@ -26,8 +27,16 @@ from api.models import (
 )
 from api.operations import CreateAppRequest, DeleteUser
 from api.plugins import ConditionalAccessResponse, get_notification_hook
+from api.schemas.app_requests import AppRequestGroup
 from api.services import okta
-from tests.factories import AppFactory, OktaUserFactory, RoleGroupFactory, ServicePrincipalFactory, TagFactory
+from tests.factories import (
+    AppFactory,
+    OktaGroupFactory,
+    OktaUserFactory,
+    RoleGroupFactory,
+    ServicePrincipalFactory,
+    TagFactory,
+)
 
 AR_URL = "/api/app-requests"
 DAY = timedelta(days=1)
@@ -318,3 +327,116 @@ async def test_deleting_requester_rejects_pending_app_request(db: Db) -> None:
     await DeleteUser(user=requester.id, sync_to_okta=False).execute()
     await db.session.refresh(ar)
     assert ar.status == AccessRequestStatus.REJECTED
+
+
+async def test_approver_end_dates_replace_requested_and_tags_cap(db: Db, client: AsyncClient, mock_user: Any) -> None:
+    tag = await TagFactory.create_async(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 20 * 86400})
+    requester = await OktaUserFactory.create_async()
+    member = await OktaUserFactory.create_async()
+    member_id, requester_id = member.id, requester.id
+    ar = await CreateAppRequest(
+        requester=requester,
+        requested_app_name="Dated",
+        requested_app_tags=[tag.id],
+        requested_app_groups=[AppRequestGroup(name="App-Dated-Users", member_user_ids=[member.id])],
+        requested_ownership_ending_at=datetime.now(UTC) + 5 * DAY,
+        requested_membership_ending_at=datetime.now(UTC) + 5 * DAY,
+    ).execute()
+
+    # Ownership goes indefinite; membership asks for 60 days and the tag caps it at 20.
+    rep = await client.put(
+        f"{AR_URL}/{ar.id}",
+        json={
+            "approved": True,
+            "resolved_ownership_ending_at": None,
+            "resolved_membership_ending_at": (datetime.now(UTC) + 60 * DAY).isoformat(),
+        },
+    )
+    assert rep.status_code == 200, rep.text
+    assert rep.json()["resolved_ownership_ending_at"] is None
+    assert _close(datetime.fromisoformat(rep.json()["resolved_membership_ending_at"]), datetime.now(UTC) + 20 * DAY)
+    owners = await _grants(db, await _group_id(db, "App-Dated-Owners"))
+    assert owners["owner_users"][requester_id] is None
+    users = await _grants(db, await _group_id(db, "App-Dated-Users"))
+    assert _close(users["member_users"][member_id], datetime.now(UTC) + 20 * DAY)
+
+
+async def test_app_group_names_follow_the_group_name_pattern(db: Db, client: AsyncClient) -> None:
+    rep = await client.post(
+        AR_URL, json={"requested_app_name": "Patterned", "requested_app_groups": [{"name": "App-Patterned-bad name!"}]}
+    )
+    assert rep.status_code == 400
+
+
+async def test_no_membership_window_without_members(db: Db) -> None:
+    tag = await TagFactory.create_async(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    ar = await CreateAppRequest(
+        requester=await OktaUserFactory.create_async(), requested_app_name="Memberless", requested_app_tags=[tag.id]
+    ).execute()
+    assert ar.requested_membership_ending_at is None
+
+
+async def test_tag_reason_requirement_needs_request_reason(db: Db, client: AsyncClient) -> None:
+    tag = await TagFactory.create_async(constraints={Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY: True})
+    ar = await CreateAppRequest(
+        requester=await OktaUserFactory.create_async(), requested_app_name="Unreasoned", requested_app_tags=[tag.id]
+    ).execute()
+    rep = await client.put(f"{AR_URL}/{ar.id}", json={"approved": True})
+    assert rep.status_code == 400
+    assert "needs a reason" in rep.json()["detail"]
+
+
+async def test_groups_created_for_a_service_principal_record_it(
+    db: Db, mocker: MockerFixture, notifications: dict[str, Any]
+) -> None:
+    sp_id, owner_id = await _principal(db)
+    # A group already named under the app's prefix is absorbed, not created.
+    absorbed = await OktaGroupFactory.create_async(name="App-Svc-Legacy")
+    absorbed_id = absorbed.id
+    mocker.patch(
+        "api.operations.create_app_request.evaluate_conditional_access",
+        return_value=[ConditionalAccessResponse(approved=True, reason="rule")],
+    )
+    ar = await CreateAppRequest(
+        requester=sp_id,
+        requested_app_name="Svc",
+        requested_owner_user_ids=[owner_id],
+        requested_app_groups=[AppRequestGroup(name="App-Svc-Deployers")],
+    ).execute()
+    ar_id = ar.id
+    db.session.expire_all()
+    ar = await db.session.get(AppRequest, ar_id)
+    assert ar is not None
+    assert ar.status == AccessRequestStatus.APPROVED
+    # Approved automatically, even though absorbing a group reset the session, so no approver is asked.
+    assert notifications["created"].call_count == 0
+
+    created = {
+        g.name: g.created_by_service_principal_id
+        for g in (await db.session.scalars(select(AppGroup).where(AppGroup.app_id == ar.approved_app_id))).all()
+    }
+    assert created["App-Svc-Owners"] == sp_id
+    assert created["App-Svc-Deployers"] == sp_id
+    absorbed_group = await db.session.get(OktaGroup, absorbed_id)
+    assert absorbed_group is not None
+    assert absorbed_group.created_by_service_principal_id is None
+
+
+async def test_service_principal_withdrawal_and_deletion(db: Db, client: AsyncClient, mock_user: Any) -> None:
+    sp_id, owner_id = await _principal(db)
+    admin_id = await _admin_id(db)
+    mock_user(sp_id)
+    withdrawn = (
+        await client.post(AR_URL, json={"requested_app_name": "Withdrawn", "requested_owner_user_ids": [owner_id]})
+    ).json()["id"]
+    stranded = (
+        await client.post(AR_URL, json={"requested_app_name": "Stranded", "requested_owner_user_ids": [owner_id]})
+    ).json()["id"]
+
+    rep = await client.put(f"{AR_URL}/{withdrawn}", json={"approved": False})
+    assert rep.json()["resolver"] is None
+    assert rep.json()["resolver_service_principal"]["id"] == sp_id
+
+    mock_user(admin_id)
+    assert (await client.delete(f"/api/service-principals/{sp_id}")).status_code == 200
+    assert (await client.get(f"{AR_URL}/{stranded}")).json()["status"] == AccessRequestStatus.REJECTED

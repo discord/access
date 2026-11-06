@@ -206,6 +206,7 @@ class CreateGroupRequest:
 
         db.session.add(group_request)
         await db.session.commit()
+        group_request_id = group_request.id
 
         # If the requested group is an app group and the requester is the app owner, approve the request
         if self.requested_group_type == "app_group" and app is not None and requester_user is not None:

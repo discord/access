@@ -48,6 +48,7 @@ def upgrade():
         sa.Column("requested_membership_ending_at", sa.DateTime(), nullable=True),
         sa.Column("request_reason", sa.Unicode(length=1024), nullable=False),
         sa.Column("resolver_user_id", sa.Unicode(length=50), nullable=True),
+        sa.Column("resolver_service_principal_id", sa.Unicode(length=50), nullable=True),
         sa.Column("resolved_ownership_ending_at", sa.DateTime(), nullable=True),
         sa.Column("resolved_membership_ending_at", sa.DateTime(), nullable=True),
         sa.Column("resolution_reason", sa.Unicode(length=1024), nullable=False),
@@ -67,6 +68,11 @@ def upgrade():
         ),
         sa.ForeignKeyConstraint(
             ["resolver_user_id"], ["okta_user.id"], name=op.f("fk_app_request_resolver_user_id_okta_user")
+        ),
+        sa.ForeignKeyConstraint(
+            ["resolver_service_principal_id"],
+            ["service_principal.id"],
+            name=op.f("fk_app_request_resolver_service_principal_id_service_principal"),
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_app_request")),
     )

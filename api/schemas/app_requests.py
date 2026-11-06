@@ -14,17 +14,19 @@ from api.schemas.requests_schemas import (
     _APP_DESC_MAX_LENGTH,
     _APP_NAME_MAX_LENGTH,
     _GROUP_DESC_MAX_LENGTH,
+    _GROUP_NAME_MAX_LENGTH,
+    _GROUP_NAME_PATTERN_STR,
     ReasonStr,
     RequestReasonStr,
 )
-from api.schemas.service_principals import ServicePrincipalDetail
+from api.schemas.service_principals import ServicePrincipalSummary
 
 
 class AppRequestGroup(BaseModel):
     """An initial app group named by an app request, with its owners and members."""
 
     model_config = ConfigDict(extra="ignore")
-    name: str = Field(min_length=1)
+    name: str = Field(pattern=_GROUP_NAME_PATTERN_STR, min_length=1, max_length=_GROUP_NAME_MAX_LENGTH)
     description: str = Field(default="", max_length=_GROUP_DESC_MAX_LENGTH)
     owner_user_ids: list[str] = Field(default_factory=list)
     owner_role_ids: list[str] = Field(default_factory=list)
@@ -59,7 +61,11 @@ class CreateAppRequestBody(BaseModel):
 
 
 class ResolveAppRequestBody(BaseModel):
-    """Body for PUT /api/app-requests/{id}. The end dates, when sent, replace the requested ones."""
+    """Body for PUT /api/app-requests/{id}.
+
+    Each end date, when sent, replaces the requested one on approval; an explicit
+    null means indefinite. The app's tag limits still cap the result.
+    """
 
     model_config = ConfigDict(extra="ignore")
     approved: StrictBool
@@ -90,8 +96,10 @@ class AppRequestDetail(BaseModel):
     updated_at: FlexibleDatetime
     # Exactly one of `requester` and `requester_service_principal` is set.
     requester: OktaUserSummary | None = None
-    requester_service_principal: ServicePrincipalDetail | None = None
+    requester_service_principal: ServicePrincipalSummary | None = None
+    # Set when a service principal withdrew its own request; `resolver` names a user resolver.
     resolver: OktaUserSummary | None = None
+    resolver_service_principal: ServicePrincipalSummary | None = None
     # The active users and roles named anywhere in the request.
     named_users: list[OktaUserSummary] = Field(default_factory=list)
     named_roles: list[RoleGroupRef] = Field(default_factory=list)
