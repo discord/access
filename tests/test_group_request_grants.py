@@ -241,7 +241,11 @@ async def test_plugin_membership_ending_at_caps_members(
     mocker.patch(
         "api.operations.create_group_request.evaluate_conditional_access",
         return_value=[
-            ConditionalAccessResponse(approved=True, membership_ending_at=datetime.now(UTC) + plugin_days * DAY)
+            ConditionalAccessResponse(
+                approved=True,
+                membership_ending_at=datetime.now(UTC) + plugin_days * DAY,
+                allow_named_grants=True,
+            )
         ],
     )
 
@@ -382,3 +386,107 @@ async def test_admin_is_exempt_from_self_add_constraint(db: Db) -> None:
     assert refreshed is not None
     await db.session.refresh(refreshed)
     assert refreshed.status == AccessRequestStatus.APPROVED
+
+
+async def test_plugin_approval_of_named_grants_must_opt_in(db: Db, mocker: MockerFixture) -> None:
+    requester = await OktaUserFactory.create_async()
+    member = await OktaUserFactory.create_async()
+    mocker.patch(
+        "api.operations.create_group_request.evaluate_conditional_access",
+        return_value=[ConditionalAccessResponse(approved=True, reason="legacy rule")],
+    )
+
+    # A rule written for "the requester owns it" still approves that request...
+    plain = await CreateGroupRequest(
+        requester_user=requester, requested_group_name="Plain-Approved", requested_group_type="okta_group"
+    ).execute()
+    assert plain is not None
+    await db.session.refresh(plain)
+    assert plain.status == AccessRequestStatus.APPROVED
+
+    # ...but not one naming more, which waits for a reviewer.
+    named = await CreateGroupRequest(
+        requester_user=requester,
+        requested_group_name="Named-Pending",
+        requested_group_type="okta_group",
+        requested_member_user_ids=[member.id],
+    ).execute()
+    assert named is not None
+    await db.session.refresh(named)
+    assert named.status == AccessRequestStatus.PENDING
+
+
+async def test_no_membership_window_without_members(db: Db) -> None:
+    tag = await TagFactory.create_async(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    requester = await OktaUserFactory.create_async()
+    gr = await CreateGroupRequest(
+        requester_user=requester,
+        requested_group_name="Ownerly",
+        requested_group_type="okta_group",
+        requested_group_tags=[tag.id],
+    ).execute()
+    assert gr is not None
+    assert gr.requested_membership_ending_at is None
+
+    # Even a stale membership date doesn't block a request that grants no membership.
+    gr.requested_membership_ending_at = datetime.now(UTC) - DAY
+    await db.session.commit()
+    await ApproveGroupRequest(group_request=gr, approver_user=await _admin(db)).execute()
+    await db.session.refresh(gr)
+    assert gr.status == AccessRequestStatus.APPROVED
+    assert gr.resolved_membership_ending_at is None
+
+
+async def test_approver_end_date_replaces_requested(db: Db, client: AsyncClient) -> None:
+    requester = await OktaUserFactory.create_async()
+    member = await OktaUserFactory.create_async()
+    member_id = member.id
+    gr = await CreateGroupRequest(
+        requester_user=requester,
+        requested_group_name="Approver-Dates",
+        requested_group_type="okta_group",
+        requested_member_user_ids=[member.id],
+        requested_ownership_ending_at=datetime.now(UTC) + 10 * DAY,
+        requested_membership_ending_at=datetime.now(UTC) + 10 * DAY,
+    ).execute()
+    assert gr is not None
+    longer = datetime.now(UTC) + 40 * DAY
+
+    # An explicit null is indefinite; a date replaces the requested one, even a later one.
+    rep = await client.put(
+        f"{GR_URL}/{gr.id}",
+        json={
+            "approved": True,
+            "resolved_ownership_ending_at": None,
+            "resolved_membership_ending_at": longer.isoformat(),
+        },
+    )
+    assert rep.status_code == 200, rep.text
+    assert rep.json()["resolved_ownership_ending_at"] is None
+    grants = await _grants(db, rep.json()["approved_group_id"])
+    assert grants["owner_users"][gr.requester_user_id] is None
+    assert _close(grants["member_users"][member_id], longer)
+
+
+@pytest.mark.parametrize("reason", ["", "Needed for the launch"])
+async def test_tag_reason_requirement_needs_request_reason(db: Db, reason: str) -> None:
+    tag = await TagFactory.create_async(constraints={Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True})
+    requester = await OktaUserFactory.create_async()
+    member = await OktaUserFactory.create_async()
+    gr = await CreateGroupRequest(
+        requester_user=requester,
+        requested_group_name="Reasoned",
+        requested_group_type="okta_group",
+        requested_group_tags=[tag.id],
+        requested_member_user_ids=[member.id],
+        request_reason=reason,
+    ).execute()
+    assert gr is not None
+    approve = ApproveGroupRequest(group_request=gr, approver_user=await _admin(db))
+    if reason:
+        await approve.execute()
+        await db.session.refresh(gr)
+        assert gr.status == AccessRequestStatus.APPROVED
+    else:
+        with pytest.raises(InvalidRequestError, match="needs a reason"):
+            await approve.execute()
