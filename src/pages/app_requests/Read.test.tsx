@@ -194,17 +194,25 @@ describe('an Access admin reviewing a pending request', () => {
     ['Ownership Ending At', 'resolved_ownership_ending_at'],
     ['Membership Ending At', 'resolved_membership_ending_at'],
   ])('offers %s no longer than requested, nor Indefinite', async (label, field) => {
+    // Filed two days ago for five days, so a five-day choice must still end when requested.
+    const requestedEndingAt = new Date(Date.now() + 3 * 86400 * 1000).toISOString();
+    appRequest = {
+      ...PENDING_REQUEST,
+      created_at: new Date(Date.now() - 2 * 86400 * 1000).toISOString(),
+      requested_ownership_ending_at: requestedEndingAt,
+      requested_membership_ending_at: requestedEndingAt,
+    } as unknown as AppRequestDetail;
     renderPage();
 
     await userEvent.click(screen.getByRole('combobox', {name: label}));
     const options = (await screen.findAllByRole('option')).map((option) => option.textContent);
-    expect(options).toEqual(['12 Hours', '5 Days', 'Two Weeks', 'Custom']);
+    expect(options).toEqual(['12 Hours', '5 Days', 'Custom']);
     await userEvent.click(screen.getByRole('option', {name: '5 Days'}));
     await userEvent.click(screen.getByRole('button', {name: /Approve/}));
 
     await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
     const endingAt = resolveMutate.mock.calls[0][0].body[field];
-    expect(new Date(endingAt).getTime()).toBeLessThan(Date.now() + 6 * 86400 * 1000);
+    expect(new Date(endingAt).getTime()).toBeLessThanOrEqual(new Date(requestedEndingAt).getTime());
   });
 
   it('offers Indefinite and longer durations when the request has no end date', async () => {
