@@ -4,7 +4,7 @@ import string
 from typing import TypedDict, cast
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import with_polymorphic
+from sqlalchemy.orm import selectinload, with_polymorphic
 
 from api.context import get_request_context
 from api.extensions import db
@@ -16,6 +16,35 @@ from api.operations.modify_group_type import ModifyGroupType
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_role_groups import ModifyRoleGroups
 from api.schemas import AuditLogSchema, EventType
+
+
+async def owner_group_conflict(app_name: str) -> str | None:
+    """Explain why an app named `app_name` can't be created, or return None if it can.
+
+    An app absorbs an existing group already named like its owners group. That
+    is refused when the group has owners, since they would silently become the
+    new app's owners.
+    """
+    owner_group_name = (
+        f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        f"{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+    )
+    poly_group = with_polymorphic(OktaGroup, [AppGroup, RoleGroup])
+    existing_owner_group = (
+        await db.session.scalars(
+            select(poly_group)
+            .options(selectinload(poly_group.active_user_ownerships))
+            .where(func.lower(OktaGroup.name) == func.lower(owner_group_name))
+            .where(OktaGroup.deleted_at.is_(None))
+        )
+    ).first()
+    if existing_owner_group is None or len(existing_owner_group.active_user_ownerships) == 0:
+        return None
+    return (
+        f"An owner group with existing owners already exists for this app name. Select a different app"
+        f" name, change the name of {owner_group_name}, or remove the existing owners of"
+        f" {owner_group_name} to be able to proceed."
+    )
 
 
 class AppDict(TypedDict):
