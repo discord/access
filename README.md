@@ -229,6 +229,20 @@ principal is deleted, or its subject is changed to a new token, the old token is
 Like any authenticated user, a service principal can read everything Access shows: groups, roles, apps, requests,
 and their history. A service principal's subject (its token's client ID) is shown only to Access admins.
 
+A service principal changes things only by filing the same requests users file, each routed to the usual approvers:
+
+- **Group requests** (`POST /api/group-requests`) and **app requests** (`POST /api/app-requests`) create a group or
+  an app with the owners and members the request names. A service principal's request must name at least one owner,
+  since a service principal never owns anything. The created group or app records the service principal in
+  `created_by_service_principal_id`.
+- **Deletion requests** (`POST /api/deletion-requests`) delete a group or an app, and are approved by anyone who could
+  delete it directly.
+
+A [conditional-access plugin](#plugins) can approve or deny these requests as they are created, for example to let a
+service create groups in one app, or delete only the groups it created. Without one, every request waits for a human
+approver. Requester-facing notifications are not sent to service principals; a service reads the request to learn its
+outcome.
+
 ### Docker Build and Run
 
 Build the Docker image:
