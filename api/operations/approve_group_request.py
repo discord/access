@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
+from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.context import get_request_context
 from api.exceptions import ConflictError, InvalidRequestError
@@ -15,7 +15,6 @@ from api.models import (
     AppGroup,
     GroupRequest,
     OktaGroup,
-    OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
@@ -25,17 +24,38 @@ from api.models.access_request import get_all_possible_request_approvers
 from api.models.app_group import get_access_owners
 from api.models.okta_group import is_group_name_taken
 from api.models.tag import effective_ended_at
+from api.operations._active_ids import require_active_role_ids, require_active_user_ids
 from api.operations._fan_out import defer_notification
-from api.operations.constraints.check_for_self_add import CheckForSelfAdd
+from api.operations.constraints.check_group_request_self_add import CheckGroupRequestSelfAdd
 from api.operations.create_group import CreateGroup
 from api.operations.modify_group_users import ModifyGroupUsers
+from api.operations.modify_role_groups import ModifyRoleGroups
 from api.plugins import NotificationHook
+from api.routers._eager import effective_constraint_options
 from api.schemas import AuditLogSchema, EventType
 
 logger = logging.getLogger(__name__)
 
 
 class ApproveGroupRequest:
+    """Approve a pending group request: create the group and grant its owners and members.
+
+    Args:
+        group_request: The request or its id.
+        approver_user: The approving user, or None for a conditional-access plugin approval.
+        approval_reason: Recorded as the resolution reason.
+        ending_at: Caps the owner grants; it never extends them.
+        membership_ending_at: Caps the member grants; it never extends them.
+        notify: Whether to send notifications.
+        bypass_self_approval: Let the requester approve their own request (app-owner auto-approval).
+            Grants the group's tags forbid the approver from adding to themself are skipped
+            instead of failing the approval.
+        owner_user_ids: Replaces the requested owner users, or None to keep them.
+        owner_role_ids: Replaces the requested owner roles, or None to keep them.
+        member_user_ids: Replaces the requested member users, or None to keep them.
+        member_role_ids: Replaces the requested member roles, or None to keep them.
+    """
+
     def __init__(
         self,
         *,
@@ -43,8 +63,13 @@ class ApproveGroupRequest:
         approver_user: OktaUser | str | None = None,
         approval_reason: str = "",
         ending_at: datetime | None = None,
+        membership_ending_at: datetime | None = None,
         notify: bool = True,
         bypass_self_approval: bool = False,
+        owner_user_ids: list[str] | None = None,
+        owner_role_ids: list[str] | None = None,
+        member_user_ids: list[str] | None = None,
+        member_role_ids: list[str] | None = None,
     ):
         self.group_request_id = group_request if isinstance(group_request, str) else group_request.id
         self.approver_user_id = (
@@ -53,8 +78,13 @@ class ApproveGroupRequest:
 
         self.approval_reason = approval_reason
         self.ending_at = ending_at
+        self.membership_ending_at = membership_ending_at
         self.notify = notify
         self.bypass_self_approval = bypass_self_approval
+        self.owner_user_ids = owner_user_ids
+        self.owner_role_ids = owner_role_ids
+        self.member_user_ids = member_user_ids
+        self.member_role_ids = member_role_ids
 
     async def execute(self) -> GroupRequest | None:
         # Lock the request row for the transaction so concurrent approvers
@@ -171,6 +201,27 @@ class ApproveGroupRequest:
                 "The ownership window for this request has already passed. Set an ownership end date when approving it."
             )
 
+        # The same resolution, cap, and expiry check for the member grants.
+        resolved_membership_ending_at = (
+            group_request.resolved_membership_ending_at
+            if group_request.resolved_membership_ending_at
+            else group_request.requested_membership_ending_at
+        )
+        if resolved_membership_ending_at is not None:
+            resolved_membership_ending_at = _as_utc(resolved_membership_ending_at)
+        if self.membership_ending_at is not None:
+            plugin_membership_ending_at = _as_utc(self.membership_ending_at)
+            resolved_membership_ending_at = (
+                plugin_membership_ending_at
+                if resolved_membership_ending_at is None
+                else min(resolved_membership_ending_at, plugin_membership_ending_at)
+            )
+        if resolved_membership_ending_at is not None and resolved_membership_ending_at <= datetime.now(UTC):
+            raise InvalidRequestError(
+                "The membership window for this request has already passed. "
+                "Set a membership end date when approving it."
+            )
+
         # authorization: no approver means a conditional-access plugin approved the
         # request (see `ConditionalAccessPluginSpec.group_request_created`), and that
         # operator-installed plugin stands in for the approval tiers below. The resolve
@@ -223,6 +274,47 @@ class ApproveGroupRequest:
             f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
         ):
             return group_request
+
+        owner_user_ids = await require_active_user_ids(
+            self.owner_user_ids if self.owner_user_ids is not None else group_request.requested_owner_user_ids,
+            "owner",
+        )
+        owner_role_ids = await require_active_role_ids(
+            self.owner_role_ids if self.owner_role_ids is not None else group_request.requested_owner_role_ids,
+            "owner",
+        )
+        member_user_ids = await require_active_user_ids(
+            self.member_user_ids if self.member_user_ids is not None else group_request.requested_member_user_ids,
+            "member",
+        )
+        member_role_ids = await require_active_role_ids(
+            self.member_role_ids if self.member_role_ids is not None else group_request.requested_member_role_ids,
+            "member",
+        )
+        if resolved_type == "role_group" and (owner_role_ids or member_role_ids):
+            raise InvalidRequestError("Roles cannot be added to other Roles")
+
+        # Hold the approver to the new group's self-add restrictions, as a direct add
+        # would. App-owner auto-approval skips the blocked grants instead: the
+        # requester already manages the group through the app.
+        self_add = await CheckGroupRequestSelfAdd(
+            approver_id=approver_id,
+            tag_ids=resolved_tags,
+            app_id=resolved_app_id if resolved_type == "app_group" else None,
+            owner_user_ids=owner_user_ids,
+            member_user_ids=member_user_ids,
+            owner_role_ids=owner_role_ids,
+            member_role_ids=member_role_ids,
+        ).execute()
+        if self_add.blocked:
+            if not self.bypass_self_approval:
+                raise InvalidRequestError(self_add.message)
+            if self_add.owner_user:
+                owner_user_ids = [u for u in owner_user_ids if u != approver_id]
+            if self_add.member_user:
+                member_user_ids = [u for u in member_user_ids if u != approver_id]
+            owner_role_ids = [r for r in owner_role_ids if r not in self_add.owner_role_ids]
+            member_role_ids = [r for r in member_role_ids if r not in self_add.member_role_ids]
 
         # Raise rather than leave the request pending: otherwise the approver sees a
         # successful response for an approval that created nothing.
@@ -317,7 +409,7 @@ class ApproveGroupRequest:
                 select(OktaGroup)
                 .options(
                     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                    selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
+                    *effective_constraint_options(),
                 )
                 .where(OktaGroup.id == created_group.id)
                 .where(OktaGroup.deleted_at.is_(None))
@@ -328,25 +420,53 @@ class ApproveGroupRequest:
         coalesced_ownership_ending_at = effective_ended_at(
             Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY, created_group_with_tags, resolved_ownership_ending_at
         )
+        coalesced_membership_ending_at = effective_ended_at(
+            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, created_group_with_tags, resolved_membership_ending_at
+        )
 
-        # Update the group request with the coalesced value to ensure consistency
+        # Record what the approval grants.
         group_request.resolved_ownership_ending_at = coalesced_ownership_ending_at
+        group_request.resolved_membership_ending_at = coalesced_membership_ending_at
+        group_request.resolved_owner_user_ids = owner_user_ids
+        group_request.resolved_owner_role_ids = owner_role_ids
+        group_request.resolved_member_user_ids = member_user_ids
+        group_request.resolved_member_role_ids = member_role_ids
 
-        # Add the requester as an owner of the newly created group
-        # If app owner auto approval, skip if group has owner add constraint (will inherit ownership via app)
-        can_add_owner = True
-        if self.bypass_self_approval and approver_id is not None:
-            can_add_owner, _ = await CheckForSelfAdd(
-                group=created_group_with_tags, current_user=approver_id, owners_to_add=[approver_id]
-            ).execute_for_group()
-
-        if can_add_owner:
+        created_reason = f"Group request approved: {group_request.request_reason}"
+        if owner_user_ids:
             await ModifyGroupUsers(
                 group=created_group_with_tags,
-                owners_to_add=[group_request.requester_user_id],
+                owners_to_add=owner_user_ids,
                 users_added_ended_at=coalesced_ownership_ending_at,
                 current_user_id=approver_id,
-                created_reason=f"Group request approved: {group_request.request_reason}",
+                created_reason=created_reason,
+                notify=self.notify,
+            ).execute()
+        if member_user_ids:
+            await ModifyGroupUsers(
+                group=created_group_with_tags,
+                members_to_add=member_user_ids,
+                users_added_ended_at=coalesced_membership_ending_at,
+                current_user_id=approver_id,
+                created_reason=created_reason,
+                notify=self.notify,
+            ).execute()
+        for role_id in owner_role_ids:
+            await ModifyRoleGroups(
+                role_group=role_id,
+                owner_groups_to_add=[created_group.id],
+                groups_added_ended_at=coalesced_ownership_ending_at,
+                current_user_id=approver_id,
+                created_reason=created_reason,
+                notify=self.notify,
+            ).execute()
+        for role_id in member_role_ids:
+            await ModifyRoleGroups(
+                role_group=role_id,
+                groups_to_add=[created_group.id],
+                groups_added_ended_at=coalesced_membership_ending_at,
+                current_user_id=approver_id,
+                created_reason=created_reason,
                 notify=self.notify,
             ).execute()
 

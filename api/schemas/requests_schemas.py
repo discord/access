@@ -35,6 +35,7 @@ from api.schemas.core_schemas import (
     OktaGroupTagMapDetail,
     OktaUserSummary,
     RoleGroupMapDetail,
+    RoleGroupRef,
     RoleRequestRequestedGroupRef,
     RoleRequestRequesterRoleRef,
 )
@@ -325,6 +326,11 @@ class GroupRequestDetail(BaseModel):
     requested_app_id: str | None = None
     requested_group_tags: list[str] = Field(default_factory=list)
     requested_ownership_ending_at: FlexibleDatetime | None = None
+    requested_owner_user_ids: list[str] = Field(default_factory=list)
+    requested_owner_role_ids: list[str] = Field(default_factory=list)
+    requested_member_user_ids: list[str] = Field(default_factory=list)
+    requested_member_role_ids: list[str] = Field(default_factory=list)
+    requested_membership_ending_at: FlexibleDatetime | None = None
     request_reason: str | None = ""
     resolved_group_name: str | None = ""
     resolved_group_description: str | None = ""
@@ -332,6 +338,12 @@ class GroupRequestDetail(BaseModel):
     resolved_app_id: str | None = None
     resolved_group_tags: list[str] = Field(default_factory=list)
     resolved_ownership_ending_at: FlexibleDatetime | None = None
+    # The owners and members the approval granted; empty until approved.
+    resolved_owner_user_ids: list[str] = Field(default_factory=list)
+    resolved_owner_role_ids: list[str] = Field(default_factory=list)
+    resolved_member_user_ids: list[str] = Field(default_factory=list)
+    resolved_member_role_ids: list[str] = Field(default_factory=list)
+    resolved_membership_ending_at: FlexibleDatetime | None = None
     resolution_reason: str | None = ""
     resolved_at: FlexibleDatetime | None = None
     approved_group_id: str | None = None
@@ -341,6 +353,10 @@ class GroupRequestDetail(BaseModel):
     updated_at: FlexibleDatetime
     requester: OktaUserSummary | None = None
     resolver: OktaUserSummary | None = None
+    # The active users and roles named by the `*_user_ids` / `*_role_ids` fields,
+    # so a client can render them without a lookup per id.
+    named_users: list[OktaUserSummary] = Field(default_factory=list)
+    named_roles: list[RoleGroupRef] = Field(default_factory=list)
 
     @field_validator("requested_group_tags", "resolved_group_tags", mode="before")
     @classmethod
@@ -363,7 +379,14 @@ class _GroupRequestBodyBase(BaseModel):
     requested_group_name: str = Field(pattern=_GROUP_NAME_PATTERN_STR, min_length=1, max_length=_GROUP_NAME_MAX_LENGTH)
     requested_group_description: str | None = Field(default="", max_length=_GROUP_DESC_MAX_LENGTH)
     requested_group_tags: list[str] = Field(default_factory=list)
+    # Owner grants on the new group. When no owners are named, the requester is the owner.
+    requested_owner_user_ids: list[str] = Field(default_factory=list)
+    requested_owner_role_ids: list[str] = Field(default_factory=list)
     requested_ownership_ending_at: FlexibleDatetime | None = None
+    # Member grants on the new group.
+    requested_member_user_ids: list[str] = Field(default_factory=list)
+    requested_member_role_ids: list[str] = Field(default_factory=list)
+    requested_membership_ending_at: FlexibleDatetime | None = None
     request_reason: RequestReasonStr = ""
 
     @model_validator(mode="after")
@@ -406,6 +429,12 @@ class ResolveGroupRequestBody(BaseModel):
     resolved_group_tags: list[str] | None = None
     resolved_ownership_ending_at: FlexibleDatetime | None = None
     resolved_plugin_data: dict[str, Any] | None = None
+    # Each list, when sent, replaces the requested one on approval.
+    resolved_owner_user_ids: list[str] | None = None
+    resolved_owner_role_ids: list[str] | None = None
+    resolved_member_user_ids: list[str] | None = None
+    resolved_member_role_ids: list[str] | None = None
+    resolved_membership_ending_at: FlexibleDatetime | None = None
 
 
 # --- Tags -------------------------------------------------------------------

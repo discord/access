@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,7 +13,7 @@ from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
 from api.database import DbSession
-from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, Tag
+from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, RoleGroup, Tag
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
 from api.pagination import Page, validated
 from api.plugins.app_group_lifecycle import (
@@ -24,7 +25,9 @@ from api.routers._fan_out import defer_fan_out
 from api.schemas import (
     CreateGroupRequestBody,
     GroupRequestDetail,
+    OktaUserSummary,
     ResolveGroupRequestBody,
+    RoleGroupRef,
     SearchGroupRequestQuery,
 )
 from api.schemas.requests_schemas import _AppGroupRequestBody
@@ -43,6 +46,59 @@ def _load_options() -> tuple:
         joinedload(GroupRequest.requester),
         joinedload(GroupRequest.resolver),
     )
+
+
+_NAMED_USER_FIELDS = (
+    "requested_owner_user_ids",
+    "requested_member_user_ids",
+    "resolved_owner_user_ids",
+    "resolved_member_user_ids",
+)
+_NAMED_ROLE_FIELDS = (
+    "requested_owner_role_ids",
+    "requested_member_role_ids",
+    "resolved_owner_role_ids",
+    "resolved_member_role_ids",
+)
+
+
+async def _attach_named_principals(db: DbSession, details: Sequence[GroupRequestDetail]) -> None:
+    """Fill each detail's `named_users` / `named_roles` with two queries for the whole batch."""
+    user_ids = {uid for d in details for f in _NAMED_USER_FIELDS for uid in getattr(d, f)}
+    role_ids = {rid for d in details for f in _NAMED_ROLE_FIELDS for rid in getattr(d, f)}
+    users = (
+        {
+            u.id: OktaUserSummary.model_validate(u, from_attributes=True)
+            for u in (
+                await db.scalars(select(OktaUser).where(OktaUser.id.in_(user_ids)).where(OktaUser.deleted_at.is_(None)))
+            ).all()
+        }
+        if user_ids
+        else {}
+    )
+    roles = (
+        {
+            r.id: RoleGroupRef.model_validate(r, from_attributes=True)
+            for r in (
+                await db.scalars(
+                    select(RoleGroup).where(RoleGroup.id.in_(role_ids)).where(RoleGroup.deleted_at.is_(None))
+                )
+            ).all()
+        }
+        if role_ids
+        else {}
+    )
+    for d in details:
+        wanted_users = dict.fromkeys(uid for f in _NAMED_USER_FIELDS for uid in getattr(d, f))
+        wanted_roles = dict.fromkeys(rid for f in _NAMED_ROLE_FIELDS for rid in getattr(d, f))
+        d.named_users = [users[u] for u in wanted_users if u in users]
+        d.named_roles = [roles[r] for r in wanted_roles if r in roles]
+
+
+async def _detail(db: DbSession, gr: GroupRequest) -> GroupRequestDetail:
+    detail = GroupRequestDetail.model_validate(gr, from_attributes=True)
+    await _attach_named_principals(db, [detail])
+    return detail
 
 
 @router.get("", name="group_requests")
@@ -153,7 +209,9 @@ async def list_group_requests(
             )
         )
 
-    return await apaginate(db, stmt, transformer=validated(GroupRequestDetail))
+    page = await apaginate(db, stmt, transformer=validated(GroupRequestDetail))
+    await _attach_named_principals(db, page.items)
+    return page
 
 
 @router.get("/{group_request_id}", name="group_request_by_id")
@@ -163,7 +221,7 @@ async def get_group_request(group_request_id: str, db: DbSession, current_user_i
     ).first()
     if gr is None:
         raise HTTPException(404, "Not Found")
-    return GroupRequestDetail.model_validate(gr, from_attributes=True)
+    return await _detail(db, gr)
 
 
 @router.post("", name="group_requests_create", status_code=201)
@@ -243,6 +301,11 @@ async def post_group_request(
             requested_ownership_ending_at=body.requested_ownership_ending_at,
             request_reason=body.request_reason or "",
             requested_plugin_data=body.requested_plugin_data if isinstance(body, _AppGroupRequestBody) else {},
+            requested_owner_user_ids=body.requested_owner_user_ids,
+            requested_owner_role_ids=body.requested_owner_role_ids,
+            requested_member_user_ids=body.requested_member_user_ids,
+            requested_member_role_ids=body.requested_member_role_ids,
+            requested_membership_ending_at=body.requested_membership_ending_at,
         ).execute()
     except ValueError as e:
         raise HTTPException(400, f"Failed to create group request: {e}") from e
@@ -257,7 +320,8 @@ async def post_group_request(
     refreshed = (
         await db.scalars(select(GroupRequest).options(*_load_options()).where(GroupRequest.id == gr_id))
     ).first()
-    return GroupRequestDetail.model_validate(refreshed, from_attributes=True)
+    assert refreshed is not None
+    return await _detail(db, refreshed)
 
 
 @router.put("/{group_request_id}", name="group_request_by_id_put")
@@ -316,6 +380,8 @@ async def put_group_request(
         gr.resolved_ownership_ending_at = body.resolved_ownership_ending_at
     if body.resolved_plugin_data is not None:
         gr.resolved_plugin_data = body.resolved_plugin_data
+    if body.resolved_membership_ending_at is not None:
+        gr.resolved_membership_ending_at = body.resolved_membership_ending_at
 
     await db.commit()
 
@@ -326,6 +392,10 @@ async def put_group_request(
                 group_request=gr,
                 approver_user=current_user_id,
                 approval_reason=resolution_reason,
+                owner_user_ids=body.resolved_owner_user_ids,
+                owner_role_ids=body.resolved_owner_role_ids,
+                member_user_ids=body.resolved_member_user_ids,
+                member_role_ids=body.resolved_member_role_ids,
             ).execute()
         # Approval re-validates the resolved plugin config: a ValueError means the
         # config no longer passes, while a filtering error means the app's plugin id is
@@ -347,4 +417,5 @@ async def put_group_request(
     refreshed = (
         await db.scalars(select(GroupRequest).options(*_load_options()).where(GroupRequest.id == group_request_id))
     ).first()
-    return GroupRequestDetail.model_validate(refreshed, from_attributes=True)
+    assert refreshed is not None
+    return await _detail(db, refreshed)
