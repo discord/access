@@ -57,6 +57,8 @@ from api.models import (
     RoleGroup,
     RoleGroupMap,
     RoleRequest,
+    ServicePrincipal,
+    ServicePrincipalProvider,
     Tag,
 )
 
@@ -227,6 +229,16 @@ class OktaGroupTagMapFactory(_ORMFactory):
 
 class AppTagMapFactory(_ORMFactory):
     __model__ = AppTagMap
+
+
+class ServicePrincipalFactory(_ORMFactory):
+    __model__ = ServicePrincipal
+    _managed = frozenset({"id", "display_name", "provider", "subject"})
+
+    id = Use(lambda: ServicePrincipal.ID_PREFIX + _okta_id()[:17])
+    display_name = Use(lambda: "Service " + _rand())
+    provider = ServicePrincipalProvider.CLOUDFLARE
+    subject = Use(lambda: _rand(32) + ".access")
 
 
 # ---------------------------------------------------------------------------

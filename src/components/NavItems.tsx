@@ -25,6 +25,10 @@ import ExpiringOwnedByMe from '@mui/icons-material/AccountTree';
 import ExpiringRolesOwnedByMe from '@mui/icons-material/HowToReg';
 import ExpiringAll from '@mui/icons-material/SwitchAccount';
 import GroupRequestIcon from '@mui/icons-material/GroupAdd';
+import ServicePrincipalIcon from '@mui/icons-material/SmartToy';
+
+import {useCurrentUser} from '../authentication';
+import {isAccessAdmin} from '../authorization';
 
 interface ListItemLinkProps extends ListItemProps {
   to: string;
@@ -85,6 +89,7 @@ export default function NavItems(props: NavItemsProps) {
   const [openAccessRequests, setOpenAccessRequests] = React.useState(false);
   const [openGroupRequests, setOpenGroupRequests] = React.useState(false);
   const [openExpiringAccess, setOpenExpiringAccess] = React.useState(false);
+  const currentUser = useCurrentUser();
 
   return (
     <List>
@@ -266,6 +271,22 @@ export default function NavItems(props: NavItemsProps) {
           />
         </List>
       </Collapse>
+      {isAccessAdmin(currentUser) && (
+        <>
+          <Divider />
+          {props.open && (
+            <ListSubheader disableSticky sx={subheaderSx}>
+              Admin
+            </ListSubheader>
+          )}
+          <ListItemLink
+            to="/service-principals"
+            displayText="Service Principals"
+            displayIcon={<ServicePrincipalIcon />}
+            tooltip="View and manage services that call the Access API"
+          />
+        </>
+      )}
     </List>
   );
 }
