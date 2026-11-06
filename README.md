@@ -221,9 +221,13 @@ admin registers each service as a **service principal** on the Service Principal
 more owning users or roles. Owners are recorded for accountability only and gain no permissions.
 
 A request authenticated with a registered token acts as that service principal. A service principal never owns,
-joins, or approves anything, so it fails every ownership and admin check. A service token that is not registered is
-passed through by its client ID, which is how the `APP_CREATOR_ID` and `APP_GROUP_DELETER_ID` allowlists match it.
-Registering a token as a service principal ends its allowlist access.
+joins, or approves anything, so it fails every ownership and admin check. A service token that has never been
+registered is passed through by its client ID, which is how the `APP_CREATOR_ID` and `APP_GROUP_DELETER_ID`
+allowlists match it. Registering a token as a service principal ends its allowlist access for good: once the service
+principal is deleted, or its subject is changed to a new token, the old token is refused rather than passed through.
+
+Like any authenticated user, a service principal can read everything Access shows: groups, roles, apps, requests,
+and their history. A service principal's subject (its token's client ID) is shown only to Access admins.
 
 A service principal changes things only by filing the same requests users file, each routed to the usual approvers:
 

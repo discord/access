@@ -323,8 +323,9 @@ export type AppRequestDetail = {
   created_at: string | null;
   updated_at: string | null;
   requester?: OktaUserSummary | null;
-  requester_service_principal?: ServicePrincipalDetail | null;
+  requester_service_principal?: ServicePrincipalSummary | null;
   resolver?: OktaUserSummary | null;
+  resolver_service_principal?: ServicePrincipalSummary | null;
   named_users?: OktaUserSummary[];
   named_roles?: RoleGroupRef[];
 };
@@ -334,7 +335,9 @@ export type AppRequestDetail = {
  */
 export type AppRequestGroup = {
   /**
+   * @maxLength 255
    * @minLength 1
+   * @pattern ^[A-Z][A-Za-z0-9-]*$
    */
   name: string;
   /**
@@ -717,8 +720,9 @@ export type GroupRequestDetail = {
   created_at: string | null;
   updated_at: string | null;
   requester?: OktaUserSummary | null;
-  requester_service_principal?: ServicePrincipalDetail | null;
+  requester_service_principal?: ServicePrincipalSummary | null;
   resolver?: OktaUserSummary | null;
+  resolver_service_principal?: ServicePrincipalSummary | null;
   named_users?: OktaUserSummary[];
   named_roles?: RoleGroupRef[];
 };
@@ -1268,7 +1272,10 @@ export type ResolveAccessRequestBody = {
 };
 
 /**
- * Body for PUT /api/app-requests/{id}. The end dates, when sent, replace the requested ones.
+ * Body for PUT /api/app-requests/{id}.
+ *
+ * Each end date, when sent, replaces the requested one on approval; an explicit
+ * null means indefinite. The app's tag limits still cap the result.
  */
 export type ResolveAppRequestBody = {
   approved: boolean;
@@ -1614,17 +1621,20 @@ export type RoleRequestSummary = {
 };
 
 /**
- * A service principal and the users and roles accountable for it.
+ * A service principal as the service principal routes return it.
+ *
+ * `subject` (the credential's identifier) is shown to Access admins only and is
+ * null for everyone else.
  */
 export type ServicePrincipalDetail = {
   id: string;
   display_name: string;
   provider: ServicePrincipalProvider;
-  subject: string;
   created_at: string | null;
   updated_at: string | null;
   deleted_at?: string | null;
   owners?: ServicePrincipalOwnerDetail[];
+  subject?: string | null;
 };
 
 /**
@@ -1640,6 +1650,21 @@ export type ServicePrincipalOwnerDetail = {
 };
 
 export type ServicePrincipalProvider = 'cloudflare';
+
+/**
+ * A service principal and the users and roles accountable for it, without its credential's subject.
+ *
+ * The shape embedded wherever a service principal appears, such as a request's requester.
+ */
+export type ServicePrincipalSummary = {
+  id: string;
+  display_name: string;
+  provider: ServicePrincipalProvider;
+  created_at: string | null;
+  updated_at: string | null;
+  deleted_at?: string | null;
+  owners?: ServicePrincipalOwnerDetail[];
+};
 
 export type TagDetail = {
   id: string;

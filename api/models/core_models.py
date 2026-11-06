@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 from sqlalchemy import (
     JSON,
@@ -948,7 +948,30 @@ class RoleRequest(Base):
     )
 
 
-class GroupRequest(Base):
+class RequestedByMixin:
+    """Who filed a request: exactly one of a user and a service principal.
+
+    For the request models, which each declare `requester_user_id` and
+    `requester_service_principal_id`.
+    """
+
+    if TYPE_CHECKING:
+        requester_user_id: str | None
+        requester_service_principal_id: str | None
+
+    @property
+    def requester_id(self) -> str:
+        """The id of the user or service principal that filed the request."""
+        requester_id = self.requester_user_id or self.requester_service_principal_id
+        assert requester_id is not None
+        return requester_id
+
+    def is_requested_by(self, caller_id: str | None) -> bool:
+        """Whether `caller_id` (a user or service principal id) filed the request."""
+        return caller_id is not None and caller_id == self.requester_id
+
+
+class GroupRequest(Base, RequestedByMixin):
     __table_args__ = (
         CheckConstraint(
             "(requester_user_id IS NULL) != (requester_service_principal_id IS NULL)",
@@ -1033,6 +1056,8 @@ class GroupRequest(Base):
 
     # Since resolver can edit all fields before group is created, have 'resolved' version
     resolver_user_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
+    # Set instead of `resolver_user_id` when a service principal withdraws its own request.
+    resolver_service_principal_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("service_principal.id"))
     # https://developer.okta.com/docs/reference/api/groups/#default-profile-properties
     resolved_group_name: Mapped[str] = mapped_column(Unicode(255), nullable=False, default="")
     resolved_group_description: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
@@ -1129,6 +1154,13 @@ class GroupRequest(Base):
         lazy="raise_on_sql",
     )
 
+    resolver_service_principal: Mapped[Optional["ServicePrincipal"]] = relationship(
+        "ServicePrincipal",
+        primaryjoin="ServicePrincipal.id == GroupRequest.resolver_service_principal_id",
+        viewonly=True,
+        lazy="raise_on_sql",
+    )
+
     approved_group: Mapped[OktaGroup] = relationship(
         "OktaGroup",
         back_populates="group_request",
@@ -1142,7 +1174,7 @@ class GroupRequest(Base):
     )
 
 
-class AppRequest(Base):
+class AppRequest(Base, RequestedByMixin):
     """A request to create an app, with its owners and initial app groups.
 
     Approved by Access admins (or a conditional-access plugin). The requester is
@@ -1208,7 +1240,10 @@ class AppRequest(Base):
     request_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 
     resolver_user_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
-    # The end dates the approval granted; an approver may shorten the requested ones.
+    # Set instead of `resolver_user_id` when a service principal withdraws its own request.
+    resolver_service_principal_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("service_principal.id"))
+    # The end dates the approval granted, after the approver's choice, any plugin
+    # cap, and the app's tag limits.
     resolved_ownership_ending_at: Mapped[datetime | None] = mapped_column(NaiveUTCDateTime())
     resolved_membership_ending_at: Mapped[datetime | None] = mapped_column(NaiveUTCDateTime())
     resolution_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
@@ -1230,6 +1265,12 @@ class AppRequest(Base):
     resolver: Mapped[OktaUser | None] = relationship(
         "OktaUser",
         primaryjoin="OktaUser.id == AppRequest.resolver_user_id",
+        viewonly=True,
+        lazy="raise_on_sql",
+    )
+    resolver_service_principal: Mapped[Optional["ServicePrincipal"]] = relationship(
+        "ServicePrincipal",
+        primaryjoin="ServicePrincipal.id == AppRequest.resolver_service_principal_id",
         viewonly=True,
         lazy="raise_on_sql",
     )
@@ -1656,3 +1697,25 @@ class ServicePrincipalOwner(Base):
         viewonly=True,
         lazy="raise_on_sql",
     )
+
+
+class ServicePrincipalSubject(Base):
+    """Every subject a service principal has been registered with.
+
+    A credential whose subject was ever registered is refused once no active
+    service principal holds it (after a deletion or a rotation), rather than
+    falling back to unregistered pass-through.
+    """
+
+    # See https://stackoverflow.com/a/60840921
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        autoincrement=True,
+        primary_key=True,
+    )
+    service_principal_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("service_principal.id"), nullable=False)
+    provider: Mapped[ServicePrincipalProvider] = mapped_column(Enum(ServicePrincipalProvider), nullable=False)
+    subject: Mapped[str] = mapped_column(Unicode(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+
+    __table_args__ = (Index("idx_service_principal_subject_provider_subject", "provider", "subject"),)

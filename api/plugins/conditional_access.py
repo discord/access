@@ -50,14 +50,19 @@ class ConditionalAccessResponse:
         reason: Recorded as the resolution reason.
         ending_at: Caps the access the approval grants. For a group request,
             it caps the owner grants.
-        membership_ending_at: For a group request, caps the member grants.
+        membership_ending_at: For a group or app request, caps the member grants.
             Ignored for other request types.
+        allow_named_grants: For a group request, confirms the approval covers the
+            owners and members the request names. An approval of a request that
+            names anything beyond its requester as sole owner is ignored (the
+            request stays pending) unless this is set. Ignored for other request types.
     """
 
     approved: bool
     reason: str = ""
     ending_at: datetime | None = None
     membership_ending_at: datetime | None = None
+    allow_named_grants: bool = False
 
 
 class ConditionalAccessPluginSpec:
@@ -89,8 +94,12 @@ class ConditionalAccessPluginSpec:
 
         An approval creates the requested group with the owners and members the
         request names (users and roles; a user's request that names no owners
-        names its requester). A service principal is never made an owner. The
-        approval is recorded with no resolver. When the group can't be
+        names its requester). A service principal is never made an owner. An
+        approval of a request that names anything beyond its requester as the
+        sole owner (which every service principal's request does) takes effect
+        only when the response sets ``allow_named_grants``; otherwise it is
+        ignored and the request stays pending. The approval is recorded with no
+        resolver. When the group can't be
         created as requested (for example, its name is already taken), the
         request stays pending and goes to its reviewers. The response's
         ``ending_at`` caps the owner grants and ``membership_ending_at`` caps the

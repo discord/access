@@ -19,7 +19,6 @@ import Typography from '@mui/material/Typography';
 
 import {FormContainer, AutocompleteElement, SelectElement, TextFieldElement} from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
-import {useFormContext, useWatch} from 'react-hook-form';
 
 import {
   useGroupRequestsCreate,
@@ -30,10 +29,11 @@ import {
   GroupRequestsCreateError,
   GroupRequestsCreateVariables,
 } from '../../api/apiComponents';
+import {AccessLengthField, endingAt} from '../../components/AccessLength';
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
-import TagsField, {inheritedAppTags} from './TagsField';
-import {PrincipalsField, ROLES_IN_ROLE_ERROR, RoleOption} from './Principals';
+import TagsField, {inheritedAppTags} from '../../components/TagsField';
+import {PrincipalsField, ROLES_IN_ROLE_ERROR, RoleOption} from '../../components/Principals';
 import {
   AppDetail,
   AppGroupDetail,
@@ -59,99 +59,9 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
 
 const GROUP_TYPE_OPTIONS = Object.entries(GROUP_TYPE_ID_TO_LABELS).map(([id, label]) => ({id, label}));
 
-// Offers only the durations the tags in force allow, and moves the field off
-// one they do not. A request the constraints forbid is not refused on submit --
-// `ApproveGroupRequest` shortens it on approval instead -- so a duration left
-// on offer here is one the requester is told they asked for and does not get.
-function AccessLengthField({
-  name,
-  label,
-  timeLimit,
-  blocked,
-  onChange,
-}: {
-  name: 'ownershipUntil' | 'membershipUntil';
-  label: string;
-  timeLimit: number | null;
-  blocked: boolean;
-  onChange: (value: string) => void;
-}) {
-  const {control, setValue} = useFormContext();
-  const selected = useWatch({control, name});
-
-  const [options, defaultId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
-    // While the answer is unknown the limit reads as null. Holding the narrower
-    // list rather than re-offering the full one keeps a duration the tags forbid
-    // from being briefly clickable.
-    if (timeLimit == null) {
-      return blocked ? [[], accessConfig.DEFAULT_ACCESS_TIME] : [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
-    }
-    const [lastId, filtered] = filterUntilLabels(timeLimit);
-    return [filtered, lastId];
-  }, [timeLimit, blocked]);
-
-  React.useEffect(() => {
-    if (timeLimit == null) return;
-    if (!options.some((option) => option.id === selected)) {
-      setValue(name, defaultId);
-      onChange(defaultId);
-    }
-  }, [name, timeLimit, options, defaultId, selected, setValue, onChange]);
-
-  return (
-    <SelectElement
-      fullWidth
-      label={label}
-      name={name}
-      options={options}
-      onChange={(value) => onChange(value)}
-      required
-    />
-  );
-}
-
 const APP_GROUP_PREFIX = 'App-';
 const APP_NAME_APP_GROUP_SEPARATOR = '-';
 const ROLE_GROUP_PREFIX = 'Role-';
-
-const UNTIL_ID_TO_LABELS: Record<string, string> = {
-  '43200': '12 Hours',
-  '432000': '5 Days',
-  '1209600': 'Two Weeks',
-  '2592000': '30 Days',
-  '7776000': '90 Days',
-  indefinite: 'Indefinite',
-  custom: 'Custom',
-} as const;
-
-const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id, label}));
-
-const UNTIL_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
-  Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
-);
-
-// The durations still on offer under `timeLimit`, and the longest of them.
-// Indefinite is not among them, and neither is any duration over the limit;
-// Custom stays, since its own picker is bounded separately.
-function filterUntilLabels(timeLimit: number): [string, Array<{id: string; label: string}>] {
-  const withinLimit = Object.entries(UNTIL_NUMERIC_ID_TO_LABELS).filter(([key]) => Number(key) <= timeLimit);
-  const labels = [...withinLimit, ['custom', 'Custom']].map(([id, label]) => ({id, label}));
-  return [withinLimit.at(-1)?.[0] ?? 'custom', labels];
-}
-
-// The end date a length field's selection asks for, or undefined for Indefinite.
-function endingAt(until: string | undefined, custom: string | undefined): string | undefined {
-  switch (until) {
-    case 'indefinite':
-      return undefined;
-    case 'custom':
-      return (custom as unknown as Dayjs).toISOString();
-    default:
-      return dayjs()
-        .add(parseInt(until ?? '0', 10), 'seconds')
-        .toISOString();
-  }
-}
 
 /**
  * The full name a request would ask for: the typed name with the prefix its type

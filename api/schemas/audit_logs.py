@@ -507,8 +507,11 @@ class AuditLogPayload(BaseModel):
     tags_removed: list[_AuditTagRef] | None = Field(default=None)
 
     # Service-principal fields
+    # The service principal a SERVICE_PRINCIPAL_* event changed.
     service_principal: _AuditServicePrincipalRef | None = None
     old_service_principal: _AuditServicePrincipalRef | None = None
+    # The service principal that filed the request a request event is about.
+    requester_service_principal: _AuditServicePrincipalRef | None = None
 
     # ---- coercion validators ----
     _coerce_group = field_validator("group", "active_group", mode="before")(

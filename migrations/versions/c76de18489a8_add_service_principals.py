@@ -8,6 +8,7 @@ Create Date: 2026-11-06 08:44:04.212012
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = "c76de18489a8"
@@ -64,8 +65,34 @@ def upgrade():
         sa.PrimaryKeyConstraint("id", name=op.f("pk_service_principal_owner")),
     )
 
+    subject_provider_enum: sa.Enum = (
+        # The type was created with the service_principal table above.
+        postgresql.ENUM("CLOUDFLARE", name="serviceprincipalprovider", create_type=False)
+        if op.get_bind().dialect.name == "postgresql"
+        else _PROVIDER_ENUM
+    )
+    op.create_table(
+        "service_principal_subject",
+        sa.Column("id", sa.BigInteger().with_variant(sa.Integer(), "sqlite"), autoincrement=True, nullable=False),
+        sa.Column("service_principal_id", sa.Unicode(length=50), nullable=False),
+        sa.Column("provider", subject_provider_enum, nullable=False),
+        sa.Column("subject", sa.Unicode(length=255), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["service_principal_id"],
+            ["service_principal.id"],
+            name=op.f("fk_service_principal_subject_service_principal_id_service_principal"),
+        ),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_service_principal_subject")),
+    )
+    with op.batch_alter_table("service_principal_subject", schema=None) as batch_op:
+        batch_op.create_index("idx_service_principal_subject_provider_subject", ["provider", "subject"], unique=False)
+
 
 def downgrade():
+    with op.batch_alter_table("service_principal_subject", schema=None) as batch_op:
+        batch_op.drop_index("idx_service_principal_subject_provider_subject")
+    op.drop_table("service_principal_subject")
     op.drop_table("service_principal_owner")
     with op.batch_alter_table("service_principal", schema=None) as batch_op:
         batch_op.drop_index(
