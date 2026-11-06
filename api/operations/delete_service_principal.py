@@ -2,9 +2,10 @@ from sqlalchemy import func, select
 
 from api.exceptions import ResourceGoneError
 from api.extensions import db
-from api.models import AccessRequestStatus, AppRequest, GroupRequest, ServicePrincipal
+from api.models import AccessRequestStatus, AppRequest, DeletionRequest, GroupRequest, ServicePrincipal
 from api.operations._service_principals import audit_snapshot, emit_audit_log, load_active_service_principal
 from api.operations.reject_app_request import RejectAppRequest
+from api.operations.reject_deletion_request import RejectDeletionRequest
 from api.operations.reject_group_request import RejectGroupRequest
 from api.schemas import EventType
 
@@ -58,4 +59,15 @@ class DeleteServicePrincipal:
         ).all():
             await RejectAppRequest(
                 app_request=app_request, rejection_reason=reason, current_user_id=self.current_user_id
+            ).execute()
+        for deletion_request in (
+            await db.session.scalars(
+                select(DeletionRequest)
+                .where(DeletionRequest.requester_service_principal_id == self.service_principal_id)
+                .where(DeletionRequest.status == AccessRequestStatus.PENDING)
+                .where(DeletionRequest.resolved_at.is_(None))
+            )
+        ).all():
+            await RejectDeletionRequest(
+                deletion_request=deletion_request, rejection_reason=reason, current_user_id=self.current_user_id
             ).execute()

@@ -5,7 +5,6 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, with_polymorphic
 
-from api.auth.permissions import can_manage_group, is_access_admin, is_app_owner_group_owner
 from api.exceptions import InvalidRequestError, ResourceGoneError
 from api.extensions import db
 from api.models import App, AppGroup, DeletionRequest, OktaGroup, OktaUser, RoleGroup
@@ -48,14 +47,6 @@ async def load_deletable_target(
     if app.name == App.ACCESS_APP_RESERVED_NAME:
         raise InvalidRequestError("The Access Application cannot be deleted")
     return None, app
-
-
-async def can_approve(user_id: str, group: OktaGroup | None, app: App | None) -> bool:
-    """Whether `user_id` may approve deleting the target: anyone who could delete it directly."""
-    if group is not None:
-        return await can_manage_group(db.session, user_id, group)
-    assert app is not None
-    return await is_app_owner_group_owner(db.session, user_id, app=app) or await is_access_admin(db.session, user_id)
 
 
 async def approvers_for(group: OktaGroup | None, app: App | None) -> list[OktaUser]:

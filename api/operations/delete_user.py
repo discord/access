@@ -10,6 +10,7 @@ from api.models import (
     AccessRequest,
     AccessRequestStatus,
     AppRequest,
+    DeletionRequest,
     GroupRequest,
     OktaGroup,
     OktaUser,
@@ -19,6 +20,7 @@ from api.models import (
 from api.operations._fan_out import defer_or_drain_fan_out
 from api.operations.reject_access_request import RejectAccessRequest
 from api.operations.reject_app_request import RejectAppRequest
+from api.operations.reject_deletion_request import RejectDeletionRequest
 from api.operations.reject_group_request import RejectGroupRequest
 from api.operations.reject_role_request import RejectRoleRequest
 from api.services import okta
@@ -168,6 +170,21 @@ class DeleteUser:
         for obsolete_app_request in obsolete_app_requests:
             await RejectAppRequest(
                 app_request=obsolete_app_request,
+                rejection_reason="Closed because the requestor was deleted",
+                current_user_id=current_user_id,
+            ).execute()
+
+        obsolete_deletion_requests = (
+            await db.session.scalars(
+                select(DeletionRequest)
+                .where(DeletionRequest.requester_user_id == user.id)
+                .where(DeletionRequest.status == AccessRequestStatus.PENDING)
+                .where(DeletionRequest.resolved_at.is_(None))
+            )
+        ).all()
+        for obsolete_deletion_request in obsolete_deletion_requests:
+            await RejectDeletionRequest(
+                deletion_request=obsolete_deletion_request,
                 rejection_reason="Closed because the requestor was deleted",
                 current_user_id=current_user_id,
             ).execute()

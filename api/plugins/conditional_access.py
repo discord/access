@@ -139,8 +139,9 @@ class ConditionalAccessPluginSpec:
 
         ``requester`` is the user or service principal that filed the request; a
         service principal has no ``email``. ``group.created_by_service_principal_id``
-        names the service principal whose request created the group, if any, so a
-        rule can limit a service to deleting what it created. An approval deletes
+        names the service principal whose request created the group, if any
+        (including the groups created with an app it requested), so a rule can
+        limit a service to deleting what it created. An approval deletes
         the group as a direct delete would and is recorded with no resolver.
         """
 

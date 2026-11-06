@@ -3,12 +3,13 @@ import random
 import string
 
 from api.context import get_request_context
-from api.exceptions import ConflictError, InvalidRequestError
+from api.exceptions import InvalidRequestError
 from api.extensions import db
 from api.models import AccessRequestStatus, DeletionRequest, OktaUser, ServicePrincipal
+from api.operations._conditional_access import apply_conditional_access, current_status
 from api.operations._deletion_requests import approvers_for, load_deletable_target
 from api.operations._fan_out import defer_notification
-from api.operations._requesters import load_active_requester
+from api.operations._requesters import load_active_requester, split_requester
 from api.operations._service_principals import audit_ref
 from api.operations.approve_deletion_request import ApproveDeletionRequest
 from api.operations.reject_deletion_request import RejectDeletionRequest
@@ -55,8 +56,7 @@ class CreateDeletionRequest:
         """Create the request and return it."""
         requester = await load_active_requester(self.requester_id)
         assert requester is not None
-        requester_user = requester if isinstance(requester, OktaUser) else None
-        requester_service_principal = requester if isinstance(requester, ServicePrincipal) else None
+        requester_user, requester_service_principal = split_requester(requester)
         group, app = await load_deletable_target(group_id=self.group_id, app_id=self.app_id)
 
         deletion_request = DeletionRequest(
@@ -70,6 +70,7 @@ class CreateDeletionRequest:
         )
         db.session.add(deletion_request)
         await db.session.commit()
+        deletion_request_id = deletion_request.id
 
         _ctx = get_request_context()
         logging.getLogger("access.audit").info(
@@ -103,24 +104,17 @@ class CreateDeletionRequest:
                 app=app,
                 requester=requester,
             )
-        for response in responses:
-            if response is None:
-                continue
-            if response.approved:
-                try:
-                    await ApproveDeletionRequest(
-                        deletion_request=deletion_request, approval_reason=response.reason, notify=False
-                    ).execute()
-                except (ConflictError, InvalidRequestError) as e:
-                    logger.warning(
-                        "Conditional access approval of deletion request %s failed: %s", deletion_request.id, e
-                    )
-                if deletion_request.status == AccessRequestStatus.PENDING:
-                    break
-            else:
-                await RejectDeletionRequest(
-                    deletion_request=deletion_request, rejection_reason=response.reason, notify=False
-                ).execute()
+        if await apply_conditional_access(
+            responses,
+            request_label=f"deletion request {deletion_request_id}",
+            approve=lambda r: ApproveDeletionRequest(
+                deletion_request=deletion_request_id, approval_reason=r.reason, notify=False
+            ).execute(),
+            reject=lambda r: RejectDeletionRequest(
+                deletion_request=deletion_request_id, rejection_reason=r.reason, notify=False
+            ).execute(),
+            status=lambda: current_status(DeletionRequest, deletion_request_id),
+        ):
             return deletion_request
 
         approvers = await approvers_for(group, app)

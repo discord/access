@@ -244,3 +244,75 @@ async def test_admin_can_approve_any_deletion(db: Db, client: AsyncClient) -> No
     rep = await client.put(f"{DR_URL}/{dr.id}", json={"approved": True})
     assert rep.status_code == 200
     assert rep.json()["resolver"]["id"] == await _admin_id(db)
+
+
+async def test_deleting_a_target_closes_its_other_requests(db: Db, client: AsyncClient, mock_user: Any) -> None:
+    group_id, owner_id = await _owned_group(db)
+    first = await CreateDeletionRequest(requester=await OktaUserFactory.create_async(), group_id=group_id).execute()
+    second = await CreateDeletionRequest(requester=await OktaUserFactory.create_async(), group_id=group_id).execute()
+    first_id, second_id = first.id, second.id
+
+    mock_user(owner_id)
+    rep = await client.put(f"{DR_URL}/{first_id}", json={"approved": True})
+    assert rep.json()["status"] == AccessRequestStatus.APPROVED
+    rep = await client.get(f"{DR_URL}/{second_id}")
+    assert rep.json()["status"] == AccessRequestStatus.REJECTED
+    assert rep.json()["resolution_reason"] == "Closed because the group was deleted"
+
+
+async def test_deleting_an_app_directly_closes_requests_for_it_and_its_groups(
+    db: Db, client: AsyncClient, mock_user: Any
+) -> None:
+    app_id, app_name, app_owner_id = await _app_with_owner(db)
+    group = await AppGroupFactory.create_async(app_id=app_id, is_owner=False, name=f"App-{app_name}-Child")
+    requester = await OktaUserFactory.create_async()
+    for_app = await CreateDeletionRequest(requester=requester, app_id=app_id).execute()
+    for_group = await CreateDeletionRequest(requester=requester, group_id=group.id).execute()
+    ids = [for_app.id, for_group.id]
+
+    mock_user(app_owner_id)
+    assert (await client.delete(f"/api/apps/{app_id}")).status_code == 200
+    for dr_id in ids:
+        assert (await client.get(f"{DR_URL}/{dr_id}")).json()["status"] == AccessRequestStatus.REJECTED
+
+
+async def test_deleting_the_requester_closes_its_requests(db: Db, client: AsyncClient, mock_user: Any) -> None:
+    group_id, _ = await _owned_group(db)
+    user = await OktaUserFactory.create_async()
+    user_request = await CreateDeletionRequest(requester=user, group_id=group_id).execute()
+    owner = await OktaUserFactory.create_async()
+    sp = ServicePrincipalFactory.build()
+    sp.owners = [ServicePrincipalOwner(user_id=owner.id)]
+    db.session.add(sp)
+    await db.session.commit()
+    sp_id = sp.id
+    sp_request = await CreateDeletionRequest(requester=sp_id, group_id=group_id).execute()
+    user_id, ids = user.id, [user_request.id, sp_request.id]
+
+    from api.operations import DeleteServicePrincipal, DeleteUser
+
+    await DeleteUser(user=user_id, sync_to_okta=False).execute()
+    await DeleteServicePrincipal(service_principal=sp_id).execute()
+    for dr_id in ids:
+        assert (await client.get(f"{DR_URL}/{dr_id}")).json()["status"] == AccessRequestStatus.REJECTED
+
+
+async def test_service_principal_withdrawal_is_recorded(db: Db, client: AsyncClient, mock_user: Any) -> None:
+    group_id, _ = await _owned_group(db)
+    owner = await OktaUserFactory.create_async()
+    sp = ServicePrincipalFactory.build(display_name="Cleanup bot")
+    sp.owners = [ServicePrincipalOwner(user_id=owner.id)]
+    db.session.add(sp)
+    await db.session.commit()
+    sp_id = sp.id
+    mock_user(sp_id)
+
+    dr_id = (await client.post(DR_URL, json={"group_id": group_id})).json()["id"]
+    rep = await client.put(f"{DR_URL}/{dr_id}", json={"approved": False})
+    assert rep.json()["resolver"] is None
+    assert rep.json()["resolver_service_principal"]["id"] == sp_id
+
+    found = (await client.get(DR_URL, params={"requester_user_id": "Cleanup bot"})).json()["items"]
+    assert [i["id"] for i in found] == [dr_id]
+    found = (await client.get(DR_URL, params={"q": "cleanup"})).json()["items"]
+    assert [i["id"] for i in found] == [dr_id]

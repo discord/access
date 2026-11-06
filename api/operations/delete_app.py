@@ -6,12 +6,15 @@ from api.context import get_request_context
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaUser
 from api.operations.delete_group import DeleteGroup
+from api.operations.reject_deletion_request import reject_pending_deletion_requests
 from api.schemas import AuditLogSchema, EventType
 
 
 class DeleteApp:
-    def __init__(self, *, app: App | str, current_user_id: str | None = None):
+    def __init__(self, *, app: App | str, current_user_id: str | None = None, deletion_request_id: str | None = None):
         self.app_id = app if isinstance(app, str) else app.id
+        # The deletion request this delete carries out, which its approval resolves.
+        self.deletion_request_id = deletion_request_id
         self.current_user_id = current_user_id
 
     async def execute(self) -> None:
@@ -81,3 +84,6 @@ class DeleteApp:
             .execution_options(synchronize_session="fetch")
         )
         await db.session.commit()
+
+        # Any other request to delete this app can no longer be carried out.
+        await reject_pending_deletion_requests(app_id=self.app_id, except_id=self.deletion_request_id)

@@ -2,11 +2,12 @@ import logging
 
 from sqlalchemy import func
 
+from api.auth.permissions import can_approve_deletion
 from api.context import get_request_context
 from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequestStatus, DeletionRequest, OktaUser, ServicePrincipal
-from api.operations._deletion_requests import approvers_for, can_approve, load_deletable_target, lock_pending
+from api.operations._deletion_requests import approvers_for, load_deletable_target, lock_pending
 from api.operations._fan_out import defer_notification
 from api.operations._requesters import load_active_requester
 from api.operations._service_principals import audit_ref
@@ -68,7 +69,7 @@ class ApproveDeletionRequest:
             approver = await db.session.get(OktaUser, self.approver_user_id)
             if approver is None or approver.deleted_at is not None or approver.id == deletion_request.requester_user_id:
                 return deletion_request
-            if not await can_approve(approver.id, group, app):
+            if not await can_approve_deletion(db.session, approver.id, group=group, app=app):
                 return deletion_request
         approver_id = approver.id if approver else None
 
@@ -85,7 +86,7 @@ class ApproveDeletionRequest:
                     "group": group,
                     "app": app,
                     "requester": requester_user,
-                    "service_principal": audit_ref(requester_service_principal),
+                    "requester_service_principal": audit_ref(requester_service_principal),
                 }
             )
         )
@@ -94,10 +95,12 @@ class ApproveDeletionRequest:
         approvers = await approvers_for(group, app) if self.notify and requester_user is not None else []
 
         if group is not None:
-            await DeleteGroup(group=group, current_user_id=approver_id).execute()
+            await DeleteGroup(
+                group=group, current_user_id=approver_id, deletion_request_id=deletion_request.id
+            ).execute()
         else:
             assert app is not None
-            await DeleteApp(app=app, current_user_id=approver_id).execute()
+            await DeleteApp(app=app, current_user_id=approver_id, deletion_request_id=deletion_request.id).execute()
 
         deletion_request = await db.session.get(DeletionRequest, self.deletion_request_id)
         assert deletion_request is not None

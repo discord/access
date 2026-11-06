@@ -1276,7 +1276,7 @@ class AppRequest(Base, RequestedByMixin):
     )
 
 
-class DeletionRequest(Base):
+class DeletionRequest(Base, RequestedByMixin):
     """A request to delete a group or an app.
 
     Approved by anyone who could delete the target directly. The requester is a
@@ -1312,6 +1312,8 @@ class DeletionRequest(Base):
     request_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 
     resolver_user_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
+    # Set instead of `resolver_user_id` when a service principal withdraws its own request.
+    resolver_service_principal_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("service_principal.id"))
     resolution_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 
     requester: Mapped[OktaUser | None] = relationship(
@@ -1329,6 +1331,12 @@ class DeletionRequest(Base):
     resolver: Mapped[OktaUser | None] = relationship(
         "OktaUser",
         primaryjoin="OktaUser.id == DeletionRequest.resolver_user_id",
+        viewonly=True,
+        lazy="raise_on_sql",
+    )
+    resolver_service_principal: Mapped[Optional["ServicePrincipal"]] = relationship(
+        "ServicePrincipal",
+        primaryjoin="ServicePrincipal.id == DeletionRequest.resolver_service_principal_id",
         viewonly=True,
         lazy="raise_on_sql",
     )
