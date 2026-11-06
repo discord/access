@@ -289,6 +289,8 @@ class ApproveGroupRequest:
             self.member_role_ids if self.member_role_ids is not None else group_request.requested_member_role_ids,
             "member",
         )
+        if not owner_user_ids and not owner_role_ids:
+            raise InvalidRequestError("A group request must name at least one owner")
         if resolved_type == "role_group" and (owner_role_ids or member_role_ids):
             raise InvalidRequestError("Roles cannot be added to other Roles")
         # A request without members grants no membership, so it has no membership window.
