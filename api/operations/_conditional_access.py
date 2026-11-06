@@ -8,7 +8,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from api.exceptions import ConflictError, InvalidRequestError
+from api.exceptions import ConflictError, InvalidRequestError, ResourceGoneError
 from api.extensions import db
 from api.models import AccessRequestStatus
 from api.plugins import ConditionalAccessResponse
@@ -27,8 +27,9 @@ async def apply_conditional_access(
     """Act on the first plugin decision; return whether the request was resolved.
 
     An approval that can't be carried out (the request stays pending, for
-    example because a name was taken since it was filed) is logged and leaves
-    the request for its reviewers, as does having no decision at all.
+    example because a name was taken or the target deleted since it was filed)
+    is logged and leaves the request for its reviewers, as does having no
+    decision at all.
 
     Args:
         responses: The plugins' responses, in order; None means no decision.
@@ -46,7 +47,7 @@ async def apply_conditional_access(
             return True
         try:
             await approve(response)
-        except (ConflictError, InvalidRequestError) as e:
+        except (ConflictError, InvalidRequestError, ResourceGoneError) as e:
             logger.warning("Conditional access approval of %s failed: %s", request_label, e)
         return await status() != AccessRequestStatus.PENDING
     return False

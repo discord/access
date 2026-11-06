@@ -13,6 +13,7 @@ from api.models import (
     AccessRequestStatus,
     App,
     AppGroup,
+    DeletionRequest,
     OktaGroup,
     OktaUser,
     ServicePrincipal,
@@ -168,6 +169,43 @@ async def test_approval_after_target_deleted(db: Db, client: AsyncClient, mock_u
     rep = await client.put(f"{DR_URL}/{dr_id}", json={"approved": False})
     assert rep.status_code == 200
     assert rep.json()["status"] == AccessRequestStatus.REJECTED
+
+
+async def test_plugin_approval_after_target_deleted_leaves_it_pending(
+    db: Db, mocker: MockerFixture, notifications: dict[str, Any]
+) -> None:
+    group_id, _ = await _owned_group(db)
+
+    # The target goes away while the plugin decides.
+    async def rule(hook: Any, **kwargs: Any) -> list[ConditionalAccessResponse | None]:
+        group = await db.session.get(OktaGroup, group_id)
+        assert group is not None
+        group.deleted_at = group.created_at
+        await db.session.commit()
+        return [ConditionalAccessResponse(approved=True, reason="rule")]
+
+    mocker.patch("api.operations.create_deletion_request.evaluate_conditional_access", side_effect=rule)
+
+    dr = await CreateDeletionRequest(requester=await OktaUserFactory.create_async(), group_id=group_id).execute()
+    dr_id = dr.id
+    db.session.expire_all()
+    stored = await db.session.get(DeletionRequest, dr_id)
+    assert stored is not None
+    assert stored.status == AccessRequestStatus.PENDING
+
+
+async def test_approving_for_a_departed_requester_fails(db: Db, client: AsyncClient, mock_user: Any) -> None:
+    group_id, owner_id = await _owned_group(db)
+    requester = await OktaUserFactory.create_async()
+    dr = await CreateDeletionRequest(requester=requester, group_id=group_id).execute()
+    dr_id = dr.id
+    requester.deleted_at = requester.created_at
+    await db.session.commit()
+
+    mock_user(owner_id)
+    assert (await client.put(f"{DR_URL}/{dr_id}", json={"approved": True})).status_code == 409
+    assert (await client.get(f"{DR_URL}/{dr_id}")).json()["status"] == AccessRequestStatus.PENDING
+    assert not await _deleted(db, OktaGroup, group_id)
 
 
 async def test_requester_withdraws_and_retry_replaces(db: Db, client: AsyncClient, mock_user: Any) -> None:
