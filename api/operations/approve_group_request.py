@@ -58,6 +58,12 @@ class ApproveGroupRequest:
         owner_role_ids: Replaces the requested owner roles, or None to keep them.
         member_user_ids: Replaces the requested member users, or None to keep them.
         member_role_ids: Replaces the requested member roles, or None to keep them.
+
+    Raises:
+        ConflictError: The request is no longer pending, its requester is no longer active,
+            or its group name is taken.
+        InvalidRequestError: The request can't be carried out as resolved, for example because
+            an end date has passed or no owner is named.
     """
 
     def __init__(
@@ -130,7 +136,7 @@ class ApproveGroupRequest:
         # Don't allow approving a request whose requester is deleted.
         requester = await load_active_requester(group_request.requester_id)
         if requester is None:
-            return group_request
+            raise ConflictError("The requester is no longer active")
         requester_user, requester_service_principal = split_requester(requester)
 
         # Resolve group fields: use resolved_* if set, otherwise fall back to requested_*
