@@ -1,4 +1,4 @@
-import {OktaUserDetail, AppGroupDetail, GroupDetail} from './api/apiSchemas';
+import {OktaUserDetail, AppGroupDetail, AppRequestDetail, GroupDetail} from './api/apiSchemas';
 import {appName} from './config/accessConfig';
 
 export function isGroupOwner(currentUser: OktaUserDetail, groupId: string): boolean {
@@ -39,4 +39,9 @@ export function canManageGroup(currentUser: OktaUserDetail, group: GroupDetail |
     isGroupOwner(currentUser, group?.id ?? '') ||
     (group?.type == 'app_group' && isAppOwnerGroupOwner(currentUser, (group as AppGroupDetail).app?.id ?? ''))
   );
+}
+
+/** Whether the user may approve an app request: Access admins may, except their own. */
+export function canApproveAppRequest(currentUser: OktaUserDetail, appRequest: AppRequestDetail): boolean {
+  return isAccessAdmin(currentUser) && appRequest.requester?.id != currentUser.id;
 }

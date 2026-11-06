@@ -697,6 +697,9 @@ class App(Base):
     # Optional plugin ID for managing app group lifecycle
     app_group_lifecycle_plugin: Mapped[str | None] = mapped_column(Unicode(255))
 
+    # The service principal whose approved request created this app, if any.
+    created_by_service_principal_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("service_principal.id"))
+
     # A JSON field for App plugin integrations in the form of {"unique_plugin_name": plugin_data }
     # https://github.com/edelooff/sqlalchemy-json
     # https://amercader.net/blog/beware-of-json-fields-in-sqlalchemy/
@@ -1168,6 +1171,108 @@ class GroupRequest(Base, RequestedByMixin):
     requested_app: Mapped[Optional["App"]] = relationship(
         "App",
         foreign_keys=[requested_app_id],
+    )
+
+
+class AppRequest(Base, RequestedByMixin):
+    """A request to create an app, with its owners and initial app groups.
+
+    Approved by Access admins (or a conditional-access plugin). The requester is
+    a user or a service principal; exactly one of the requester columns is set.
+    """
+
+    __table_args__ = (
+        CheckConstraint(
+            "(requester_user_id IS NULL) != (requester_service_principal_id IS NULL)",
+            name="exactly_one_requester",
+        ),
+    )
+
+    # A 20 character random string like Okta IDs
+    id: Mapped[str] = mapped_column(Unicode(20), primary_key=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        NaiveUTCDateTime(), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(NaiveUTCDateTime())
+    status: Mapped[AccessRequestStatus] = mapped_column(
+        Enum(AccessRequestStatus),
+        nullable=False,
+        default=AccessRequestStatus.PENDING,
+    )
+
+    requester_user_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
+    requester_service_principal_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("service_principal.id"))
+
+    requested_app_name: Mapped[str] = mapped_column(Unicode(255), nullable=False)
+    requested_app_description: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
+    # Tag ids
+    requested_app_tags: Mapped[list[str]] = mapped_column(
+        mutable_json_type(dbtype=JSON().with_variant(JSONB, "postgresql"), nested=True),
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    # Owners of the app: owners and members of its owners group.
+    requested_owner_user_ids: Mapped[list[str]] = mapped_column(
+        mutable_json_type(dbtype=JSON().with_variant(JSONB, "postgresql"), nested=True),
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    requested_owner_role_ids: Mapped[list[str]] = mapped_column(
+        mutable_json_type(dbtype=JSON().with_variant(JSONB, "postgresql"), nested=True),
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    # Initial app groups, each {"name", "description", "owner_user_ids",
+    # "owner_role_ids", "member_user_ids", "member_role_ids"}.
+    requested_app_groups: Mapped[list[dict[str, Any]]] = mapped_column(
+        mutable_json_type(dbtype=JSON().with_variant(JSONB, "postgresql"), nested=True),
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    # End dates for the owner grants (including the app's owners) and the member grants.
+    requested_ownership_ending_at: Mapped[datetime | None] = mapped_column(NaiveUTCDateTime())
+    requested_membership_ending_at: Mapped[datetime | None] = mapped_column(NaiveUTCDateTime())
+    request_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
+
+    resolver_user_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
+    # Set instead of `resolver_user_id` when a service principal withdraws its own request.
+    resolver_service_principal_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("service_principal.id"))
+    # The end dates the approval granted, after the approver's choice, any plugin
+    # cap, and the app's tag limits.
+    resolved_ownership_ending_at: Mapped[datetime | None] = mapped_column(NaiveUTCDateTime())
+    resolved_membership_ending_at: Mapped[datetime | None] = mapped_column(NaiveUTCDateTime())
+    resolution_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
+
+    approved_app_id: Mapped[str | None] = mapped_column(Unicode(20), ForeignKey("app.id"))
+
+    requester: Mapped[OktaUser | None] = relationship(
+        "OktaUser",
+        primaryjoin="OktaUser.id == AppRequest.requester_user_id",
+        viewonly=True,
+        lazy="raise_on_sql",
+    )
+    requester_service_principal: Mapped[Optional["ServicePrincipal"]] = relationship(
+        "ServicePrincipal",
+        primaryjoin="ServicePrincipal.id == AppRequest.requester_service_principal_id",
+        viewonly=True,
+        lazy="raise_on_sql",
+    )
+    resolver: Mapped[OktaUser | None] = relationship(
+        "OktaUser",
+        primaryjoin="OktaUser.id == AppRequest.resolver_user_id",
+        viewonly=True,
+        lazy="raise_on_sql",
+    )
+    resolver_service_principal: Mapped[Optional["ServicePrincipal"]] = relationship(
+        "ServicePrincipal",
+        primaryjoin="ServicePrincipal.id == AppRequest.resolver_service_principal_id",
+        viewonly=True,
+        lazy="raise_on_sql",
     )
 
 

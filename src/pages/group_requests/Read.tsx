@@ -99,7 +99,7 @@ const APP_NAME_APP_GROUP_SEPARATOR = '-';
 const ROLE_GROUP_PREFIX = 'Role-';
 
 // The `until` option an end date asks for, measured from when it was asked.
-function untilIdFor(endingAt: string | null | undefined, askedAt: string | null | undefined): string {
+export function untilIdFor(endingAt: string | null | undefined, askedAt: string | null | undefined): string {
   if (!endingAt) {
     return 'indefinite';
   }
@@ -115,7 +115,7 @@ interface AccessEndingFieldProps {
   setUntil: (v: string | null) => void;
 }
 
-function AccessEndingField({name, label, timeLimit, constraintsBlocked, setUntil}: AccessEndingFieldProps) {
+export function AccessEndingField({name, label, timeLimit, constraintsBlocked, setUntil}: AccessEndingFieldProps) {
   const {control, setValue} = useFormContext();
 
   const [availableUntilOptions, defaultUntilId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
@@ -178,7 +178,7 @@ function AccessEndingField({name, label, timeLimit, constraintsBlocked, setUntil
 // Not by filtering a page of the tag list: a request can name a tag that no
 // single page of that list contains, and a partial match would drop it from
 // the approval -- and from the constraints answered for -- without saying so.
-function useTagsByIds(ids: string[]): {tags: TagListItem[]; settled: boolean} {
+export function useTagsByIds(ids: string[]): {tags: TagListItem[]; settled: boolean} {
   const results = useQueries({queries: ids.map((id) => tagByIdQuery({pathParams: {tagId: id}}))});
   const signature = results.map((result) => `${result.status}:${result.dataUpdatedAt}`).join('|');
   return React.useMemo(

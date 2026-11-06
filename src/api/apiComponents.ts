@@ -337,6 +337,247 @@ export const useAccessRequestByIdPut = (
   );
 };
 
+export type AppRequestsQueryParams = {
+  q?: string | null;
+  status?: string | null;
+  requester_user_id?: string | null;
+  assignee_user_id?: string | null;
+  resolver_user_id?: string | null;
+  /**
+   * Page number
+   *
+   * @minimum 1
+   * @default 1
+   */
+  page?: number;
+  /**
+   * Items per page
+   *
+   * @maximum 1000
+   * @minimum 1
+   * @default 50
+   */
+  size?: number;
+};
+
+export type AppRequestsError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type AppRequestsVariables = {
+  queryParams?: AppRequestsQueryParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchAppRequests = (variables: AppRequestsVariables, signal?: AbortSignal) =>
+  apiFetch<Schemas.PageTypeVarCustomizedAppRequestDetail, AppRequestsError, undefined, {}, AppRequestsQueryParams, {}>({
+    url: '/api/app-requests',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+export function appRequestsQuery(variables: AppRequestsVariables): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAppRequestDetail>;
+};
+
+export function appRequestsQuery(variables: AppRequestsVariables | reactQuery.SkipToken): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAppRequestDetail>) | reactQuery.SkipToken;
+};
+
+export function appRequestsQuery(variables: AppRequestsVariables | reactQuery.SkipToken) {
+  return {
+    queryKey: queryKeyFn({
+      path: '/api/app-requests',
+      operationId: 'appRequests',
+      variables,
+    }),
+    queryFn:
+      variables === reactQuery.skipToken
+        ? reactQuery.skipToken
+        : ({signal}: QueryFnOptions) => fetchAppRequests(variables, signal),
+  };
+}
+
+export const useSuspenseAppRequests = <TData = Schemas.PageTypeVarCustomizedAppRequestDetail>(
+  variables: AppRequestsVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedAppRequestDetail, AppRequestsError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useSuspenseQuery<Schemas.PageTypeVarCustomizedAppRequestDetail, AppRequestsError, TData>({
+    ...appRequestsQuery(deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export const useAppRequests = <TData = Schemas.PageTypeVarCustomizedAppRequestDetail>(
+  variables: AppRequestsVariables | reactQuery.SkipToken,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedAppRequestDetail, AppRequestsError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.PageTypeVarCustomizedAppRequestDetail, AppRequestsError, TData>({
+    ...appRequestsQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export type AppRequestsCreateError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 201>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type AppRequestsCreateVariables = {
+  body: Schemas.CreateAppRequestBody;
+} & ApiContext['fetcherOptions'];
+
+export const fetchAppRequestsCreate = (variables: AppRequestsCreateVariables, signal?: AbortSignal) =>
+  apiFetch<Schemas.AppRequestDetail, AppRequestsCreateError, Schemas.CreateAppRequestBody, {}, {}, {}>({
+    url: '/api/app-requests',
+    method: 'post',
+    ...variables,
+    signal,
+  });
+
+export const useAppRequestsCreate = (
+  options?: Omit<
+    reactQuery.UseMutationOptions<Schemas.AppRequestDetail, AppRequestsCreateError, AppRequestsCreateVariables>,
+    'mutationFn'
+  >,
+) => {
+  const {fetcherOptions} = useApiContext();
+  return reactQuery.useMutation<Schemas.AppRequestDetail, AppRequestsCreateError, AppRequestsCreateVariables>({
+    mutationFn: (variables: AppRequestsCreateVariables) => fetchAppRequestsCreate(deepMerge(fetcherOptions, variables)),
+    ...options,
+  });
+};
+
+export type AppRequestByIdPathParams = {
+  appRequestId: string;
+};
+
+export type AppRequestByIdError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type AppRequestByIdVariables = {
+  pathParams: AppRequestByIdPathParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchAppRequestById = (variables: AppRequestByIdVariables, signal?: AbortSignal) =>
+  apiFetch<Schemas.AppRequestDetail, AppRequestByIdError, undefined, {}, {}, AppRequestByIdPathParams>({
+    url: '/api/app-requests/{appRequestId}',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+export function appRequestByIdQuery(variables: AppRequestByIdVariables): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.AppRequestDetail>;
+};
+
+export function appRequestByIdQuery(variables: AppRequestByIdVariables | reactQuery.SkipToken): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.AppRequestDetail>) | reactQuery.SkipToken;
+};
+
+export function appRequestByIdQuery(variables: AppRequestByIdVariables | reactQuery.SkipToken) {
+  return {
+    queryKey: queryKeyFn({
+      path: '/api/app-requests/{appRequestId}',
+      operationId: 'appRequestById',
+      variables,
+    }),
+    queryFn:
+      variables === reactQuery.skipToken
+        ? reactQuery.skipToken
+        : ({signal}: QueryFnOptions) => fetchAppRequestById(variables, signal),
+  };
+}
+
+export const useSuspenseAppRequestById = <TData = Schemas.AppRequestDetail>(
+  variables: AppRequestByIdVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.AppRequestDetail, AppRequestByIdError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useSuspenseQuery<Schemas.AppRequestDetail, AppRequestByIdError, TData>({
+    ...appRequestByIdQuery(deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export const useAppRequestById = <TData = Schemas.AppRequestDetail>(
+  variables: AppRequestByIdVariables | reactQuery.SkipToken,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.AppRequestDetail, AppRequestByIdError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.AppRequestDetail, AppRequestByIdError, TData>({
+    ...appRequestByIdQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export type AppRequestByIdPutPathParams = {
+  appRequestId: string;
+};
+
+export type AppRequestByIdPutError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type AppRequestByIdPutVariables = {
+  body: Schemas.ResolveAppRequestBody;
+  pathParams: AppRequestByIdPutPathParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchAppRequestByIdPut = (variables: AppRequestByIdPutVariables, signal?: AbortSignal) =>
+  apiFetch<
+    Schemas.AppRequestDetail,
+    AppRequestByIdPutError,
+    Schemas.ResolveAppRequestBody,
+    {},
+    {},
+    AppRequestByIdPutPathParams
+  >({
+    url: '/api/app-requests/{appRequestId}',
+    method: 'put',
+    ...variables,
+    signal,
+  });
+
+export const useAppRequestByIdPut = (
+  options?: Omit<
+    reactQuery.UseMutationOptions<Schemas.AppRequestDetail, AppRequestByIdPutError, AppRequestByIdPutVariables>,
+    'mutationFn'
+  >,
+) => {
+  const {fetcherOptions} = useApiContext();
+  return reactQuery.useMutation<Schemas.AppRequestDetail, AppRequestByIdPutError, AppRequestByIdPutVariables>({
+    mutationFn: (variables: AppRequestByIdPutVariables) => fetchAppRequestByIdPut(deepMerge(fetcherOptions, variables)),
+    ...options,
+  });
+};
+
 export type AppsQueryParams = {
   q?: string | null;
   /**
@@ -4008,6 +4249,16 @@ export type QueryOperation =
       path: '/api/requests/{accessRequestId}';
       operationId: 'accessRequestById';
       variables: AccessRequestByIdVariables | reactQuery.SkipToken;
+    }
+  | {
+      path: '/api/app-requests';
+      operationId: 'appRequests';
+      variables: AppRequestsVariables | reactQuery.SkipToken;
+    }
+  | {
+      path: '/api/app-requests/{appRequestId}';
+      operationId: 'appRequestById';
+      variables: AppRequestByIdVariables | reactQuery.SkipToken;
     }
   | {
       path: '/api/apps';

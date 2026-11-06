@@ -40,6 +40,7 @@ import ExpiringGroups from './pages/groups/Expiring';
 import ExpiringRoles from './pages/roles/Expiring';
 import Home from './pages/Home';
 import ListApps from './pages/apps/List';
+import ListAppRequests from './pages/app_requests/List';
 import ListGroups from './pages/groups/List';
 import ListGroupRequests from './pages/group_requests/List';
 import ListRequests from './pages/requests/List';
@@ -53,6 +54,7 @@ import QuickSwitcher from './components/QuickSwitcher';
 import {TABLE_SEARCH_WIDTH, TABLE_TOP_BAR_PADDING_X} from './components/TableTopBar';
 import NotFound from './pages/NotFound';
 import ReadApp from './pages/apps/Read';
+import ReadAppRequest from './pages/app_requests/Read';
 import ReadGroup from './pages/groups/Read';
 import ReadGroupRequest from './pages/group_requests/Read';
 import ReadServicePrincipal from './pages/service_principals/Read';
@@ -357,6 +359,8 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
             <Route path="/role-requests/:id" element={<ReadRoleRequest />} />
             <Route path="/group-requests" element={<ListGroupRequests />} />
             <Route path="/group-requests/:id" element={<ReadGroupRequest />} />
+            <Route path="/app-requests" element={<ListAppRequests />} />
+            <Route path="/app-requests/:id" element={<ReadAppRequest />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Container>

@@ -22,6 +22,7 @@ import Typography from '@mui/material/Typography';
 import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
 import CreateUpdateApp from './CreateUpdate';
+import CreateAppRequest from '../app_requests/Create';
 import {emptyTableRows, perPage} from '../../helpers';
 import {useApps} from '../../api/apiComponents';
 import {AppSummary} from '../../api/apiSchemas';
@@ -118,6 +119,7 @@ export default function ListApps() {
             Tags
           </Button>
           <CreateUpdateApp currentUser={currentUser}></CreateUpdateApp>
+          <CreateAppRequest currentUser={currentUser} />
           <TableTopBarAutocomplete
             options={searchRows.map((row: AppSummary) => row.name)}
             onChange={handleSearchSubmit}

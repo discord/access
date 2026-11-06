@@ -465,6 +465,7 @@ def create_app(testing: bool | None = False) -> FastAPI:
     # Routers
     from api.routers import (
         access_requests,
+        app_requests,
         apps,
         audit,
         bugs,
@@ -482,6 +483,7 @@ def create_app(testing: bool | None = False) -> FastAPI:
 
     app.include_router(health.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(access_requests.router, responses=DEFAULT_ERROR_RESPONSES)
+    app.include_router(app_requests.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(apps.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(audit.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(bugs.router, responses=DEFAULT_ERROR_RESPONSES)

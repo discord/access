@@ -7,6 +7,8 @@ import pluggy
 
 from api.models import (
     AccessRequest,
+    App,
+    AppRequest,
     GroupRequest,
     OktaGroup,
     OktaUser,
@@ -41,6 +43,8 @@ class NotificationHook(StrEnum):
     ACCESS_ROLE_REQUEST_COMPLETED = "access_role_request_completed"
     ACCESS_GROUP_REQUEST_CREATED = "access_group_request_created"
     ACCESS_GROUP_REQUEST_COMPLETED = "access_group_request_completed"
+    ACCESS_APP_REQUEST_CREATED = "access_app_request_created"
+    ACCESS_APP_REQUEST_COMPLETED = "access_app_request_completed"
 
 
 # hook -> (metric name, static tags) recorded once the hook fans out
@@ -56,6 +60,8 @@ _SENT_METRICS: dict[NotificationHook, tuple[str, dict[str, str] | None]] = {
     NotificationHook.ACCESS_ROLE_REQUEST_COMPLETED: ("notifications.role_request_completed.sent", None),
     NotificationHook.ACCESS_GROUP_REQUEST_CREATED: ("notifications.group_request_created.sent", None),
     NotificationHook.ACCESS_GROUP_REQUEST_COMPLETED: ("notifications.group_request_completed.sent", None),
+    NotificationHook.ACCESS_APP_REQUEST_CREATED: ("notifications.app_request_created.sent", None),
+    NotificationHook.ACCESS_APP_REQUEST_COMPLETED: ("notifications.app_request_completed.sent", None),
 }
 
 
@@ -183,6 +189,35 @@ class NotificationPluginSpec:
     ) -> None:
         """Notify the requester that their group request has been processed.
 
+        Fired only for a user's request: a service principal learns the outcome
+        by reading the request.
+        """
+
+    @hookspec
+    async def access_app_request_created(
+        self,
+        app_request: AppRequest,
+        requester: OktaUser | ServicePrincipal,
+        approvers: list[OktaUser],
+    ) -> None:
+        """Notify the approvers (Access admins) of the app request.
+
+        ``requester`` is the user or service principal that filed it; a service
+        principal has no ``email``.
+        """
+
+    @hookspec
+    async def access_app_request_completed(
+        self,
+        app_request: AppRequest,
+        app: App | None,
+        requester: OktaUser,
+        approvers: list[OktaUser],
+        notify_requester: bool,
+    ) -> None:
+        """Notify the requester that their app request has been processed.
+
+        ``app`` is the created app when the request was approved, else None.
         Fired only for a user's request: a service principal learns the outcome
         by reading the request.
         """

@@ -63,7 +63,7 @@ const GROUP_TYPE_OPTIONS = Object.entries(GROUP_TYPE_ID_TO_LABELS).map(([id, lab
 // one they do not. A request the constraints forbid is not refused on submit --
 // `ApproveGroupRequest` shortens it on approval instead -- so a duration left
 // on offer here is one the requester is told they asked for and does not get.
-function AccessLengthField({
+export function AccessLengthField({
   name,
   label,
   timeLimit,
@@ -140,7 +140,7 @@ function filterUntilLabels(timeLimit: number): [string, Array<{id: string; label
 }
 
 // The end date a length field's selection asks for, or undefined for Indefinite.
-function endingAt(until: string | undefined, custom: string | undefined): string | undefined {
+export function endingAt(until: string | undefined, custom: string | undefined): string | undefined {
   switch (until) {
     case 'indefinite':
       return undefined;
