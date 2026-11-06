@@ -430,3 +430,79 @@ async def test_service_principal_withdrawal_and_deletion(db: Db, client: AsyncCl
     mock_user(admin_id)
     assert (await client.delete(f"/api/service-principals/{sp_id}")).status_code == 200
     assert (await client.get(f"{AR_URL}/{stranded}")).json()["status"] == AccessRequestStatus.REJECTED
+
+
+async def test_invalid_retry_keeps_the_pending_request(db: Db, client: AsyncClient, mock_user: Any) -> None:
+    requester = await OktaUserFactory.create_async()
+    mock_user(requester.id)
+    first = (await client.post(AR_URL, json={"requested_app_name": "Keep"})).json()["id"]
+    rep = await client.post(AR_URL, json={"requested_app_name": "Keep", "requested_owner_user_ids": ["nobody"]})
+    assert rep.status_code == 400
+    assert (await client.get(f"{AR_URL}/{first}")).json()["status"] == AccessRequestStatus.PENDING
+
+
+async def test_departed_principals_are_skipped_with_a_note(db: Db, client: AsyncClient) -> None:
+    requester = await OktaUserFactory.create_async()
+    gone = await OktaUserFactory.create_async()
+    stays = await OktaUserFactory.create_async()
+    gone_id, stays_id = gone.id, stays.id
+    ar = await CreateAppRequest(
+        requester=requester,
+        requested_app_name="Departed",
+        requested_app_groups=[AppRequestGroup(name="App-Departed-Users", member_user_ids=[gone.id, stays.id])],
+    ).execute()
+    ar_id = ar.id
+    gone.deleted_at = gone.created_at
+    await db.session.commit()
+
+    rep = await client.put(f"{AR_URL}/{ar_id}", json={"approved": True, "reason": "ok"})
+    assert rep.status_code == 200, rep.text
+    assert rep.json()["status"] == AccessRequestStatus.APPROVED
+    assert f"user {gone_id}" in rep.json()["resolution_reason"]
+    users = await _grants(db, await _group_id(db, "App-Departed-Users"))
+    assert set(users["member_users"]) == {stays_id}
+
+
+async def test_failed_approval_doesnt_keep_the_approvers_dates(db: Db, client: AsyncClient) -> None:
+    requester = await OktaUserFactory.create_async()
+    ar = await CreateAppRequest(requester=requester, requested_app_name="Retried").execute()
+    ar_id = ar.id
+    await AppFactory.create_async(name="Retried")
+
+    later = (datetime.now(UTC) + 40 * DAY).isoformat()
+    rep = await client.put(f"{AR_URL}/{ar_id}", json={"approved": True, "resolved_ownership_ending_at": later})
+    assert rep.status_code == 409
+    stored = await db.session.get(AppRequest, ar_id)
+    assert stored is not None
+    await db.session.refresh(stored)
+    assert stored.resolved_ownership_ending_at is None
+
+
+async def test_failed_grant_still_approves_the_app(db: Db, client: AsyncClient, mocker: MockerFixture) -> None:
+    requester = await OktaUserFactory.create_async()
+    good_role = await RoleGroupFactory.create_async()
+    bad_role = await RoleGroupFactory.create_async()
+    ids = {"good": good_role.id, "bad": bad_role.id}
+    ar = await CreateAppRequest(
+        requester=requester,
+        requested_app_name="Flaky",
+        requested_app_groups=[AppRequestGroup(name="App-Flaky-Users", member_role_ids=[good_role.id, bad_role.id])],
+    ).execute()
+    ar_id = ar.id
+
+    from api.operations import modify_role_groups
+
+    real_execute = modify_role_groups.ModifyRoleGroups.execute
+
+    async def flaky(self: Any) -> Any:
+        if self.role_group_id == ids["bad"]:
+            raise RuntimeError("role vanished")
+        return await real_execute(self)
+
+    mocker.patch.object(modify_role_groups.ModifyRoleGroups, "execute", flaky)
+    rep = await client.put(f"{AR_URL}/{ar_id}", json={"approved": True})
+    assert rep.status_code == 200, rep.text
+    assert rep.json()["status"] == AccessRequestStatus.APPROVED
+    assert f"App-Flaky-Users member role {ids['bad']}" in rep.json()["resolution_reason"]
+    users = await _grants(db, await _group_id(db, "App-Flaky-Users"))
+    assert set(users["member_roles"]) == {ids["good"]}
