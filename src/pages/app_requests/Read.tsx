@@ -47,8 +47,7 @@ import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailable
 import Loading from '../../components/Loading';
 import RequesterLink, {requesterName} from '../../components/RequesterLink';
 import {PrincipalChips, pickByIds} from '../../components/Principals';
-import {AccessEndingField, resolvedEndingAt, untilIdFor} from '../../components/AccessLength';
-import {useTagsByIds} from '../../components/useTagsByIds';
+import {AccessEndingField, untilIdFor, useTagsByIds} from '../group_requests/Read';
 import ServicePrincipalOwners from '../../components/ServicePrincipalOwners';
 import ChangeTitle from '../../tab-title';
 import NotFound from '../NotFound';
@@ -108,6 +107,20 @@ interface ResolveRequestForm {
   resolved_membership_ending_at?: string;
   resolved_membership_ending_at_custom?: string;
   reason?: string;
+}
+
+// The end date an approver's choice sends, matching the group request review page:
+// Indefinite (or no choice) sends nothing, which keeps the requested end date.
+function approvalEndingAt(until: string | undefined, custom: string | undefined): string | undefined {
+  switch (until) {
+    case undefined:
+    case 'indefinite':
+      return undefined;
+    case 'custom':
+      return custom ? dayjs(custom).toISOString() : undefined;
+    default:
+      return dayjs().add(parseInt(until, 10), 'seconds').toISOString();
+  }
 }
 
 export default function ReadAppRequest() {
@@ -210,16 +223,14 @@ export default function ReadAppRequest() {
       reason: responseForm.reason ?? '',
     };
     if (canApprove) {
-      resolveRequest.resolved_ownership_ending_at = resolvedEndingAt(
+      resolveRequest.resolved_ownership_ending_at = approvalEndingAt(
         responseForm.resolved_ownership_ending_at,
         responseForm.resolved_ownership_ending_at_custom,
-        appRequest.requested_ownership_ending_at,
       );
       if (namesMembers) {
-        resolveRequest.resolved_membership_ending_at = resolvedEndingAt(
+        resolveRequest.resolved_membership_ending_at = approvalEndingAt(
           responseForm.resolved_membership_ending_at,
           responseForm.resolved_membership_ending_at_custom,
-          appRequest.requested_membership_ending_at,
         );
       }
     }

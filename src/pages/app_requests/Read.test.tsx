@@ -178,17 +178,6 @@ describe('an Access admin reviewing a pending request', () => {
     expect(call.body.resolved_membership_ending_at).toEqual(expect.any(String));
   });
 
-  it('sends an explicit null for Indefinite over a requested end date', async () => {
-    renderPage();
-
-    await userEvent.click(screen.getByRole('combobox', {name: /Ownership Ending At/}));
-    await userEvent.click(await screen.findByRole('option', {name: 'Indefinite'}));
-    await userEvent.click(screen.getByRole('button', {name: /Approve/}));
-
-    await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
-    expect(resolveMutate.mock.calls[0][0].body.resolved_ownership_ending_at).toBeNull();
-  });
-
   it('may grant longer than requested', async () => {
     renderPage();
 

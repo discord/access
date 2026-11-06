@@ -19,7 +19,6 @@ from api.auth.permissions import is_access_admin
 from api.database import DbSession
 from api.models import AccessRequestStatus, AppRequest, OktaUser
 from api.operations import ApproveAppRequest, CreateAppRequest, RejectAppRequest
-from api.operations._ending_at import USE_REQUESTED
 from api.pagination import Page, validated
 from api.routers._eager import service_principal_options
 from api.routers._fan_out import defer_fan_out
@@ -191,21 +190,14 @@ async def put_app_request(
         raise HTTPException(409, "App request is not pending")
 
     if body.approved:
-        # A sent end date (null meaning indefinite) replaces the requested one.
+        # A sent end date replaces the requested one, as on group requests.
+        if body.resolved_ownership_ending_at is not None:
+            app_request.resolved_ownership_ending_at = body.resolved_ownership_ending_at
+        if body.resolved_membership_ending_at is not None:
+            app_request.resolved_membership_ending_at = body.resolved_membership_ending_at
+        await db.commit()
         await ApproveAppRequest(
-            app_request=app_request_id,
-            approver_user=current_user_id,
-            approval_reason=body.reason or "",
-            approver_ownership_ending_at=(
-                body.resolved_ownership_ending_at
-                if "resolved_ownership_ending_at" in body.model_fields_set
-                else USE_REQUESTED
-            ),
-            approver_membership_ending_at=(
-                body.resolved_membership_ending_at
-                if "resolved_membership_ending_at" in body.model_fields_set
-                else USE_REQUESTED
-            ),
+            app_request=app_request_id, approver_user=current_user_id, approval_reason=body.reason or ""
         ).execute()
     else:
         await RejectAppRequest(

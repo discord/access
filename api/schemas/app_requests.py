@@ -63,8 +63,8 @@ class CreateAppRequestBody(BaseModel):
 class ResolveAppRequestBody(BaseModel):
     """Body for PUT /api/app-requests/{id}.
 
-    Each end date, when sent, replaces the requested one on approval; an explicit
-    null means indefinite. The app's tag limits still cap the result.
+    Each end date, when sent, replaces the requested one on approval. The app's
+    tag limits still cap the result.
     """
 
     model_config = ConfigDict(extra="ignore")

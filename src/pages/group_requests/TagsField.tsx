@@ -4,7 +4,7 @@ import Autocomplete from '@mui/material/Autocomplete';
 import Chip from '@mui/material/Chip';
 import TextField from '@mui/material/TextField';
 
-import {AppDetail, TagSummary} from '../api/apiSchemas';
+import {AppDetail, TagSummary} from '../../api/apiSchemas';
 
 /** The tags a group picks up from the one app it is created under. */
 export interface InheritedTags {
