@@ -232,6 +232,49 @@ describe('an ownership duration the tag forbids', () => {
   });
 });
 
+describe('an approver choosing how long ownership lasts', () => {
+  const FIVE_DAY_REQUEST = {
+    ...PENDING_APP_GROUP_REQUEST,
+    requested_ownership_ending_at: '2026-09-06T00:00:00Z',
+  } as unknown as GroupRequestDetail;
+
+  it('sends an explicit null for Indefinite over a requested end date', async () => {
+    groupRequest = FIVE_DAY_REQUEST;
+    renderPage();
+
+    const approve = await screen.findByRole('button', {name: /Approve/});
+    await userEvent.click(screen.getByRole('combobox', {name: /Ownership Ending At/}));
+    await userEvent.click(await screen.findByRole('option', {name: 'Indefinite'}));
+    await userEvent.click(approve);
+
+    await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
+    expect(resolveMutate.mock.calls[0][0].body.resolved_ownership_ending_at).toBeNull();
+  });
+
+  it('may grant longer than requested', async () => {
+    groupRequest = FIVE_DAY_REQUEST;
+    renderPage();
+
+    const approve = await screen.findByRole('button', {name: /Approve/});
+    await userEvent.click(screen.getByRole('combobox', {name: /Ownership Ending At/}));
+    await userEvent.click(await screen.findByRole('option', {name: '90 Days'}));
+    await userEvent.click(approve);
+
+    await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
+    const endingAt = resolveMutate.mock.calls[0][0].body.resolved_ownership_ending_at;
+    expect(new Date(endingAt).getTime()).toBeGreaterThan(Date.now() + 89 * 86400 * 1000);
+  });
+
+  it('sends nothing when the request asked for indefinite ownership and it is kept', async () => {
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', {name: /Approve/}));
+
+    await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
+    expect(resolveMutate.mock.calls[0][0].body.resolved_ownership_ending_at).toBeUndefined();
+  });
+});
+
 // A group created under an app carries that app's tags on top of the ones the
 // approver picks, so the approval form has to answer for both: the durations it
 // offers come from the constraints it asked about, and `ApproveGroupRequest`
@@ -265,6 +308,41 @@ describe('a request naming owners and members', () => {
     expect(body.resolved_member_user_ids).toBeUndefined();
     expect(body.resolved_member_role_ids).toBeUndefined();
     expect(body.resolved_membership_ending_at).toEqual(expect.any(String));
+  });
+
+  // `named_users` omits a user deleted since filing, so the pickers start without them.
+  it('leaves untouched lists to the backend even when a named user is gone', async () => {
+    groupRequest = {
+      ...NAMING_REQUEST,
+      requested_owner_user_ids: [OWNER_USER.id, 'deleted-user-000000'],
+    } as unknown as GroupRequestDetail;
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', {name: /Approve/}));
+
+    await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
+    const body = resolveMutate.mock.calls[0][0].body;
+    expect(body.resolved_owner_user_ids).toBeUndefined();
+    expect(body.resolved_owner_role_ids).toBeUndefined();
+    expect(body.resolved_member_user_ids).toBeUndefined();
+    expect(body.resolved_member_role_ids).toBeUndefined();
+  });
+
+  it('sends only the list whose picker the approver changed', async () => {
+    groupRequest = NAMING_REQUEST;
+    renderPage();
+
+    const approve = await screen.findByRole('button', {name: /Approve/});
+    const ownerUsers = screen.getByRole('combobox', {name: 'Owners: users'}).closest('.MuiAutocomplete-root');
+    await userEvent.click(within(ownerUsers as HTMLElement).getByTestId('CancelIcon'));
+    await userEvent.click(approve);
+
+    await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
+    const body = resolveMutate.mock.calls[0][0].body;
+    expect(body.resolved_owner_user_ids).toEqual([]);
+    expect(body.resolved_owner_role_ids).toBeUndefined();
+    expect(body.resolved_member_user_ids).toBeUndefined();
+    expect(body.resolved_member_role_ids).toBeUndefined();
   });
 
   it('refuses approval while a Role names a role', async () => {

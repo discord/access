@@ -3,9 +3,7 @@ import {useNavigate} from 'react-router-dom';
 import AddIcon from '@mui/icons-material/AddBox';
 import EditIcon from '@mui/icons-material/Edit';
 import Alert from '@mui/material/Alert';
-import Autocomplete from '@mui/material/Autocomplete';
 import Button from '@mui/material/Button';
-import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
@@ -15,12 +13,10 @@ import FormControl from '@mui/material/FormControl';
 import IconButton from '@mui/material/IconButton';
 import TextField from '@mui/material/TextField';
 
-import {useRoles, useServicePrincipalByIdPut, useServicePrincipalsCreate, useUsers} from '../../api/apiComponents';
-import {OktaUserDetail, OktaUserSummary, RoleGroupListItem, ServicePrincipalDetail} from '../../api/apiSchemas';
+import {useServicePrincipalByIdPut, useServicePrincipalsCreate} from '../../api/apiComponents';
+import {OktaUserDetail, OktaUserSummary, ServicePrincipalDetail} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
-import {displayUserName} from '../../helpers';
-
-type RoleOption = Pick<RoleGroupListItem, 'id' | 'name'>;
+import {PrincipalsField, RoleOption} from '../../components/Principals';
 
 interface ServicePrincipalDialogProps {
   setOpen(open: boolean): any;
@@ -39,12 +35,7 @@ function ServicePrincipalDialog(props: ServicePrincipalDialogProps) {
   const [ownerRoles, setOwnerRoles] = React.useState<RoleOption[]>(
     (existing?.owners ?? []).flatMap((o) => (o.active_role_group ? [o.active_role_group] : [])),
   );
-  const [userSearchInput, setUserSearchInput] = React.useState('');
-  const [roleSearchInput, setRoleSearchInput] = React.useState('');
   const [requestError, setRequestError] = React.useState('');
-
-  const {data: userSearchData} = useUsers({queryParams: {page: 1, size: 10, q: userSearchInput}});
-  const {data: roleSearchData} = useRoles({queryParams: {page: 1, size: 10, q: roleSearchInput}});
 
   const onSettled = (result: ServicePrincipalDetail | undefined, error: {payload: any} | null) => {
     if (error != null) {
@@ -107,51 +98,20 @@ function ServicePrincipalDialog(props: ServicePrincipalDialogProps) {
               required
             />
           </FormControl>
-          <FormControl margin="normal" fullWidth>
-            <Autocomplete
-              multiple
-              options={userSearchData?.items ?? []}
-              value={ownerUsers}
-              filterOptions={(x) => x}
-              isOptionEqualToValue={(option, value) => option.id == value.id}
-              getOptionLabel={(option) => displayUserName(option)}
-              onInputChange={(event, value) => setUserSearchInput(value)}
-              onChange={(event, value) => setOwnerUsers(value)}
-              renderValue={(value, getItemProps) =>
-                value.map((option, index) => (
-                  <Chip variant="outlined" label={displayUserName(option)} {...getItemProps({index})} />
-                ))
-              }
-              renderInput={(params) => <TextField {...params} label="Owner users" />}
-            />
-          </FormControl>
-          <FormControl margin="normal" fullWidth>
-            <Autocomplete
-              multiple
-              options={(roleSearchData?.items ?? []) as RoleOption[]}
-              value={ownerRoles}
-              filterOptions={(x) => x}
-              isOptionEqualToValue={(option, value) => option.id == value.id}
-              getOptionLabel={(option) => option.name}
-              onInputChange={(event, value) => setRoleSearchInput(value)}
-              onChange={(event, value) => setOwnerRoles(value)}
-              renderValue={(value, getItemProps) =>
-                value.map((option, index) => <Chip variant="outlined" label={option.name} {...getItemProps({index})} />)
-              }
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Owner roles"
-                  error={noOwners}
-                  helperText={
-                    noOwners
-                      ? 'Name at least one owning user or role.'
-                      : 'Owners are accountable for this service. They gain no permissions from it.'
-                  }
-                />
-              )}
-            />
-          </FormControl>
+          <PrincipalsField
+            label="Owners"
+            users={ownerUsers}
+            roles={ownerRoles}
+            onUsersChange={setOwnerUsers}
+            onRolesChange={setOwnerRoles}
+            rolesDisallowed={false}
+            error={noOwners}
+            helperText={
+              noOwners
+                ? 'Name at least one owning user or role.'
+                : 'Owners are accountable for this service. They gain no permissions from it.'
+            }
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => props.setOpen(false)}>Cancel</Button>

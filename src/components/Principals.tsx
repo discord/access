@@ -9,9 +9,9 @@ import Typography from '@mui/material/Typography';
 import UserIcon from '@mui/icons-material/Person';
 import RoleIcon from '@mui/icons-material/Diversity3';
 
-import {useRoles, useUsers} from '../../api/apiComponents';
-import {OktaUserSummary, RoleGroupListItem} from '../../api/apiSchemas';
-import {displayUserName} from '../../helpers';
+import {useRoles, useUsers} from '../api/apiComponents';
+import {OktaUserSummary, RoleGroupListItem} from '../api/apiSchemas';
+import {displayUserName} from '../helpers';
 
 export type RoleOption = Pick<RoleGroupListItem, 'id' | 'name'>;
 
@@ -88,6 +88,7 @@ interface PrincipalsFieldProps {
   onRolesChange: (roles: RoleOption[]) => void;
   rolesDisallowed: boolean;
   helperText?: string;
+  error?: boolean;
 }
 
 /**
@@ -102,6 +103,7 @@ interface PrincipalsFieldProps {
  *   rolesDisallowed: Whether the group is a role, which cannot take roles. The role picker is
  *     disabled while empty, and flags any roles already selected so they can be removed.
  *   helperText: Shown beneath the pickers.
+ *   error: Flag both pickers and the helper text as invalid.
  */
 export function PrincipalsField(props: PrincipalsFieldProps) {
   const [userSearchInput, setUserSearchInput] = React.useState('');
@@ -130,7 +132,7 @@ export function PrincipalsField(props: PrincipalsFieldProps) {
                 <Chip variant="outlined" label={displayUserName(option)} {...getItemProps({index})} />
               ))
             }
-            renderInput={(params) => <TextField {...params} label={`${props.label}: users`} />}
+            renderInput={(params) => <TextField {...params} label={`${props.label}: users`} error={props.error} />}
           />
         </Grid>
         <Grid size={6}>
@@ -151,7 +153,7 @@ export function PrincipalsField(props: PrincipalsFieldProps) {
               <TextField
                 {...params}
                 label={`${props.label}: roles`}
-                error={rolesError}
+                error={rolesError || props.error}
                 helperText={props.rolesDisallowed ? ROLES_IN_ROLE_ERROR : undefined}
               />
             )}
@@ -159,7 +161,7 @@ export function PrincipalsField(props: PrincipalsFieldProps) {
         </Grid>
       </Grid>
       {props.helperText && (
-        <Typography variant="caption" sx={{color: 'text.secondary', mt: 0.5, ml: 1.75}}>
+        <Typography variant="caption" sx={{color: props.error ? 'error.main' : 'text.secondary', mt: 0.5, ml: 1.75}}>
           {props.helperText}
         </Typography>
       )}
