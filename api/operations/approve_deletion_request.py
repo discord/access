@@ -28,7 +28,7 @@ class ApproveDeletionRequest:
         notify: Whether to send notifications.
 
     Raises:
-        ConflictError: The request is no longer pending.
+        ConflictError: The request is no longer pending, or its requester is no longer active.
         ResourceGoneError: The target was deleted since the request was filed.
         InvalidRequestError: The target can no longer be deleted.
     """
@@ -58,7 +58,7 @@ class ApproveDeletionRequest:
             deletion_request.requester_service_principal_id or deletion_request.requester_user_id
         )
         if requester is None:
-            return deletion_request
+            raise ConflictError("The requester is no longer active")
         requester_user = requester if isinstance(requester, OktaUser) else None
         requester_service_principal = requester if isinstance(requester, ServicePrincipal) else None
 
