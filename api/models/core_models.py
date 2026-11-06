@@ -7,6 +7,7 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
@@ -1324,4 +1325,94 @@ class AppTagMap(Base):
         viewonly=True,
         lazy="raise_on_sql",
         innerjoin=True,
+    )
+
+
+class ServicePrincipalProvider(StrEnum):
+    CLOUDFLARE = "cloudflare"
+
+
+class ServicePrincipal(Base):
+    """A non-human API caller authenticated by an external identity provider.
+
+    Service principals are never users: they have no `okta_user` row, so they
+    never appear in a membership or ownership record and fail every ownership
+    and admin check.
+    """
+
+    ID_PREFIX = "sp_"
+
+    # `ID_PREFIX` followed by random characters, so a service principal id can
+    # never equal an Okta user id.
+    id: Mapped[str] = mapped_column(Unicode(50), primary_key=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        NaiveUTCDateTime(), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(NaiveUTCDateTime())
+
+    display_name: Mapped[str] = mapped_column(Unicode(100), nullable=False)
+    provider: Mapped[ServicePrincipalProvider] = mapped_column(Enum(ServicePrincipalProvider), nullable=False)
+    # The provider's identifier for the caller, e.g. a Cloudflare service token's client ID.
+    subject: Mapped[str] = mapped_column(Unicode(255), nullable=False)
+
+    __table_args__ = (
+        Index(
+            "idx_service_principal_provider_subject",
+            "provider",
+            "subject",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+    owners: Mapped[list["ServicePrincipalOwner"]] = relationship(
+        "ServicePrincipalOwner",
+        back_populates="service_principal",
+        cascade="all, delete-orphan",
+        lazy="raise_on_sql",
+    )
+
+
+class ServicePrincipalOwner(Base):
+    """A user or role accountable for a service principal.
+
+    Informational only: nothing in Access authorizes from this table.
+    """
+
+    # See https://stackoverflow.com/a/60840921
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        autoincrement=True,
+        primary_key=True,
+    )
+    service_principal_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("service_principal.id"), nullable=False)
+    user_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
+    role_group_id: Mapped[str | None] = mapped_column(Unicode(50), ForeignKey("role_group.id"))
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "(user_id IS NULL) != (role_group_id IS NULL)",
+            name="exactly_one_owner",
+        ),
+    )
+
+    service_principal: Mapped[ServicePrincipal] = relationship(
+        "ServicePrincipal",
+        back_populates="owners",
+        lazy="raise_on_sql",
+    )
+    active_user: Mapped[OktaUser | None] = relationship(
+        "OktaUser",
+        primaryjoin="and_(OktaUser.id == ServicePrincipalOwner.user_id, OktaUser.deleted_at.is_(None))",
+        viewonly=True,
+        lazy="raise_on_sql",
+    )
+    active_role_group: Mapped[RoleGroup | None] = relationship(
+        "RoleGroup",
+        primaryjoin="and_(RoleGroup.id == ServicePrincipalOwner.role_group_id, RoleGroup.deleted_at.is_(None))",
+        viewonly=True,
+        lazy="raise_on_sql",
     )

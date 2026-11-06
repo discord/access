@@ -12,6 +12,9 @@ from api.models.core_models import (
     RoleGroup,
     RoleGroupMap,
     RoleRequest,
+    ServicePrincipal,
+    ServicePrincipalOwner,
+    ServicePrincipalProvider,
     Tag,
 )
 
@@ -29,5 +32,8 @@ __all__ = [
     "RoleGroup",
     "RoleGroupMap",
     "RoleRequest",
+    "ServicePrincipal",
+    "ServicePrincipalOwner",
+    "ServicePrincipalProvider",
     "Tag",
 ]

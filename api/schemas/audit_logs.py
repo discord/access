@@ -41,6 +41,9 @@ class EventType(Enum):
     role_request_approve = "ROLE_REQUEST_APPROVE"
     role_request_create = "ROLE_REQUEST_CREATE"
     role_request_reject = "ROLE_REQUEST_REJECT"
+    service_principal_create = "SERVICE_PRINCIPAL_CREATE"
+    service_principal_delete = "SERVICE_PRINCIPAL_DELETE"
+    service_principal_modify = "SERVICE_PRINCIPAL_MODIFY"
     tag_create = "TAG_CREATE"
     tag_modify = "TAG_MODIFY"
     tag_delete = "TAG_DELETE"
@@ -214,6 +217,18 @@ class _AuditTagRef(BaseModel):
     name: str | None = None
     constraints: dict[str, Any] | None = None
     enabled: bool | None = None
+
+
+class _AuditServicePrincipalRef(BaseModel):
+    """ServicePrincipal projection for `service_principal` / `old_service_principal`."""
+
+    model_config = ConfigDict(extra="ignore")
+    id: str | None = None
+    display_name: str | None = None
+    provider: str | None = None
+    subject: str | None = None
+    owner_user_ids: list[str] | None = None
+    owner_role_ids: list[str] | None = None
 
 
 class _AuditOldTagRef(BaseModel):
@@ -420,6 +435,10 @@ class AuditLogPayload(BaseModel):
     old_tag: _AuditOldTagRef | None = None
     tags_added: list[_AuditTagRef] | None = Field(default=None)
     tags_removed: list[_AuditTagRef] | None = Field(default=None)
+
+    # Service-principal fields
+    service_principal: _AuditServicePrincipalRef | None = None
+    old_service_principal: _AuditServicePrincipalRef | None = None
 
     # ---- coercion validators ----
     _coerce_group = field_validator("group", "active_group", mode="before")(
