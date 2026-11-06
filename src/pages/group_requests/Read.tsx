@@ -71,6 +71,8 @@ import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
 import PluginConfigDisplay from './PluginConfigDisplay';
 import TagsField, {inheritedAppTags} from './TagsField';
 import {PrincipalChips, PrincipalsField, RoleOption, pickByIds, sameIds} from './Principals';
+import RequesterLink, {requesterName} from '../../components/RequesterLink';
+import ServicePrincipalOwners from '../service_principals/Owners';
 import ChangeTitle from '../../tab-title';
 import NotFound from '../NotFound';
 
@@ -253,7 +255,7 @@ export default function ReadGroupRequest() {
 
   const groupRequest: GroupRequestDetail = data ?? ({} as GroupRequestDetail);
 
-  const ownRequest = groupRequest.requester?.id == currentUser.id;
+  const ownRequest = groupRequest.requester != null && groupRequest.requester.id == currentUser.id;
 
   const requestedGroupType = groupRequest.requested_group_type ?? 'okta_group';
   const requestedAppId = groupRequest.requested_app_id ?? null;
@@ -682,7 +684,7 @@ export default function ReadGroupRequest() {
     });
   };
 
-  const requesterName = displayUserName(groupRequest.requester);
+  const requesterDisplayName = requesterName(groupRequest.requester, groupRequest.requester_service_principal);
   const requestedOwners = {
     users: pickByIds(groupRequest.requested_owner_user_ids, groupRequest.named_users),
     roles: pickByIds(groupRequest.requested_owner_role_ids, groupRequest.named_roles),
@@ -699,7 +701,7 @@ export default function ReadGroupRequest() {
 
   return (
     <React.Fragment>
-      <ChangeTitle title={`Group Request: ${requesterName} — ${titleGroupName}`} />
+      <ChangeTitle title={`Group Request: ${requesterDisplayName} — ${titleGroupName}`} />
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
           <Grid
@@ -757,22 +759,20 @@ export default function ReadGroupRequest() {
               <Grid container>
                 <Grid sx={{textAlign: 'center', wordBreak: 'break-word'}} size={8}>
                   <Typography variant="h4">
-                    {(groupRequest.requester?.deleted_at ?? null) != null ? (
-                      <Link
-                        to={`/users/${groupRequest.requester?.id ?? ''}`}
-                        sx={{textDecoration: 'line-through', color: 'inherit', fontWeight: 500}}
-                        component={RouterLink}>
-                        {requesterName}
-                      </Link>
-                    ) : (
-                      <Link
-                        to={`/users/${groupRequest.requester?.email.toLowerCase() ?? ''}`}
-                        sx={{textDecoration: 'none', color: 'inherit', fontWeight: 500}}
-                        component={RouterLink}>
-                        {requesterName}
-                      </Link>
-                    )}
+                    <RequesterLink
+                      user={groupRequest.requester}
+                      servicePrincipal={groupRequest.requester_service_principal}
+                      fontWeight={500}
+                    />
                   </Typography>
+                  {groupRequest.requester_service_principal != null && (
+                    <Stack direction="row" sx={{justifyContent: 'center', alignItems: 'center', gap: 1, my: 1}}>
+                      <Typography variant="body2" color="text.secondary">
+                        Owned by
+                      </Typography>
+                      <ServicePrincipalOwners owners={groupRequest.requester_service_principal.owners} />
+                    </Stack>
+                  )}
                   <Typography variant="h5">
                     {groupRequest.status == 'PENDING' ? 'is requesting' : 'requested'} the creation of
                   </Typography>
@@ -819,21 +819,13 @@ export default function ReadGroupRequest() {
                 <TimelineContent>
                   <Paper sx={{p: 2, my: 1}}>
                     <Typography variant="body1">
-                      {(groupRequest.requester?.deleted_at ?? null) != null ? (
-                        <Link
-                          to={`/users/${groupRequest.requester?.id}`}
-                          sx={{textDecoration: 'line-through', color: 'inherit'}}
-                          component={RouterLink}>
-                          <b>{groupRequest.requester?.email.toLowerCase()}</b>
-                        </Link>
-                      ) : (
-                        <Link
-                          to={`/users/${groupRequest.requester?.email.toLowerCase()}`}
-                          sx={{textDecoration: 'none', color: 'inherit'}}
-                          component={RouterLink}>
-                          <b>{groupRequest.requester?.email.toLowerCase()}</b>
-                        </Link>
-                      )}
+                      <b>
+                        <RequesterLink
+                          user={groupRequest.requester}
+                          servicePrincipal={groupRequest.requester_service_principal}
+                          showEmail
+                        />
+                      </b>
                       {groupRequest.status == 'PENDING' ? ' is requesting ' : ' requested '}
                       {'the creation of group '}
                       {groupRequest.status == 'APPROVED' ? (

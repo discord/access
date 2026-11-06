@@ -18,6 +18,7 @@ from api.models import (
     RoleGroup,
     RoleGroupMap,
     RoleRequest,
+    ServicePrincipal,
 )
 
 notification_hook_impl = pluggy.HookimplMarker("access_notifications")
@@ -386,13 +387,13 @@ async def access_role_request_created(
 
 @notification_hook_impl
 async def access_group_request_created(
-    group_request: GroupRequest, requester: OktaUser, approvers: list[OktaUser]
+    group_request: GroupRequest, requester: OktaUser | ServicePrincipal, approvers: list[OktaUser]
 ) -> None:
     """Notify the approvers that a group creation has been requested.
 
     Args:
         group_request (GroupRequest): The group request.
-        requester (OktaUser): The user requesting the group.
+        requester (OktaUser | ServicePrincipal): The user or service principal requesting the group.
         approvers (list[OktaUser]): The list of approvers.
     """
     group_request_url = get_base_url() + f"/group-requests/{group_request.id}"
@@ -404,8 +405,11 @@ async def access_group_request_created(
     }
     group_type_label = group_type_labels.get(group_request.requested_group_type, "group")
 
+    requester_label = (
+        f"Service {requester.display_name}" if isinstance(requester, ServicePrincipal) else requester.email
+    )
     approver_message = (
-        f":pray: {requester.email} has requested the creation of the {group_type_label} "
+        f":pray: {requester_label} has requested the creation of the {group_type_label} "
         f"*{group_request.requested_group_name}*.\n\n"
         f"<{group_request_url}|View request to approve or reject>\n\n"
     )
@@ -414,6 +418,10 @@ async def access_group_request_created(
     for approver in approvers:
         await send_slack_dm(approver, approver_message)
     logger.info(f"Approver message: {approver_message}")
+
+    # A service principal has no Slack account to message.
+    if isinstance(requester, ServicePrincipal):
+        return
 
     # Send the message to the requester only if they're not already an approver
     if requester.id not in [approver.id for approver in approvers]:

@@ -345,3 +345,36 @@ describe('tags an app group inherits from its app', () => {
     expect(screen.queryByText(INHERITED_CHIP)).not.toBeInTheDocument();
   });
 });
+
+describe('a request from a service principal', () => {
+  const SERVICE_REQUEST = {
+    ...NAMING_REQUEST,
+    requester: null,
+    requester_service_principal: {
+      id: 'sp_00000000000000001',
+      display_name: 'Deploy Bot',
+      provider: 'cloudflare',
+      subject: 'client.access',
+      created_at: null,
+      updated_at: null,
+      owners: [{role_group_id: MEMBER_ROLE.id, active_role_group: {...MEMBER_ROLE, type: 'role_group'}}],
+    },
+  } as unknown as GroupRequestDetail;
+
+  it('names the service principal and its owners as the requester', async () => {
+    groupRequest = SERVICE_REQUEST;
+    renderPage();
+
+    expect((await screen.findAllByText('Deploy Bot')).length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('service principal').length).toBeGreaterThan(0);
+    expect(screen.getByText('Owned by')).toBeInTheDocument();
+  });
+
+  it('lets an approver act on it', async () => {
+    groupRequest = SERVICE_REQUEST;
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', {name: /Approve/}));
+    await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
+  });
+});
