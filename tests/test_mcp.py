@@ -1302,3 +1302,35 @@ async def test_401_advertises_resource_metadata(
         challenge = r.headers.get("WWW-Authenticate", "")
         assert challenge.startswith("Bearer ")
         assert 'resource_metadata="https://access.example.com/.well-known/oauth-protected-resource/mcp"' in challenge
+
+
+async def test_list_group_requests_filters_by_service_principal_requester(with_mcp_enabled: None, db: Db) -> None:
+    from api.mcp.auth import reset_mcp_identity
+    from api.mcp.server import create_mcp_server
+    from api.models import ServicePrincipalOwner
+    from api.operations import CreateGroupRequest
+    from tests.factories import OktaUserFactory, ServicePrincipalFactory
+
+    owner = await OktaUserFactory.create_async()
+    owner_id = owner.id
+    sp = ServicePrincipalFactory.build()
+    sp.owners = [ServicePrincipalOwner(user_id=owner_id)]
+    db.session.add(sp)
+    await db.session.commit()
+    sp_id = sp.id
+    gr = await CreateGroupRequest(
+        requester_user=sp_id,
+        requested_group_name="Bot-Listed",
+        requested_group_type="okta_group",
+        requested_owner_user_ids=[owner_id],
+    ).execute()
+    assert gr is not None
+    gr_id = gr.id
+
+    mcp = create_mcp_server()
+    token = set_mcp_identity(MCPIdentity(user_id=owner_id, scopes=frozenset({MCP_SCOPE_READ_ALL})))
+    try:
+        result = await _call_tool(mcp, "list_group_requests", requester_user_id=sp_id)
+    finally:
+        reset_mcp_identity(token)
+    assert [r["id"] for r in json.loads(result)["results"]] == [gr_id]
