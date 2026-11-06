@@ -85,7 +85,7 @@ class CreateDeletionRequest:
                     "group": group,
                     "app": app,
                     "requester": requester_user,
-                    "service_principal": audit_ref(requester_service_principal),
+                    "requester_service_principal": audit_ref(requester_service_principal),
                 }
             )
         )
