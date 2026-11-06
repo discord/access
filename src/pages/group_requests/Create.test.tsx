@@ -32,6 +32,9 @@ const USER = {
   active_group_ownerships: [],
 } as unknown as OktaUserDetail;
 
+const OWNER_USER = {id: 'owner-user-00000000', email: 'Owner@example.com', display_name: 'Olive Owner'};
+const MEMBER_ROLE = {id: 'member-role-0000000', name: 'Role-Support-Agents'};
+
 const constraintsAskedFor = vi.fn();
 // The owner-side limit the app's tag imposes, as the reader would report it.
 const OWNER_LIMIT_SECONDS = 7776000;
@@ -70,6 +73,8 @@ vi.mock('../../api/apiComponents', () => ({
     isLoading: false,
   }),
   useTags: () => ({data: {items: []}}),
+  useUsers: () => ({data: {items: [OWNER_USER]}}),
+  useRoles: () => ({data: {items: [MEMBER_ROLE]}}),
   // Mirrors the API's search: a case-insensitive substring match on the name.
   useGroups: ({queryParams}: {queryParams: {q: string}}, options?: {enabled?: boolean}) => ({
     data:
@@ -161,5 +166,70 @@ describe('requesting a group whose name is taken', () => {
 
     expect(screen.queryByText(/already exists/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', {name: 'Submit'})).toBeEnabled();
+  });
+});
+
+async function pick(field: string, option: string) {
+  await userEvent.click(screen.getByRole('combobox', {name: field}));
+  await userEvent.click(await screen.findByRole('option', {name: option}));
+}
+
+describe('naming owners and members', () => {
+  it('sends the named owners and members, with a membership end date', async () => {
+    renderDialog();
+
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Support-Tools');
+    await pick('Owners: users', OWNER_USER.display_name);
+    expect(screen.queryByRole('combobox', {name: 'Requested membership length'})).not.toBeInTheDocument();
+    await pick('Members: roles', MEMBER_ROLE.name);
+    expect(screen.getByRole('combobox', {name: 'Requested membership length'})).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(/Why do you need this group/), 'Support needs it');
+    await userEvent.click(screen.getByRole('button', {name: 'Submit'}));
+
+    await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(1));
+    const body = createMutate.mock.calls[0][0].body;
+    expect(body).toMatchObject({
+      requested_owner_user_ids: [OWNER_USER.id],
+      requested_owner_role_ids: [],
+      requested_member_user_ids: [],
+      requested_member_role_ids: [MEMBER_ROLE.id],
+    });
+    expect(body.requested_membership_ending_at).toEqual(expect.any(String));
+  });
+
+  it('sends no owners and no membership end date when none are named', async () => {
+    renderDialog();
+
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Support-Tools');
+    await userEvent.type(screen.getByLabelText(/Why do you need this group/), 'Support needs it');
+    await userEvent.click(screen.getByRole('button', {name: 'Submit'}));
+
+    await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(1));
+    const body = createMutate.mock.calls[0][0].body;
+    expect(body.requested_owner_user_ids).toEqual([]);
+    expect(body.requested_owner_role_ids).toEqual([]);
+    expect(body.requested_membership_ending_at).toBeUndefined();
+  });
+});
+
+describe('naming roles on a role request', () => {
+  it('disables the role pickers for a Role', async () => {
+    renderDialog();
+
+    await userEvent.click(screen.getByRole('combobox', {name: 'Group Type'}));
+    await userEvent.click(await screen.findByRole('option', {name: 'Role'}));
+
+    expect(screen.getByRole('combobox', {name: 'Owners: roles'})).toBeDisabled();
+    expect(screen.getByRole('combobox', {name: 'Members: roles'})).toBeDisabled();
+  });
+
+  it('flags roles already named once the name files the request as a role', async () => {
+    renderDialog();
+
+    await pick('Members: roles', MEMBER_ROLE.name);
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Role-Support');
+
+    expect(screen.getByRole('combobox', {name: 'Members: roles'})).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', {name: 'Submit'})).toBeDisabled();
   });
 });

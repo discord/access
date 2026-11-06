@@ -58,6 +58,23 @@ const PENDING_APP_GROUP_REQUEST = {
   requested_group_tags: [REQUESTED_TAG_ID],
 } as unknown as GroupRequestDetail;
 
+const OWNER_USER = {id: 'owner-user-00000000', email: 'Owner@example.com', display_name: 'Olive Owner'};
+const MEMBER_ROLE = {id: 'member-role-0000000', name: 'Role-Support-Agents'};
+
+// The same request, naming an owner and a member role.
+const NAMING_REQUEST = {
+  ...PENDING_APP_GROUP_REQUEST,
+  requested_owner_user_ids: [OWNER_USER.id],
+  requested_owner_role_ids: [],
+  requested_member_user_ids: [],
+  requested_member_role_ids: [MEMBER_ROLE.id],
+  requested_membership_ending_at: '2026-09-15T00:00:00Z',
+  named_users: [OWNER_USER],
+  named_roles: [MEMBER_ROLE],
+} as unknown as GroupRequestDetail;
+
+let groupRequest: GroupRequestDetail = PENDING_APP_GROUP_REQUEST;
+
 vi.mock('react-router-dom', async () => {
   const React = await import('react');
   return {
@@ -106,11 +123,13 @@ vi.mock('../../api/apiComponents', () => ({
     queryKey: ['tag', variables.pathParams.tagId],
     queryFn: async () => ({id: variables.pathParams.tagId, name: variables.pathParams.tagId}),
   }),
-  useGroupRequestById: () => ({data: PENDING_APP_GROUP_REQUEST, isError: false, isLoading: false}),
+  useGroupRequestById: () => ({data: groupRequest, isError: false, isLoading: false}),
   useGroupRequestByIdPut: () => ({mutate: resolveMutate}),
   useAppById: () => ({data: APP, isLoading: false}),
   useApps: () => ({data: {items: appSearchResults}}),
   useTags: () => ({data: {items: []}}),
+  useUsers: () => ({data: {items: [OWNER_USER]}}),
+  useRoles: () => ({data: {items: [MEMBER_ROLE]}}),
 }));
 
 import ReadGroupRequest from './Read';
@@ -128,6 +147,7 @@ beforeEach(() => {
   resolveMutate.mockClear();
   constraintsAskedFor.mockClear();
   currentUser = APP_OWNER;
+  groupRequest = PENDING_APP_GROUP_REQUEST;
   ownerTimeLimit = null;
   appSearchResults = [APP];
 });
@@ -217,6 +237,59 @@ describe('an ownership duration the tag forbids', () => {
 // offers come from the constraints it asked about, and `ApproveGroupRequest`
 // shortens the granted ownership against the tags the group actually ends up
 // with.
+describe('a request naming owners and members', () => {
+  it('lists them among the requested details', async () => {
+    groupRequest = NAMING_REQUEST;
+    renderPage();
+
+    await screen.findByRole('button', {name: /Approve/});
+    expect(screen.getByText('Owners:')).toBeInTheDocument();
+    expect(screen.getByText('Members:')).toBeInTheDocument();
+    expect(screen.getByText(/Membership Ending:/)).toBeInTheDocument();
+    // Once in the requested details and once in the approval pickers.
+    expect(screen.getAllByText(OWNER_USER.display_name)).toHaveLength(2);
+    expect(screen.getAllByText(MEMBER_ROLE.name)).toHaveLength(2);
+  });
+
+  it('submits them with the approval, along with a membership end date', async () => {
+    groupRequest = NAMING_REQUEST;
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', {name: /Approve/}));
+
+    await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
+    const body = resolveMutate.mock.calls[0][0].body;
+    // Unchanged lists are left for the backend to read from the request.
+    expect(body.resolved_owner_user_ids).toBeUndefined();
+    expect(body.resolved_owner_role_ids).toBeUndefined();
+    expect(body.resolved_member_user_ids).toBeUndefined();
+    expect(body.resolved_member_role_ids).toBeUndefined();
+    expect(body.resolved_membership_ending_at).toEqual(expect.any(String));
+  });
+
+  it('refuses approval while a Role names a role', async () => {
+    groupRequest = {
+      ...NAMING_REQUEST,
+      requested_group_type: 'role_group',
+      requested_group_name: 'Role-Support',
+      requested_app_id: null,
+    } as unknown as GroupRequestDetail;
+    currentUser = {
+      ...APP_OWNER,
+      active_group_memberships: [
+        {active_group: {type: 'app_group', is_owner: true, app: {name: ACCESS_APP_RESERVED_NAME}}},
+      ],
+    } as unknown as OktaUserDetail;
+    renderPage();
+
+    const approve = await screen.findByRole('button', {name: /Approve/});
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', {name: 'Members: roles'})).toHaveAttribute('aria-invalid', 'true'),
+    );
+    expect(approve).toBeDisabled();
+  });
+});
+
 describe('tags an app group inherits from its app', () => {
   it('asks about them alongside the tags the approver picked', async () => {
     renderPage();

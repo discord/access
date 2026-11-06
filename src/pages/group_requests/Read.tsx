@@ -53,6 +53,7 @@ import {
   AppGroupForAppDetail,
   GroupRequestDetail,
   OktaUserGroupMemberDetail,
+  OktaUserSummary,
   ResolveGroupRequestBody,
   TagDetail,
   TagListItem,
@@ -69,6 +70,7 @@ import accessConfig from '../../config/accessConfig';
 import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
 import PluginConfigDisplay from './PluginConfigDisplay';
 import TagsField, {inheritedAppTags} from './TagsField';
+import {PrincipalChips, PrincipalsField, RoleOption, pickByIds, sameIds} from './Principals';
 import ChangeTitle from '../../tab-title';
 import NotFound from '../NotFound';
 
@@ -93,57 +95,68 @@ const APP_GROUP_PREFIX = 'App-';
 const APP_NAME_APP_GROUP_SEPARATOR = '-';
 const ROLE_GROUP_PREFIX = 'Role-';
 
-interface OwnershipEndingFieldProps {
-  ownershipTimeLimit: number | null;
-  constraintsBlocked: boolean;
-  setOwnershipUntil: (v: string | null) => void;
+// The `until` option an end date asks for, measured from when it was asked.
+function untilIdFor(endingAt: string | null | undefined, askedAt: string | null | undefined): string {
+  if (!endingAt) {
+    return 'indefinite';
+  }
+  const delta = Math.round(dayjs(endingAt).diff(dayjs(askedAt), 'second') / 100) * 100;
+  return delta in UNTIL_ID_TO_LABELS ? delta.toString() : 'custom';
 }
 
-function OwnershipEndingField({ownershipTimeLimit, constraintsBlocked, setOwnershipUntil}: OwnershipEndingFieldProps) {
+interface AccessEndingFieldProps {
+  name: 'resolved_ownership_ending_at' | 'resolved_membership_ending_at';
+  label: string;
+  timeLimit: number | null;
+  constraintsBlocked: boolean;
+  setUntil: (v: string | null) => void;
+}
+
+function AccessEndingField({name, label, timeLimit, constraintsBlocked, setUntil}: AccessEndingFieldProps) {
   const {control, setValue} = useFormContext();
 
   const [availableUntilOptions, defaultUntilId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
     // While the tag-mode answer is in flight the limit reads as null. Holding
     // the narrower list rather than re-offering the full one keeps a duration
     // the chosen tags forbid from being briefly clickable.
-    if (ownershipTimeLimit == null) {
+    if (timeLimit == null) {
       return constraintsBlocked
         ? [[], accessConfig.DEFAULT_ACCESS_TIME]
         : [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
     }
-    const [lastId, filtered] = filterUntilLabels(ownershipTimeLimit);
+    const [lastId, filtered] = filterUntilLabels(timeLimit);
     return [filtered, lastId];
-  }, [ownershipTimeLimit, constraintsBlocked]);
+  }, [timeLimit, constraintsBlocked]);
 
-  const selectedUntil = useWatch({control, name: 'resolved_ownership_ending_at'});
+  const selectedUntil = useWatch({control, name});
 
   React.useEffect(() => {
-    if (ownershipTimeLimit == null) return;
+    if (timeLimit == null) return;
     // A limit drops Indefinite and every duration over it from the list. The
     // field is seeded from the request, so it can be holding one of them: a
     // Select whose value has no option renders blank, and submits as it stands
     // for `ApproveGroupRequest` to shorten. Move it to the longest duration
     // still offered instead.
     if (!availableUntilOptions.some((option) => option.id === selectedUntil)) {
-      setOwnershipUntil(defaultUntilId ?? null);
-      setValue('resolved_ownership_ending_at', defaultUntilId ?? '');
+      setUntil(defaultUntilId ?? null);
+      setValue(name, defaultUntilId ?? '');
     }
-  }, [ownershipTimeLimit, selectedUntil, availableUntilOptions, defaultUntilId, setValue, setOwnershipUntil]);
+  }, [name, timeLimit, selectedUntil, availableUntilOptions, defaultUntilId, setValue, setUntil]);
 
   return (
     <FormControl margin="normal" fullWidth>
-      <InputLabel id="ownership-ending-at-label">Ownership Ending At</InputLabel>
+      <InputLabel id={`${name}-label`}>{label}</InputLabel>
       <Controller
-        name="resolved_ownership_ending_at"
+        name={name}
         control={control}
         render={({field}) => (
           <Select
             {...field}
-            labelId="ownership-ending-at-label"
-            label="Ownership Ending At"
+            labelId={`${name}-label`}
+            label={label}
             onChange={(e) => {
               field.onChange(e);
-              setOwnershipUntil(e.target.value as string);
+              setUntil(e.target.value as string);
             }}>
             {availableUntilOptions.map(({id, label}) => (
               <MenuItem key={id} value={id}>
@@ -204,6 +217,8 @@ interface ResolveRequestForm {
   resolved_app?: AppDetail;
   resolved_ownership_ending_at?: string;
   resolved_ownership_ending_at_custom?: string;
+  resolved_membership_ending_at?: string;
+  resolved_membership_ending_at_custom?: string;
   reason?: string;
 }
 
@@ -226,6 +241,11 @@ export default function ReadGroupRequest() {
   const [resolvedAppId, setResolvedAppId] = React.useState<string | null>(null);
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [ownershipUntil, setOwnershipUntil] = React.useState<string | null>(null);
+  const [membershipUntil, setMembershipUntil] = React.useState<string | null>(null);
+  const [ownerUsers, setOwnerUsers] = React.useState<OktaUserSummary[]>([]);
+  const [ownerRoles, setOwnerRoles] = React.useState<RoleOption[]>([]);
+  const [memberUsers, setMemberUsers] = React.useState<OktaUserSummary[]>([]);
+  const [memberRoles, setMemberRoles] = React.useState<RoleOption[]>([]);
 
   const {data, isError, isLoading} = useGroupRequestById({
     pathParams: {groupRequestId: id ?? ''},
@@ -244,10 +264,15 @@ export default function ReadGroupRequest() {
     if (!typesSeeded && data?.requested_group_type) {
       setGroupType(data.requested_group_type);
       if (data.requested_ownership_ending_at) {
-        const delta =
-          Math.round(dayjs(data.requested_ownership_ending_at).diff(dayjs(data.created_at), 'second') / 100) * 100;
-        setOwnershipUntil(delta in UNTIL_ID_TO_LABELS ? delta.toString() : 'custom');
+        setOwnershipUntil(untilIdFor(data.requested_ownership_ending_at, data.created_at));
       }
+      if (data.requested_membership_ending_at) {
+        setMembershipUntil(untilIdFor(data.requested_membership_ending_at, data.created_at));
+      }
+      setOwnerUsers(pickByIds(data.requested_owner_user_ids, data.named_users));
+      setOwnerRoles(pickByIds(data.requested_owner_role_ids, data.named_roles));
+      setMemberUsers(pickByIds(data.requested_member_user_ids, data.named_users));
+      setMemberRoles(pickByIds(data.requested_member_role_ids, data.named_roles));
       setTypesSeeded(true);
     }
   }, [data, typesSeeded]);
@@ -303,6 +328,10 @@ export default function ReadGroupRequest() {
     ...(inheritedTags?.tags ?? []).map((tag) => tag.id),
   ]);
   const ownershipTimeLimit = tagConstraints.timeLimit(true);
+  const membershipTimeLimit = tagConstraints.timeLimit(false);
+
+  const namesMembers = memberUsers.length > 0 || memberRoles.length > 0;
+  const rolesBlocked = groupType === 'role_group' && (ownerRoles.length > 0 || memberRoles.length > 0);
 
   const isAppOwner = React.useMemo<boolean>(() => {
     if (admin || ownRequest || requestedGroupType !== 'app_group' || !requestedAppId) {
@@ -401,22 +430,73 @@ export default function ReadGroupRequest() {
 
     type ApprovedField =
       | {kind: 'text'; label: string; value: string; changed: boolean; from?: string}
-      | {kind: 'tags'; label: string; resolvedTags: TagListItem[]; changed: boolean; requestedTagNames: string[]};
+      | {kind: 'tags'; label: string; resolvedTags: TagListItem[]; changed: boolean; requestedTagNames: string[]}
+      | {
+          kind: 'principals';
+          label: string;
+          users: OktaUserSummary[];
+          roles: RoleOption[];
+          changed: boolean;
+          fromUsers: OktaUserSummary[];
+          fromRoles: RoleOption[];
+        };
+
+    // Compared as durations, since the resolved end date counts from approval.
+    const endingChanged = (requested: string | null, resolved: string | null) => {
+      if (!resolved && !requested) {
+        return false;
+      } else if (!resolved || !requested) {
+        return true;
+      }
+      const requestedDelta = Math.round(dayjs(requested).diff(dayjs(groupRequest.created_at), 'second') / 100) * 100;
+      const resolvedDelta = Math.round(dayjs(resolved).diff(dayjs(groupRequest.resolved_at), 'second') / 100) * 100;
+      return requestedDelta !== resolvedDelta;
+    };
+    const endingLabel = (endingAt: string | null) =>
+      endingAt ? dayjs(endingAt).startOf('second').fromNow() : 'Indefinite';
 
     const resolvedOwnership = groupRequest.resolved_ownership_ending_at || null;
     const requestedOwnership = groupRequest.requested_ownership_ending_at || null;
-    let ownershipChanged: boolean;
-    if (!resolvedOwnership && !requestedOwnership) {
-      ownershipChanged = false;
-    } else if (!resolvedOwnership || !requestedOwnership) {
-      ownershipChanged = true;
-    } else {
-      const requestedDelta =
-        Math.round(dayjs(requestedOwnership).diff(dayjs(groupRequest.created_at), 'second') / 100) * 100;
-      const resolvedDelta =
-        Math.round(dayjs(resolvedOwnership).diff(dayjs(groupRequest.resolved_at), 'second') / 100) * 100;
-      ownershipChanged = requestedDelta !== resolvedDelta;
-    }
+    const ownershipChanged = endingChanged(requestedOwnership, resolvedOwnership);
+    const resolvedMembership = groupRequest.resolved_membership_ending_at || null;
+    const requestedMembership = groupRequest.requested_membership_ending_at || null;
+
+    const principalsField = (
+      label: string,
+      requestedUserIds: string[] | undefined,
+      requestedRoleIds: string[] | undefined,
+      resolvedUserIds: string[] | undefined,
+      resolvedRoleIds: string[] | undefined,
+    ): ApprovedField => ({
+      kind: 'principals',
+      label,
+      users: pickByIds(resolvedUserIds, groupRequest.named_users),
+      roles: pickByIds(resolvedRoleIds, groupRequest.named_roles),
+      changed:
+        !sameIds(requestedUserIds ?? [], resolvedUserIds ?? []) ||
+        !sameIds(requestedRoleIds ?? [], resolvedRoleIds ?? []),
+      fromUsers: pickByIds(requestedUserIds, groupRequest.named_users),
+      fromRoles: pickByIds(requestedRoleIds, groupRequest.named_roles),
+    });
+    const ownersField = principalsField(
+      'Owners',
+      groupRequest.requested_owner_user_ids,
+      groupRequest.requested_owner_role_ids,
+      groupRequest.resolved_owner_user_ids,
+      groupRequest.resolved_owner_role_ids,
+    );
+    const membersField = principalsField(
+      'Members',
+      groupRequest.requested_member_user_ids,
+      groupRequest.requested_member_role_ids,
+      groupRequest.resolved_member_user_ids,
+      groupRequest.resolved_member_role_ids,
+    );
+    const anyMembers =
+      (groupRequest.requested_member_user_ids ?? []).length > 0 ||
+      (groupRequest.requested_member_role_ids ?? []).length > 0 ||
+      (groupRequest.resolved_member_user_ids ?? []).length > 0 ||
+      (groupRequest.resolved_member_role_ids ?? []).length > 0;
 
     const fields: ApprovedField[] = [
       {
@@ -450,14 +530,23 @@ export default function ReadGroupRequest() {
       {
         kind: 'text',
         label: 'Ownership Ending',
-        value: resolvedOwnership
-          ? dayjs(resolvedOwnership).startOf('second').fromNow()
-          : requestedOwnership
-            ? dayjs(requestedOwnership).startOf('second').fromNow()
-            : 'Indefinite',
+        value: endingLabel(resolvedOwnership ?? requestedOwnership),
         changed: ownershipChanged,
-        from: requestedOwnership ? dayjs(requestedOwnership).startOf('second').fromNow() : 'Indefinite',
+        from: endingLabel(requestedOwnership),
       },
+      ownersField,
+      ...(anyMembers
+        ? [
+            membersField,
+            {
+              kind: 'text' as const,
+              label: 'Membership Ending',
+              value: endingLabel(resolvedMembership ?? requestedMembership),
+              changed: endingChanged(requestedMembership, resolvedMembership),
+              from: endingLabel(requestedMembership),
+            },
+          ]
+        : []),
       {
         kind: 'tags',
         label: 'Tags',
@@ -497,14 +586,10 @@ export default function ReadGroupRequest() {
     resolved_group_description: groupRequest.requested_group_description ?? '',
     resolved_group_type: requestedGroupType,
     resolved_app: requestedAppData ?? undefined,
-    resolved_ownership_ending_at: groupRequest.requested_ownership_ending_at
-      ? (() => {
-          const endingAt = groupRequest.requested_ownership_ending_at;
-          const delta = Math.round(dayjs(endingAt).diff(dayjs(groupRequest.created_at), 'second') / 100) * 100;
-          return delta in UNTIL_ID_TO_LABELS ? delta.toString() : 'custom';
-        })()
-      : 'indefinite',
+    resolved_ownership_ending_at: untilIdFor(groupRequest.requested_ownership_ending_at, groupRequest.created_at),
     resolved_ownership_ending_at_custom: groupRequest.requested_ownership_ending_at ?? undefined,
+    resolved_membership_ending_at: untilIdFor(groupRequest.requested_membership_ending_at, groupRequest.created_at),
+    resolved_membership_ending_at_custom: groupRequest.requested_membership_ending_at ?? undefined,
     reason: '',
   };
 
@@ -537,6 +622,22 @@ export default function ReadGroupRequest() {
       resolveRequest.resolved_plugin_data = extractRequestedPluginData(responseForm as any);
     }
 
+    // Send only the lists the approver changed, so the backend checks the requested
+    // ones itself rather than receiving a copy filtered to what is still active.
+    if (canApprove) {
+      const changed = (selected: {id: string}[], requested: string[] | undefined) =>
+        sameIds(
+          selected.map((x) => x.id),
+          requested ?? [],
+        )
+          ? undefined
+          : selected.map((x) => x.id);
+      resolveRequest.resolved_owner_user_ids = changed(ownerUsers, groupRequest.requested_owner_user_ids);
+      resolveRequest.resolved_owner_role_ids = changed(ownerRoles, groupRequest.requested_owner_role_ids);
+      resolveRequest.resolved_member_user_ids = changed(memberUsers, groupRequest.requested_member_user_ids);
+      resolveRequest.resolved_member_role_ids = changed(memberRoles, groupRequest.requested_member_role_ids);
+    }
+
     switch (responseForm.resolved_ownership_ending_at) {
       case 'indefinite':
       case undefined:
@@ -555,6 +656,26 @@ export default function ReadGroupRequest() {
         break;
     }
 
+    if (namesMembers) {
+      switch (responseForm.resolved_membership_ending_at) {
+        case 'indefinite':
+        case undefined:
+          break;
+        case 'custom':
+          if (responseForm.resolved_membership_ending_at_custom) {
+            resolveRequest.resolved_membership_ending_at = dayjs(
+              responseForm.resolved_membership_ending_at_custom,
+            ).toISOString();
+          }
+          break;
+        default:
+          resolveRequest.resolved_membership_ending_at = dayjs()
+            .add(parseInt(responseForm.resolved_membership_ending_at, 10), 'seconds')
+            .toISOString();
+          break;
+      }
+    }
+
     putResolveRequest.mutate({
       body: resolveRequest,
       pathParams: {groupRequestId: groupRequest.id},
@@ -562,6 +683,14 @@ export default function ReadGroupRequest() {
   };
 
   const requesterName = displayUserName(groupRequest.requester);
+  const requestedOwners = {
+    users: pickByIds(groupRequest.requested_owner_user_ids, groupRequest.named_users),
+    roles: pickByIds(groupRequest.requested_owner_role_ids, groupRequest.named_roles),
+  };
+  const requestedMembers = {
+    users: pickByIds(groupRequest.requested_member_user_ids, groupRequest.named_users),
+    roles: pickByIds(groupRequest.requested_member_role_ids, groupRequest.named_roles),
+  };
   const requestedGroupName = groupRequest.requested_group_name ?? 'Unknown Group';
   const titleGroupName =
     groupRequest.status === 'APPROVED' && groupRequest.resolved_group_name
@@ -763,6 +892,39 @@ export default function ReadGroupRequest() {
                             <b>Ownership Ending:</b>{' '}
                             {dayjs(groupRequest.requested_ownership_ending_at).startOf('second').fromNow()}
                           </Typography>
+                        </Grid>
+                      )}
+                      {requestedMembers.users.length + requestedMembers.roles.length > 0 &&
+                        groupRequest.requested_membership_ending_at && (
+                          <Grid
+                            size={{
+                              xs: 12,
+                              sm: 6,
+                            }}>
+                            <Typography variant="body2">
+                              <b>Membership Ending:</b>{' '}
+                              {dayjs(groupRequest.requested_membership_ending_at).startOf('second').fromNow()}
+                            </Typography>
+                          </Grid>
+                        )}
+                      {requestedOwners.users.length + requestedOwners.roles.length > 0 && (
+                        <Grid size={12}>
+                          <Stack direction="row" spacing={1} sx={{flexWrap: 'wrap', alignItems: 'center'}}>
+                            <Typography variant="body2">
+                              <b>Owners:</b>
+                            </Typography>
+                            <PrincipalChips users={requestedOwners.users} roles={requestedOwners.roles} />
+                          </Stack>
+                        </Grid>
+                      )}
+                      {requestedMembers.users.length + requestedMembers.roles.length > 0 && (
+                        <Grid size={12}>
+                          <Stack direction="row" spacing={1} sx={{flexWrap: 'wrap', alignItems: 'center'}}>
+                            <Typography variant="body2">
+                              <b>Members:</b>
+                            </Typography>
+                            <PrincipalChips users={requestedMembers.users} roles={requestedMembers.roles} />
+                          </Stack>
                         </Grid>
                       )}
                       {requestedTagNames.length > 0 && (
@@ -1008,10 +1170,12 @@ export default function ReadGroupRequest() {
                                     </Grid>
                                   )}
                                   <Grid size={6}>
-                                    <OwnershipEndingField
-                                      ownershipTimeLimit={ownershipTimeLimit}
+                                    <AccessEndingField
+                                      name="resolved_ownership_ending_at"
+                                      label="Ownership Ending At"
+                                      timeLimit={ownershipTimeLimit}
                                       constraintsBlocked={tagConstraints.blocked}
-                                      setOwnershipUntil={setOwnershipUntil}
+                                      setUntil={setOwnershipUntil}
                                     />
                                   </Grid>
                                   <Grid size={6}>
@@ -1042,6 +1206,76 @@ export default function ReadGroupRequest() {
                                     </Grid>
                                   ) : null}
                                 </Grid>
+                                <PrincipalsField
+                                  label="Owners"
+                                  users={ownerUsers}
+                                  roles={ownerRoles}
+                                  onUsersChange={setOwnerUsers}
+                                  onRolesChange={setOwnerRoles}
+                                  rolesDisallowed={groupType === 'role_group'}
+                                  helperText={
+                                    ownerUsers.length === 0 && ownerRoles.length === 0
+                                      ? 'No owners will be added to the group.'
+                                      : undefined
+                                  }
+                                />
+                                <PrincipalsField
+                                  label="Members"
+                                  users={memberUsers}
+                                  roles={memberRoles}
+                                  onUsersChange={setMemberUsers}
+                                  onRolesChange={setMemberRoles}
+                                  rolesDisallowed={groupType === 'role_group'}
+                                />
+                                {namesMembers && (
+                                  <Grid
+                                    container
+                                    columnSpacing={2}
+                                    rowSpacing={0}
+                                    sx={{
+                                      alignItems: 'flex-start',
+                                    }}>
+                                    {membershipTimeLimit != null && (
+                                      <Grid size={12}>
+                                        <Typography
+                                          variant="subtitle2"
+                                          sx={{
+                                            color: 'text.accent',
+                                            pt: 1,
+                                          }}>
+                                          {'Membership is limited to ' +
+                                            timeLimitLabel(membershipTimeLimit) +
+                                            ' by a tag constraint.'}
+                                        </Typography>
+                                      </Grid>
+                                    )}
+                                    <Grid size={6}>
+                                      <AccessEndingField
+                                        name="resolved_membership_ending_at"
+                                        label="Membership Ending At"
+                                        timeLimit={membershipTimeLimit}
+                                        constraintsBlocked={tagConstraints.blocked}
+                                        setUntil={setMembershipUntil}
+                                      />
+                                    </Grid>
+                                    <Grid size={6}>
+                                      {membershipUntil == 'custom' ? (
+                                        <FormControl margin="normal" fullWidth>
+                                          <DatePickerElement
+                                            label="Custom Membership End Date"
+                                            name="resolved_membership_ending_at_custom"
+                                            shouldDisableDate={(date: Dayjs) => date.isSameOrBefore(dayjs(), 'day')}
+                                            maxDate={
+                                              membershipTimeLimit
+                                                ? dayjs().add(membershipTimeLimit, 'second')
+                                                : undefined
+                                            }
+                                          />
+                                        </FormControl>
+                                      ) : null}
+                                    </Grid>
+                                  </Grid>
+                                )}
                                 {requestPluginId && (
                                   <AppGroupLifecyclePluginConfigurationForm
                                     entityType="group"
@@ -1083,7 +1317,7 @@ export default function ReadGroupRequest() {
                                   type="submit"
                                   startIcon={<ApprovedIcon />}
                                   sx={{mx: 2}}
-                                  disabled={submitting || tagConstraints.blocked}
+                                  disabled={submitting || tagConstraints.blocked || rolesBlocked}
                                   onClick={() => setApproved(true)}>
                                   Approve
                                 </Button>
@@ -1183,6 +1417,28 @@ export default function ReadGroupRequest() {
                                         field.resolvedTags.map((tag) => (
                                           <Chip key={tag.id} label={tag.name} size="small" />
                                         ))
+                                      ) : (
+                                        <Typography variant="body2">None</Typography>
+                                      )}
+                                    </Stack>
+                                  </Grid>
+                                );
+                              }
+                              if (field.kind === 'principals') {
+                                return (
+                                  <Grid key={field.label} size={12}>
+                                    <Stack direction="row" spacing={1} sx={{flexWrap: 'wrap', alignItems: 'center'}}>
+                                      <Typography variant="body2">
+                                        <b>{field.label}:</b>
+                                      </Typography>
+                                      {field.changed && (
+                                        <>
+                                          <PrincipalChips users={field.fromUsers} roles={field.fromRoles} struck />
+                                          <Typography variant="body2">{'→'}</Typography>
+                                        </>
+                                      )}
+                                      {field.users.length + field.roles.length > 0 ? (
+                                        <PrincipalChips users={field.users} roles={field.roles} />
                                       ) : (
                                         <Typography variant="body2">None</Typography>
                                       )}
