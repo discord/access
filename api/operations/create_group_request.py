@@ -15,6 +15,7 @@ from api.models import (
     GroupRequest,
     OktaUser,
     RoleGroup,
+    ServicePrincipal,
     Tag,
 )
 from api.models.app_group import get_access_owners, get_app_managers
@@ -22,6 +23,7 @@ from api.models.okta_group import is_group_name_taken
 from api.models.tag import coalesce_ended_at
 from api.operations._active_ids import require_active_role_ids, require_active_user_ids
 from api.operations._fan_out import defer_notification
+from api.operations._service_principals import audit_ref
 from api.operations.approve_group_request import ApproveGroupRequest
 from api.operations.reject_group_request import RejectGroupRequest
 from api.plugins import ConditionalAccessHook, NotificationHook, evaluate_conditional_access
@@ -31,10 +33,22 @@ logger = logging.getLogger(__name__)
 
 
 class CreateGroupRequest:
+    """Create a group request, then auto-approve, reject, or route it to its approvers.
+
+    The requester is a user or a service principal. A user's request that names
+    no owners makes the user the owner; a service principal's request must name
+    at least one owner, since a service principal is never made an owner.
+
+    Raises:
+        InvalidRequestError: A named owner or member is unknown, roles are named on a
+            role request, or a service principal's request names no owners.
+        ConflictError: A group with the requested name already exists.
+    """
+
     def __init__(
         self,
         *,
-        requester_user: OktaUser | str,
+        requester_user: OktaUser | ServicePrincipal | str,
         requested_group_name: str,
         requested_group_description: str = "",
         requested_group_type: str,
@@ -51,7 +65,7 @@ class CreateGroupRequest:
     ):
         self.id = self.__generate_id()
 
-        self.requester_user_id = requester_user if isinstance(requester_user, str) else requester_user.id
+        self.requester_id = requester_user if isinstance(requester_user, str) else requester_user.id
 
         self.requested_group_name = requested_group_name
         self.requested_group_description = requested_group_description
@@ -68,8 +82,14 @@ class CreateGroupRequest:
         self.requested_membership_ending_at = requested_membership_ending_at
 
     async def execute(self) -> GroupRequest | None:
-        requester = await db.session.get(OktaUser, self.requester_user_id)
+        requester: OktaUser | ServicePrincipal | None
+        if ServicePrincipal.is_service_principal_id(self.requester_id):
+            requester = await db.session.get(ServicePrincipal, self.requester_id)
+        else:
+            requester = await db.session.get(OktaUser, self.requester_id)
         assert requester is not None
+        requester_user = requester if isinstance(requester, OktaUser) else None
+        requester_service_principal = requester if isinstance(requester, ServicePrincipal) else None
 
         # Don't allow creating groups with -Owners suffix (reserved for app owner groups)
         if self.requested_group_name.endswith(f"-{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"):
@@ -135,9 +155,12 @@ class CreateGroupRequest:
         member_role_ids = await require_active_role_ids(self.requested_member_role_ids, "member")
         if self.requested_group_type == "role_group" and (owner_role_ids or member_role_ids):
             raise InvalidRequestError("Roles cannot be added to other Roles")
-        # A request that names no owners makes its requester the owner.
+        # A request that names no owners makes its requester the owner. A service
+        # principal is never an owner, so its request must name one.
         if not owner_user_ids and not owner_role_ids:
-            owner_user_ids = [requester.id]
+            if requester_user is None:
+                raise InvalidRequestError("A service principal's group request must name at least one owner")
+            owner_user_ids = [requester_user.id]
 
         # Apply tag ownership time constraints to requested_ownership_ending_at
         # Ensures that if tags have ownership time limits, they are enforced
@@ -157,7 +180,8 @@ class CreateGroupRequest:
         group_request = GroupRequest(
             id=self.id,
             status=AccessRequestStatus.PENDING,
-            requester_user_id=requester.id,
+            requester_user_id=requester_user.id if requester_user else None,
+            requester_service_principal_id=requester_service_principal.id if requester_service_principal else None,
             requested_group_name=self.requested_group_name,
             requested_group_description=self.requested_group_description,
             requested_group_type=self.requested_group_type,
@@ -177,15 +201,15 @@ class CreateGroupRequest:
         await db.session.commit()
 
         # If the requested group is an app group and the requester is the app owner, approve the request
-        if self.requested_group_type == "app_group" and app is not None:
+        if self.requested_group_type == "app_group" and app is not None and requester_user is not None:
             # Get app owners by checking active owner app groups
             app_owner_user_ids = {u.id for u in await get_app_managers(app.id)}
 
-            if requester.id in app_owner_user_ids:
+            if requester_user.id in app_owner_user_ids:
                 try:
                     await ApproveGroupRequest(
                         group_request=group_request,
-                        approver_user=requester,
+                        approver_user=requester_user,
                         approval_reason="Requester owns parent app and can create app groups",
                         notify=False,
                         bypass_self_approval=True,
@@ -228,9 +252,10 @@ class CreateGroupRequest:
                     "user_agent": _ctx.user_agent if _ctx else None,
                     "ip": _ctx.ip if _ctx else None,
                     "current_user_id": requester.id,
-                    "current_user_email": requester.email,
+                    "current_user_email": requester_user.email if requester_user else None,
                     "group_request": group_request,
-                    "requester": requester,
+                    "requester": requester_user,
+                    "service_principal": audit_ref(requester_service_principal),
                 }
             )
         )

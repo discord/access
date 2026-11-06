@@ -11,9 +11,9 @@ from sqlalchemy import String, and_, cast, false, or_, select
 from sqlalchemy.orm import aliased, joinedload
 from starlette.requests import Request
 
-from api.auth.dependencies import CurrentUserId
+from api.auth.dependencies import CurrentRequester, CurrentUserId
 from api.database import DbSession
-from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, RoleGroup, Tag
+from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, RoleGroup, ServicePrincipal, Tag
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
 from api.pagination import Page, validated
 from api.plugins.app_group_lifecycle import (
@@ -21,6 +21,7 @@ from api.plugins.app_group_lifecycle import (
     raise_http_for_plugin_filtering_error,
     validate_group_plugin_config_or_raise,
 )
+from api.routers._eager import service_principal_options
 from api.routers._fan_out import defer_fan_out
 from api.schemas import (
     CreateGroupRequestBody,
@@ -44,6 +45,7 @@ def _load_options() -> tuple:
     # eager-loading them just adds dead JOINs to every row of every page.
     return (
         joinedload(GroupRequest.requester),
+        joinedload(GroupRequest.requester_service_principal).options(*service_principal_options()),
         joinedload(GroupRequest.resolver),
     )
 
@@ -118,13 +120,25 @@ async def list_group_requests(
 
     if q_args.requester_user_id:
         if q_args.requester_user_id == "@me":
-            stmt = stmt.where(GroupRequest.requester_user_id == current_user_id)
+            stmt = stmt.where(
+                or_(
+                    GroupRequest.requester_user_id == current_user_id,
+                    GroupRequest.requester_service_principal_id == current_user_id,
+                )
+            )
         else:
             requester_alias = aliased(OktaUser)
-            stmt = stmt.join(GroupRequest.requester.of_type(requester_alias)).where(
-                or_(
-                    GroupRequest.requester_user_id == q_args.requester_user_id,
-                    requester_alias.email.ilike(q_args.requester_user_id),
+            requester_sp_alias = aliased(ServicePrincipal)
+            stmt = (
+                stmt.outerjoin(GroupRequest.requester.of_type(requester_alias))
+                .outerjoin(GroupRequest.requester_service_principal.of_type(requester_sp_alias))
+                .where(
+                    or_(
+                        GroupRequest.requester_user_id == q_args.requester_user_id,
+                        requester_alias.email.ilike(q_args.requester_user_id),
+                        GroupRequest.requester_service_principal_id == q_args.requester_user_id,
+                        requester_sp_alias.display_name.ilike(q_args.requester_user_id),
+                    )
                 )
             )
 
@@ -160,7 +174,10 @@ async def list_group_requests(
                     )
                 else:
                     stmt = stmt.where(false())
-            stmt = stmt.where(GroupRequest.requester_user_id != assignee_user.id)
+            # A NULL user requester (a service principal's request) is never the assignee's own.
+            stmt = stmt.where(
+                or_(GroupRequest.requester_user_id.is_(None), GroupRequest.requester_user_id != assignee_user.id)
+            )
         else:
             stmt = stmt.where(false())
 
@@ -181,9 +198,11 @@ async def list_group_requests(
     if q_args.q:
         like = f"%{q_args.q}%"
         q_requester_alias = aliased(OktaUser)
+        q_requester_sp_alias = aliased(ServicePrincipal)
         q_resolver_alias = aliased(OktaUser)
         stmt = (
-            stmt.join(GroupRequest.requester.of_type(q_requester_alias))
+            stmt.outerjoin(GroupRequest.requester.of_type(q_requester_alias))
+            .outerjoin(GroupRequest.requester_service_principal.of_type(q_requester_sp_alias))
             .outerjoin(GroupRequest.resolver.of_type(q_resolver_alias))
             .where(
                 or_(
@@ -194,6 +213,7 @@ async def list_group_requests(
                     q_requester_alias.last_name.ilike(like),
                     q_requester_alias.display_name.ilike(like),
                     (q_requester_alias.first_name + " " + q_requester_alias.last_name).ilike(like),
+                    q_requester_sp_alias.display_name.ilike(like),
                     GroupRequest.requested_group_name.ilike(like),
                     GroupRequest.requested_group_description.ilike(like),
                     GroupRequest.requested_group_type.ilike(like),
@@ -228,15 +248,9 @@ async def get_group_request(group_request_id: str, db: DbSession, current_user_i
 async def post_group_request(
     body: CreateGroupRequestBody,
     db: DbSession,
-    current_user_id: CurrentUserId,
+    requester: CurrentRequester,
 ) -> GroupRequestDetail:
-    # Soft-deleted requesters cannot create new requests; Flask returned 403
-    # here, not 404.
-    requester = (
-        await db.scalars(select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id))
-    ).first()
-    if requester is None:
-        raise HTTPException(403, "Current user is not allowed to perform this action")
+    current_user_id = requester.id
 
     requested_app_id = body.requested_app_id if isinstance(body, _AppGroupRequestBody) else None
 
@@ -266,13 +280,18 @@ async def post_group_request(
         if len(tags) != len(body.requested_group_tags):
             raise HTTPException(400, "One or more tags not found")
 
-    # Auto-cancel any prior PENDING request from the same user for the same
+    # Auto-cancel any prior PENDING request from the same requester for the same
     # group name (and same app, for app-group requests). Without this a user
-    # clicking "Request" twice produces multiple PENDING rows.
+    # clicking "Request" twice, or a service retrying, produces multiple PENDING rows.
+    requester_column = (
+        GroupRequest.requester_service_principal_id
+        if isinstance(requester, ServicePrincipal)
+        else GroupRequest.requester_user_id
+    )
     existing_stmt = (
         select(GroupRequest)
         .where(GroupRequest.requested_group_name == body.requested_group_name)
-        .where(GroupRequest.requester_user_id == current_user_id)
+        .where(requester_column == current_user_id)
         .where(GroupRequest.status == AccessRequestStatus.PENDING)
         .where(GroupRequest.resolved_at.is_(None))
     )
@@ -342,7 +361,8 @@ async def put_group_request(
 
     # Authorization: requester can always reject their own; otherwise admin
     # or app-owner-of-the-target-app.
-    if gr.requester_user_id == current_user_id:
+    is_requester = current_user_id in (gr.requester_user_id, gr.requester_service_principal_id)
+    if is_requester:
         if body.approved:
             raise HTTPException(403, "Users cannot approve their own requests")
     elif not await is_access_admin(db, current_user_id):
@@ -409,7 +429,7 @@ async def put_group_request(
             group_request=gr,
             current_user_id=current_user_id,
             rejection_reason=resolution_reason,
-            notify_requester=gr.requester_user_id != current_user_id,
+            notify_requester=not is_requester,
         ).execute()
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).

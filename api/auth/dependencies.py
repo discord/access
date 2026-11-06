@@ -139,8 +139,49 @@ async def get_current_user(
     return user
 
 
+async def get_current_requester(
+    db: DbSession,
+    current_user_id: Annotated[str, Depends(get_current_user_id)],
+) -> OktaUser | ServicePrincipal:
+    """Resolve the caller to the active user or service principal it authenticated as.
+
+    Raises:
+        HTTPException: 403 when the caller is neither an active user nor an
+            active service principal (for example, an unregistered service token).
+    """
+    requester: OktaUser | ServicePrincipal | None
+    if ServicePrincipal.is_service_principal_id(current_user_id):
+        requester = (
+            await db.scalars(
+                select(ServicePrincipal)
+                .where(ServicePrincipal.id == current_user_id)
+                .where(ServicePrincipal.deleted_at.is_(None))
+            )
+        ).first()
+    else:
+        requester = (
+            await db.scalars(
+                select(OktaUser).where(OktaUser.id == current_user_id).where(OktaUser.deleted_at.is_(None))
+            )
+        ).first()
+    if requester is None:
+        raise HTTPException(status_code=403, detail="Current user is not allowed to perform this action")
+    return requester
+
+
+async def reject_service_principal(current_user_id: Annotated[str, Depends(get_current_user_id)]) -> None:
+    """Refuse a route to service principals, which can't own or join anything.
+
+    Raises:
+        HTTPException: 403 when the caller is a service principal.
+    """
+    if ServicePrincipal.is_service_principal_id(current_user_id):
+        raise HTTPException(status_code=403, detail="Service principals cannot perform this action")
+
+
 CurrentUserId = Annotated[str, Depends(get_current_user_id)]
 CurrentUser = Annotated[OktaUser, Depends(get_current_user)]
+CurrentRequester = Annotated[OktaUser | ServicePrincipal, Depends(get_current_requester)]
 
 
 # Defense-in-depth: every request goes through `require_authenticated`

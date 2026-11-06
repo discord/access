@@ -40,6 +40,7 @@ from api.schemas.core_schemas import (
     RoleRequestRequesterRoleRef,
 )
 from api.schemas.datetimes import FlexibleDatetime
+from api.schemas.service_principals import ServicePrincipalDetail
 
 # Anchored at both ends so a name like "Bad Name!" can't slip past on the
 # strength of an unanchored prefix match.
@@ -351,7 +352,9 @@ class GroupRequestDetail(BaseModel):
     resolved_plugin_data: dict[str, Any] = Field(default_factory=dict)
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
+    # Exactly one of `requester` and `requester_service_principal` is set.
     requester: OktaUserSummary | None = None
+    requester_service_principal: ServicePrincipalDetail | None = None
     resolver: OktaUserSummary | None = None
     # The active users and roles named by the `*_user_ids` / `*_role_ids` fields,
     # so a client can render them without a lookup per id.

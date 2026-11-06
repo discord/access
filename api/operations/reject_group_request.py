@@ -5,10 +5,11 @@ from sqlalchemy import func, or_, select
 from api.context import get_request_context
 from api.exceptions import ConflictError
 from api.extensions import db
-from api.models import AccessRequestStatus, AppGroup, GroupRequest, OktaUser, OktaUserGroupMember
+from api.models import AccessRequestStatus, AppGroup, GroupRequest, OktaUser, OktaUserGroupMember, ServicePrincipal
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.app_group import get_access_owners
 from api.operations._fan_out import defer_notification
+from api.operations._service_principals import audit_ref
 from api.plugins import NotificationHook
 from api.schemas import AuditLogSchema, EventType
 
@@ -21,7 +22,7 @@ class RejectGroupRequest:
         rejection_reason: str = "",
         notify: bool = True,
         notify_requester: bool = True,
-        current_user_id: str | OktaUser | None = None,
+        current_user_id: str | OktaUser | ServicePrincipal | None = None,
     ):
         self.group_request_id = group_request if isinstance(group_request, str) else group_request.id
         self.current_user_id = (
@@ -45,8 +46,13 @@ class RejectGroupRequest:
         ).first()
         assert group_request is not None
 
+        # A service principal may only withdraw its own request.
         if self.current_user_id is None:
             rejecter_id = None
+        elif ServicePrincipal.is_service_principal_id(self.current_user_id):
+            if self.current_user_id != group_request.requester_service_principal_id:
+                return group_request
+            rejecter_id = self.current_user_id
         else:
             user = (
                 await db.session.scalars(
@@ -65,7 +71,10 @@ class RejectGroupRequest:
         )
 
         if rejecter_id is not None:
-            is_self_rejection = group_request.requester_user_id == rejecter_id
+            is_self_rejection = rejecter_id in (
+                group_request.requester_user_id,
+                group_request.requester_service_principal_id,
+            )
 
             if not is_self_rejection:
                 access_owner_ids = {u.id for u in await get_access_owners()}
@@ -100,6 +109,11 @@ class RejectGroupRequest:
 
         # Audit logging
         email = getattr(await db.session.get(OktaUser, rejecter_id), "email", None) if rejecter_id else None
+        requester_service_principal = (
+            await db.session.get(ServicePrincipal, group_request.requester_service_principal_id)
+            if group_request.requester_service_principal_id is not None
+            else None
+        )
         _ctx = get_request_context()
         logging.getLogger("access.audit").info(
             AuditLogSchema().dumps(
@@ -110,19 +124,30 @@ class RejectGroupRequest:
                     "current_user_id": rejecter_id,
                     "current_user_email": email,
                     "group_request": group_request,
-                    "requester": await db.session.get(OktaUser, group_request.requester_user_id),
+                    "requester": (
+                        await db.session.get(OktaUser, group_request.requester_user_id)
+                        if group_request.requester_user_id is not None
+                        else None
+                    ),
+                    "service_principal": audit_ref(requester_service_principal),
                 }
             )
         )
 
         group_request.status = AccessRequestStatus.REJECTED
         group_request.resolved_at = func.now()
-        group_request.resolver_user_id = rejecter_id
+        # `resolver_user_id` names a user; a service principal withdrawing its own
+        # request leaves it empty, and the audit log records who acted.
+        group_request.resolver_user_id = (
+            rejecter_id if not ServicePrincipal.is_service_principal_id(rejecter_id) else None
+        )
         group_request.resolution_reason = self.rejection_reason
 
         await db.session.commit()
 
-        if self.notify:
+        # A service principal learns the outcome by polling the request, so only a
+        # user requester is notified.
+        if self.notify and group_request.requester_user_id is not None:
             requester = await db.session.get(OktaUser, group_request.requester_user_id)
 
             approvers = await get_all_possible_request_approvers(group_request)
