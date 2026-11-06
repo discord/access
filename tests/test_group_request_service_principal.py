@@ -170,7 +170,7 @@ async def test_conditional_access_decides_service_principal_request(
     app_obj: App = await AppFactory.create_async()
     evaluate = mocker.patch(
         "api.operations.create_group_request.evaluate_conditional_access",
-        return_value=[ConditionalAccessResponse(approved=approved, reason="rule")],
+        return_value=[ConditionalAccessResponse(approved=approved, reason="rule", allow_named_grants=True)],
     )
 
     gr = await CreateGroupRequest(

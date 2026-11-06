@@ -170,11 +170,16 @@ class CreateGroupRequest:
             initial_ended_at=self.requested_ownership_ending_at,
             group_is_managed=True,
         )
-        coalesced_membership_ending_at = coalesce_ended_at(
-            constraint_key=Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY,
-            tags=tags,
-            initial_ended_at=self.requested_membership_ending_at,
-            group_is_managed=True,
+        # A request without members grants no membership, so it has no membership window.
+        coalesced_membership_ending_at = (
+            coalesce_ended_at(
+                constraint_key=Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY,
+                tags=tags,
+                initial_ended_at=self.requested_membership_ending_at,
+                group_is_managed=True,
+            )
+            if member_user_ids or member_role_ids
+            else None
         )
 
         group_request = GroupRequest(
@@ -267,7 +272,25 @@ class CreateGroupRequest:
             requester=requester,
         )
 
+        # A plugin approval grants whatever the request names. Rules written before
+        # requests could name grants approved only "the requester owns the new
+        # group", so an approval of a request naming anything more must opt in.
+        names_more_than_requester = not (
+            owner_user_ids == [requester.id] and not owner_role_ids and not member_user_ids and not member_role_ids
+        )
         for response in conditional_access_responses:
+            if (
+                response is not None
+                and response.approved
+                and names_more_than_requester
+                and not response.allow_named_grants
+            ):
+                logger.warning(
+                    "Conditional access approval of group request %s ignored: it names grants beyond its "
+                    "requester and the response did not set allow_named_grants",
+                    group_request.id,
+                )
+                continue
             if response is not None:
                 if response.approved:
                     try:

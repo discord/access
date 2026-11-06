@@ -1,7 +1,8 @@
 """Service principals router.
 
-Reads are open to every authenticated user; registering, changing, and
-deleting a service principal is limited to Access admins.
+Reads are open to every authenticated user, except each principal's `subject`,
+which only Access admins see; registering, changing, and deleting a service
+principal is limited to Access admins.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import func, or_, select
 
 from api.auth.dependencies import CurrentUserId
-from api.auth.permissions import require_access_admin
+from api.auth.permissions import is_access_admin, require_access_admin
 from api.database import DbSession
 from api.models import ServicePrincipal
 from api.operations import CreateServicePrincipal, DeleteServicePrincipal, ModifyServicePrincipal
@@ -45,6 +46,13 @@ async def _load(db: DbSession, service_principal_id: str) -> ServicePrincipal | 
     ).first()
 
 
+def _detail(service_principal: ServicePrincipal, show_subject: bool) -> ServicePrincipalDetail:
+    detail = ServicePrincipalDetail.model_validate(service_principal, from_attributes=True)
+    if not show_subject:
+        detail.subject = None
+    return detail
+
+
 @router.get("", name="service_principals")
 async def list_service_principals(
     db: DbSession,
@@ -57,16 +65,18 @@ async def list_service_principals(
         .where(ServicePrincipal.deleted_at.is_(None))
         .order_by(func.lower(ServicePrincipal.display_name))
     )
+    show_subject = await is_access_admin(db, current_user_id)
     if q_args.q:
         like = f"%{q_args.q}%"
-        stmt = stmt.where(
-            or_(
-                ServicePrincipal.id.like(f"{q_args.q}%"),
-                ServicePrincipal.display_name.ilike(like),
-                ServicePrincipal.subject.ilike(like),
-            )
-        )
-    return await apaginate(db, stmt, transformer=validated(ServicePrincipalDetail))
+        clauses = [ServicePrincipal.id.like(f"{q_args.q}%"), ServicePrincipal.display_name.ilike(like)]
+        if show_subject:
+            clauses.append(ServicePrincipal.subject.ilike(like))
+        stmt = stmt.where(or_(*clauses))
+    page = await apaginate(db, stmt, transformer=validated(ServicePrincipalDetail))
+    if not show_subject:
+        for item in page.items:
+            item.subject = None
+    return page
 
 
 @router.get("/{service_principal_id}", name="service_principal_by_id")
@@ -76,7 +86,7 @@ async def get_service_principal(
     service_principal = await _load(db, service_principal_id)
     if service_principal is None:
         raise HTTPException(404, "Not Found")
-    return ServicePrincipalDetail.model_validate(service_principal, from_attributes=True)
+    return _detail(service_principal, await is_access_admin(db, current_user_id))
 
 
 @router.post("", name="service_principals_create", status_code=201)
@@ -98,7 +108,7 @@ async def post_service_principal(
     db.expire_all()
     refreshed = await _load(db, created_id)
     assert refreshed is not None
-    return ServicePrincipalDetail.model_validate(refreshed, from_attributes=True)
+    return _detail(refreshed, show_subject=True)
 
 
 @router.put("/{service_principal_id}", name="service_principal_by_id_put")
@@ -122,7 +132,7 @@ async def put_service_principal(
     db.expire_all()
     refreshed = await _load(db, service_principal_id)
     assert refreshed is not None
-    return ServicePrincipalDetail.model_validate(refreshed, from_attributes=True)
+    return _detail(refreshed, show_subject=True)
 
 
 @router.delete("/{service_principal_id}", name="service_principal_by_id_delete")

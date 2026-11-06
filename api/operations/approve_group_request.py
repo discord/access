@@ -25,10 +25,15 @@ from api.models.access_request import get_all_possible_request_approvers
 from api.models.app_group import get_access_owners
 from api.models.okta_group import is_group_name_taken
 from api.models.tag import effective_ended_at
-from api.operations._active_ids import require_active_role_ids, require_active_user_ids
+from api.operations._active_ids import granted_access, require_active_role_ids, require_active_user_ids
+from api.operations._ending_at import USE_REQUESTED, EndingAtChoice, choose_ending_at
 from api.operations._fan_out import defer_notification
 from api.operations._service_principals import audit_ref
-from api.operations.constraints.check_group_request_self_add import CheckGroupRequestSelfAdd
+from api.operations.constraints.check_group_request_self_add import (
+    CheckGroupRequestSelfAdd,
+    missing_reason_message,
+    new_group_tags,
+)
 from api.operations.create_group import CreateGroup
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_role_groups import ModifyRoleGroups
@@ -48,6 +53,9 @@ class ApproveGroupRequest:
         approval_reason: Recorded as the resolution reason.
         ending_at: Caps the owner grants; it never extends them.
         membership_ending_at: Caps the member grants; it never extends them.
+        approver_ownership_ending_at: The approver's end date for the owner grants, replacing the
+            requested one (None for indefinite), or `USE_REQUESTED` to keep it.
+        approver_membership_ending_at: The same for the member grants.
         notify: Whether to send notifications.
         bypass_self_approval: Let the requester approve their own request (app-owner auto-approval).
             Grants the group's tags forbid the approver from adding to themself are skipped
@@ -66,6 +74,8 @@ class ApproveGroupRequest:
         approval_reason: str = "",
         ending_at: datetime | None = None,
         membership_ending_at: datetime | None = None,
+        approver_ownership_ending_at: EndingAtChoice = USE_REQUESTED,
+        approver_membership_ending_at: EndingAtChoice = USE_REQUESTED,
         notify: bool = True,
         bypass_self_approval: bool = False,
         owner_user_ids: list[str] | None = None,
@@ -81,6 +91,8 @@ class ApproveGroupRequest:
         self.approval_reason = approval_reason
         self.ending_at = ending_at
         self.membership_ending_at = membership_ending_at
+        self.approver_ownership_ending_at = approver_ownership_ending_at
+        self.approver_membership_ending_at = approver_membership_ending_at
         self.notify = notify
         self.bypass_self_approval = bypass_self_approval
         self.owner_user_ids = owner_user_ids
@@ -179,24 +191,21 @@ class ApproveGroupRequest:
             else group_request.requested_plugin_data
         )
 
-        # Same resolved-or-requested fallback as the fields above, hoisted here so
-        # it can be validated before anything is created.
-        resolved_ownership_ending_at = (
-            group_request.resolved_ownership_ending_at
-            if group_request.resolved_ownership_ending_at
-            else group_request.requested_ownership_ending_at
+        # Resolved here, before anything is created, so they can be validated. A
+        # resolved value already on the request (set by an earlier caller) stands in
+        # for the requested one; the approver's choice replaces either, and a
+        # conditional-access plugin's `ending_at` / `membership_ending_at` only ever
+        # shorten the result.
+        resolved_ownership_ending_at = choose_ending_at(
+            group_request.resolved_ownership_ending_at or group_request.requested_ownership_ending_at,
+            self.approver_ownership_ending_at,
+            self.ending_at,
         )
-        if resolved_ownership_ending_at is not None:
-            resolved_ownership_ending_at = _as_utc(resolved_ownership_ending_at)
-        # `ending_at` (a conditional-access plugin's response) caps the ownership
-        # window and never extends it.
-        if self.ending_at is not None:
-            plugin_ending_at = _as_utc(self.ending_at)
-            resolved_ownership_ending_at = (
-                plugin_ending_at
-                if resolved_ownership_ending_at is None
-                else min(resolved_ownership_ending_at, plugin_ending_at)
-            )
+        resolved_membership_ending_at = choose_ending_at(
+            group_request.resolved_membership_ending_at or group_request.requested_membership_ending_at,
+            self.approver_membership_ending_at,
+            self.membership_ending_at,
+        )
         # Refuse to approve into an ownership window that has already closed.
         # Nothing downstream clamps it: effective_ended_at only ever moves the date
         # earlier, so a past value reaches ModifyGroupUsers and writes an ownership
@@ -205,39 +214,15 @@ class ApproveGroupRequest:
         # silently route to the app owner or an Access admin instead of the person
         # who asked for it.
         #
-        # This is reachable four ways, which is why the guard lives here rather
-        # than in the router: any client that omits resolved_ownership_ending_at
-        # (the field is optional and only assigned when present), an approver
-        # selecting "Indefinite" in the UI (which sends nothing, so the stale
-        # requested value survives), an approver leaving the custom date
-        # prefilled with the original — already past — date, or a conditional-access
-        # plugin returning a past `ending_at`. Failing loudly makes the approver name
-        # a window they mean, which is the only safe default: the alternatives
-        # silently grant either nothing or more than was asked.
+        # This is reachable three ways, which is why the guard lives here rather
+        # than in the router: any client that leaves the requested (already past)
+        # date in place, an approver choosing a past custom date, or a
+        # conditional-access plugin returning a past `ending_at`. Failing loudly
+        # makes the approver name a window they mean, which is the only safe
+        # default: the alternatives silently grant either nothing or more than was asked.
         if resolved_ownership_ending_at is not None and resolved_ownership_ending_at <= datetime.now(UTC):
             raise InvalidRequestError(
                 "The ownership window for this request has already passed. Set an ownership end date when approving it."
-            )
-
-        # The same resolution, cap, and expiry check for the member grants.
-        resolved_membership_ending_at = (
-            group_request.resolved_membership_ending_at
-            if group_request.resolved_membership_ending_at
-            else group_request.requested_membership_ending_at
-        )
-        if resolved_membership_ending_at is not None:
-            resolved_membership_ending_at = _as_utc(resolved_membership_ending_at)
-        if self.membership_ending_at is not None:
-            plugin_membership_ending_at = _as_utc(self.membership_ending_at)
-            resolved_membership_ending_at = (
-                plugin_membership_ending_at
-                if resolved_membership_ending_at is None
-                else min(resolved_membership_ending_at, plugin_membership_ending_at)
-            )
-        if resolved_membership_ending_at is not None and resolved_membership_ending_at <= datetime.now(UTC):
-            raise InvalidRequestError(
-                "The membership window for this request has already passed. "
-                "Set a membership end date when approving it."
             )
 
         # authorization: no approver means a conditional-access plugin approved the
@@ -311,10 +296,28 @@ class ApproveGroupRequest:
         )
         if resolved_type == "role_group" and (owner_role_ids or member_role_ids):
             raise InvalidRequestError("Roles cannot be added to other Roles")
+        # A request without members grants no membership, so it has no membership window.
+        has_members = bool(member_user_ids or member_role_ids)
+        if not has_members:
+            resolved_membership_ending_at = None
+        elif resolved_membership_ending_at is not None and resolved_membership_ending_at <= datetime.now(UTC):
+            raise InvalidRequestError(
+                "The membership window for this request has already passed. "
+                "Set a membership end date when approving it."
+            )
 
         # Hold the approver to the new group's self-add restrictions, as a direct add
         # would. App-owner auto-approval skips the blocked grants instead: the
         # requester already manages the group through the app.
+        reason_error = missing_reason_message(
+            await new_group_tags(resolved_tags, resolved_app_id if resolved_type == "app_group" else None),
+            group_request.request_reason,
+            grants_ownership=bool(owner_user_ids or owner_role_ids),
+            grants_membership=has_members,
+        )
+        if reason_error is not None:
+            raise InvalidRequestError(reason_error)
+
         self_add = await CheckGroupRequestSelfAdd(
             approver_id=approver_id,
             tag_ids=resolved_tags,
@@ -441,17 +444,17 @@ class ApproveGroupRequest:
         coalesced_ownership_ending_at = effective_ended_at(
             Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY, created_group_with_tags, resolved_ownership_ending_at
         )
-        coalesced_membership_ending_at = effective_ended_at(
-            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, created_group_with_tags, resolved_membership_ending_at
+        coalesced_membership_ending_at = (
+            effective_ended_at(
+                Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, created_group_with_tags, resolved_membership_ending_at
+            )
+            if has_members
+            else None
         )
 
         # Record what the approval grants.
         group_request.resolved_ownership_ending_at = coalesced_ownership_ending_at
         group_request.resolved_membership_ending_at = coalesced_membership_ending_at
-        group_request.resolved_owner_user_ids = owner_user_ids
-        group_request.resolved_owner_role_ids = owner_role_ids
-        group_request.resolved_member_user_ids = member_user_ids
-        group_request.resolved_member_role_ids = member_role_ids
 
         created_reason = f"Group request approved: {group_request.request_reason}"
         if owner_user_ids:
@@ -491,6 +494,14 @@ class ApproveGroupRequest:
                 notify=self.notify,
             ).execute()
 
+        # Record the grants that were made, which a grant operation may have
+        # skipped, rather than the ones that were asked for.
+        granted = await granted_access(created_group.id)
+        group_request.resolved_owner_user_ids = [u for u in owner_user_ids if u in granted.owner_user_ids]
+        group_request.resolved_owner_role_ids = [r for r in owner_role_ids if r in granted.owner_role_ids]
+        group_request.resolved_member_user_ids = [u for u in member_user_ids if u in granted.member_user_ids]
+        group_request.resolved_member_role_ids = [r for r in member_role_ids if r in granted.member_role_ids]
+
         group_request.status = AccessRequestStatus.APPROVED
         group_request.resolved_at = func.now()
         group_request.resolver_user_id = approver_id
@@ -516,8 +527,3 @@ class ApproveGroupRequest:
             )
 
         return group_request
-
-
-def _as_utc(value: datetime) -> datetime:
-    """Return `value` as an aware UTC datetime, reading a naive one as UTC."""
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)

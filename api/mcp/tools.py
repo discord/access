@@ -62,7 +62,7 @@ from sqlalchemy.orm import joinedload, noload, selectin_polymorphic, selectinloa
 
 from api.auth.permissions import can_manage_group
 from api.context import get_request_context
-from api.exceptions import ConflictError
+from api.exceptions import ConflictError, InvalidRequestError
 from api.extensions import db as _db_shim
 from api.mcp.auth import (
     MCP_SCOPE_CREATE_REQUESTS,
@@ -1507,9 +1507,14 @@ def _register_write_tools(mcp: MCPServer) -> None:
                     requested_app_id=requested_app_id,
                     requested_group_tags=body.requested_group_tags,
                     requested_ownership_ending_at=body.requested_ownership_ending_at,
+                    requested_owner_user_ids=body.requested_owner_user_ids,
+                    requested_owner_role_ids=body.requested_owner_role_ids,
+                    requested_member_user_ids=body.requested_member_user_ids,
+                    requested_member_role_ids=body.requested_member_role_ids,
+                    requested_membership_ending_at=body.requested_membership_ending_at,
                     request_reason=body.request_reason or "",
                 ).execute()
-            except ConflictError as exc:
+            except (ConflictError, InvalidRequestError) as exc:
                 return _error(exc.detail)
             if gr is None:
                 return _error("Group request could not be created")
