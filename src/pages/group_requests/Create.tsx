@@ -33,11 +33,13 @@ import {
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
 import TagsField, {inheritedAppTags} from './TagsField';
+import {PrincipalsField, ROLES_IN_ROLE_ERROR, RoleOption} from '../../components/Principals';
 import {
   AppDetail,
   AppGroupDetail,
   AppSummary,
   OktaUserDetail,
+  OktaUserSummary,
   GroupDetail,
   GroupRequestDetail,
   GroupSummary,
@@ -61,17 +63,21 @@ const GROUP_TYPE_OPTIONS = Object.entries(GROUP_TYPE_ID_TO_LABELS).map(([id, lab
 // one they do not. A request the constraints forbid is not refused on submit --
 // `ApproveGroupRequest` shortens it on approval instead -- so a duration left
 // on offer here is one the requester is told they asked for and does not get.
-function OwnershipLengthField({
+function AccessLengthField({
+  name,
+  label,
   timeLimit,
   blocked,
   onChange,
 }: {
+  name: 'ownershipUntil' | 'membershipUntil';
+  label: string;
   timeLimit: number | null;
   blocked: boolean;
   onChange: (value: string) => void;
 }) {
   const {control, setValue} = useFormContext();
-  const selected = useWatch({control, name: 'ownershipUntil'});
+  const selected = useWatch({control, name});
 
   const [options, defaultId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
     // While the answer is unknown the limit reads as null. Holding the narrower
@@ -87,16 +93,16 @@ function OwnershipLengthField({
   React.useEffect(() => {
     if (timeLimit == null) return;
     if (!options.some((option) => option.id === selected)) {
-      setValue('ownershipUntil', defaultId);
+      setValue(name, defaultId);
       onChange(defaultId);
     }
-  }, [timeLimit, options, defaultId, selected, setValue, onChange]);
+  }, [name, timeLimit, options, defaultId, selected, setValue, onChange]);
 
   return (
     <SelectElement
       fullWidth
-      label="Requested ownership length"
-      name="ownershipUntil"
+      label={label}
+      name={name}
       options={options}
       onChange={(value) => onChange(value)}
       required
@@ -131,6 +137,20 @@ function filterUntilLabels(timeLimit: number): [string, Array<{id: string; label
   const withinLimit = Object.entries(UNTIL_NUMERIC_ID_TO_LABELS).filter(([key]) => Number(key) <= timeLimit);
   const labels = [...withinLimit, ['custom', 'Custom']].map(([id, label]) => ({id, label}));
   return [withinLimit.at(-1)?.[0] ?? 'custom', labels];
+}
+
+// The end date a length field's selection asks for, or undefined for Indefinite.
+function endingAt(until: string | undefined, custom: string | undefined): string | undefined {
+  switch (until) {
+    case 'indefinite':
+      return undefined;
+    case 'custom':
+      return (custom as unknown as Dayjs).toISOString();
+    default:
+      return dayjs()
+        .add(parseInt(until ?? '0', 10), 'seconds')
+        .toISOString();
+  }
 }
 
 /**
@@ -168,6 +188,8 @@ interface CreateGroupRequestForm {
   description?: string;
   ownershipUntil?: string;
   customOwnershipUntil?: string;
+  membershipUntil?: string;
+  customMembershipUntil?: string;
   reason?: string;
 }
 
@@ -202,6 +224,11 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const [nameInput, setNameInput] = React.useState('');
   const [selectedTags, setSelectedTags] = React.useState<Array<TagListItem>>([]);
   const [ownershipUntil, setOwnershipUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
+  const [membershipUntil, setMembershipUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
+  const [ownerUsers, setOwnerUsers] = React.useState<OktaUserSummary[]>([]);
+  const [ownerRoles, setOwnerRoles] = React.useState<RoleOption[]>([]);
+  const [memberUsers, setMemberUsers] = React.useState<OktaUserSummary[]>([]);
+  const [memberRoles, setMemberRoles] = React.useState<RoleOption[]>([]);
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -271,6 +298,14 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     ...(inheritedTags?.tags ?? []).map((tag) => tag.id),
   ]);
   const ownershipTimeLimit = constraints.timeLimit(true);
+  const membershipTimeLimit = constraints.timeLimit(false);
+
+  const noOwners = ownerUsers.length === 0 && ownerRoles.length === 0;
+  const namesMembers = memberUsers.length > 0 || memberRoles.length > 0;
+  // A plain group named "Role-..." is filed as a role, so it cannot take roles either.
+  const requestsRole =
+    groupType === 'role_group' || (groupType === 'okta_group' && nameInput.startsWith(ROLE_GROUP_PREFIX));
+  const rolesBlocked = requestsRole && (ownerRoles.length > 0 || memberRoles.length > 0);
 
   // Look up the requested name so a taken one is flagged before submitting.
   // The search matches substrings of names and descriptions, so compare the
@@ -299,6 +334,12 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
 
     let effectiveType = formData.type;
     let appId: string | undefined = undefined;
+
+    if (rolesBlocked) {
+      setSubmitting(false);
+      setRequestError(ROLES_IN_ROLE_ERROR);
+      return;
+    }
 
     if (formData.type === 'okta_group' && formData.name.startsWith(APP_GROUP_PREFIX) && detectedAppName === '') {
       setSubmitting(false);
@@ -331,6 +372,10 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       requested_app_id: appId,
       request_reason: formData.reason ?? '',
       requested_group_tags: selectedTags.map((t) => t.id),
+      requested_owner_user_ids: ownerUsers.map((u) => u.id),
+      requested_owner_role_ids: ownerRoles.map((r) => r.id),
+      requested_member_user_ids: memberUsers.map((u) => u.id),
+      requested_member_role_ids: memberRoles.map((r) => r.id),
       ...(effectiveType === 'app_group' && requestPluginId ? {requested_plugin_data: requestedPluginData} : {}),
     } as Parameters<typeof createRequest.mutate>[0]['body'];
 
@@ -339,17 +384,9 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       return;
     }
 
-    switch (formData.ownershipUntil) {
-      case 'indefinite':
-        break;
-      case 'custom':
-        body.requested_ownership_ending_at = (formData.customOwnershipUntil as unknown as Dayjs).toISOString();
-        break;
-      default:
-        body.requested_ownership_ending_at = dayjs()
-          .add(parseInt(formData.ownershipUntil ?? '0', 10), 'seconds')
-          .toISOString();
-        break;
+    body.requested_ownership_ending_at = endingAt(formData.ownershipUntil, formData.customOwnershipUntil);
+    if (namesMembers) {
+      body.requested_membership_ending_at = endingAt(formData.membershipUntil, formData.customMembershipUntil);
     }
 
     createRequest.mutate({body});
@@ -357,7 +394,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
 
   return (
     <FormContainer<CreateGroupRequestForm>
-      defaultValues={{type: 'okta_group', ownershipUntil: '1209600'}}
+      defaultValues={{type: 'okta_group', ownershipUntil: '1209600', membershipUntil: '1209600'}}
       onSuccess={(formData) => submit(formData)}>
       <DialogTitle> Create Group Request</DialogTitle>
       <DialogContent>
@@ -367,7 +404,9 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
           sx={{
             color: 'text.accent',
           }}>
-          If this request is approved, you will be added as the group owner.
+          {noOwners
+            ? 'If this request is approved, you will be added as the group owner.'
+            : 'If this request is approved, the owners named below will be added as the group owners.'}
         </Typography>
         <FormControl size="small" margin="normal" fullWidth>
           <SelectElement
@@ -474,6 +513,15 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
             onSearchChange={setTagSearchInput}
           />
         </FormControl>
+        <PrincipalsField
+          label="Owners"
+          users={ownerUsers}
+          roles={ownerRoles}
+          onUsersChange={setOwnerUsers}
+          onRolesChange={setOwnerRoles}
+          rolesDisallowed={requestsRole}
+          helperText="Leave empty to make yourself the owner."
+        />
         <FormControl margin="normal" fullWidth>
           {ownershipTimeLimit != null && (
             <Typography
@@ -492,7 +540,9 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               alignItems: 'flex-start',
             }}>
             <Grid size={6}>
-              <OwnershipLengthField
+              <AccessLengthField
+                name="ownershipUntil"
+                label="Requested ownership length"
                 timeLimit={ownershipTimeLimit}
                 blocked={constraints.blocked}
                 onChange={setOwnershipUntil}
@@ -511,6 +561,55 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
             </Grid>
           </Grid>
         </FormControl>
+        <PrincipalsField
+          label="Members"
+          users={memberUsers}
+          roles={memberRoles}
+          onUsersChange={setMemberUsers}
+          onRolesChange={setMemberRoles}
+          rolesDisallowed={requestsRole}
+        />
+        {namesMembers && (
+          <FormControl margin="normal" fullWidth>
+            {membershipTimeLimit != null && (
+              <Typography
+                variant="subtitle2"
+                sx={{
+                  color: 'text.accent',
+                  marginBottom: '12px',
+                }}>
+                {'Membership is limited to ' + timeLimitLabel(membershipTimeLimit) + ' by a tag constraint.'}
+              </Typography>
+            )}
+            <Grid
+              container
+              spacing={2}
+              sx={{
+                alignItems: 'flex-start',
+              }}>
+              <Grid size={6}>
+                <AccessLengthField
+                  name="membershipUntil"
+                  label="Requested membership length"
+                  timeLimit={membershipTimeLimit}
+                  blocked={constraints.blocked}
+                  onChange={setMembershipUntil}
+                />
+              </Grid>
+              <Grid size={6}>
+                {membershipUntil === 'custom' && (
+                  <DatePickerElement
+                    label="Custom Membership End Date"
+                    name="customMembershipUntil"
+                    shouldDisableDate={(date: Dayjs) => date.isSameOrBefore(dayjs(), 'day')}
+                    sx={{width: '100%'}}
+                    required
+                  />
+                )}
+              </Grid>
+            </Grid>
+          </FormControl>
+        )}
         <FormControl margin="normal" fullWidth>
           <TextFieldElement
             label="Why do you need this group?"
@@ -532,7 +631,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       </DialogContent>
       <DialogActions>
         <Button onClick={() => props.setOpen(false)}>Cancel</Button>
-        <Button type="submit" disabled={submitting || nameTaken}>
+        <Button type="submit" disabled={submitting || nameTaken || rolesBlocked}>
           {submitting ? <CircularProgress size={24} /> : 'Submit'}
         </Button>
       </DialogActions>

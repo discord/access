@@ -28,9 +28,26 @@ class ConditionalAccessHook(StrEnum):
 
 @dataclass
 class ConditionalAccessResponse:
+    """A plugin's decision on a request.
+
+    Attributes:
+        approved: True approves the request; False rejects it.
+        reason: Recorded as the resolution reason.
+        ending_at: Caps the access the approval grants. For a group request,
+            it caps the owner grants.
+        membership_ending_at: For a group request, caps the member grants.
+            Ignored for other request types.
+        allow_named_grants: For a group request, confirms the approval covers the
+            owners and members the request names. An approval of a request that
+            names anything beyond its requester as sole owner is ignored (the
+            request stays pending) unless this is set. Ignored for other request types.
+    """
+
     approved: bool
     reason: str = ""
     ending_at: datetime | None = None
+    membership_ending_at: datetime | None = None
+    allow_named_grants: bool = False
 
 
 class ConditionalAccessPluginSpec:
@@ -55,14 +72,18 @@ class ConditionalAccessPluginSpec:
     ) -> ConditionalAccessResponse | None:
         """Automatically approve, deny, or continue the group request.
 
-        An approval creates the requested group and makes the requester its owner.
-        It is recorded with no resolver. When the group can't be created as
-        requested (for example, its name is already taken), the request stays
-        pending and goes to its reviewers. The response's ``ending_at`` caps the
-        requester's ownership: it can shorten the end date the request asked for
-        but never extend it, and the new group's tag limits still apply. An
-        ``ending_at`` that has already passed leaves the request pending for its
-        reviewers.
+        An approval creates the requested group with the owners and members the
+        request names (users and roles; a request that names no owners names its
+        requester). An approval of a request that names anything beyond its
+        requester as the sole owner takes effect only when the response sets
+        ``allow_named_grants``; otherwise it is ignored and the request stays
+        pending. It is recorded with no resolver. When the group can't be
+        created as requested (for example, its name is already taken), the
+        request stays pending and goes to its reviewers. The response's
+        ``ending_at`` caps the owner grants and ``membership_ending_at`` caps the
+        member grants: each can shorten the end date the request asked for but
+        never extend it, and the new group's tag limits still apply. An end date
+        that has already passed leaves the request pending for its reviewers.
         """
 
 

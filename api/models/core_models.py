@@ -957,8 +957,6 @@ class GroupRequest(Base):
         default=AccessRequestStatus.PENDING,
     )
 
-    # For now, the requester will be set as the owner of the group, may expand in the future to allow the
-    # requester to set other users or roles as proposed owners
     requester_user_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
     # https://developer.okta.com/docs/reference/api/groups/#default-profile-properties
     requested_group_name: Mapped[str] = mapped_column(Unicode(255), nullable=False)
@@ -988,6 +986,33 @@ class GroupRequest(Base):
         default=dict,
         server_default="{}",
     )
+    # Owners and members to grant on the new group, as user ids and role group ids.
+    requested_owner_user_ids: Mapped[list[str]] = mapped_column(
+        mutable_json_type(dbtype=JSON().with_variant(JSONB, "postgresql"), nested=True),
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    requested_owner_role_ids: Mapped[list[str]] = mapped_column(
+        mutable_json_type(dbtype=JSON().with_variant(JSONB, "postgresql"), nested=True),
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    requested_member_user_ids: Mapped[list[str]] = mapped_column(
+        mutable_json_type(dbtype=JSON().with_variant(JSONB, "postgresql"), nested=True),
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    requested_member_role_ids: Mapped[list[str]] = mapped_column(
+        mutable_json_type(dbtype=JSON().with_variant(JSONB, "postgresql"), nested=True),
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    # End date for the member grants; `requested_ownership_ending_at` covers the owner grants.
+    requested_membership_ending_at: Mapped[datetime | None] = mapped_column(NaiveUTCDateTime())
     # Will also be used to populate owner access reason field
     request_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 
@@ -1020,6 +1045,33 @@ class GroupRequest(Base):
         default=dict,
         server_default="{}",
     )
+    # The owners and members granted on approval. Written when the request is
+    # approved; empty until then.
+    resolved_owner_user_ids: Mapped[list[str]] = mapped_column(
+        mutable_json_type(dbtype=JSON().with_variant(JSONB, "postgresql"), nested=True),
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    resolved_owner_role_ids: Mapped[list[str]] = mapped_column(
+        mutable_json_type(dbtype=JSON().with_variant(JSONB, "postgresql"), nested=True),
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    resolved_member_user_ids: Mapped[list[str]] = mapped_column(
+        mutable_json_type(dbtype=JSON().with_variant(JSONB, "postgresql"), nested=True),
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    resolved_member_role_ids: Mapped[list[str]] = mapped_column(
+        mutable_json_type(dbtype=JSON().with_variant(JSONB, "postgresql"), nested=True),
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    resolved_membership_ending_at: Mapped[datetime | None] = mapped_column(NaiveUTCDateTime())
     resolution_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 
     approved_group_id: Mapped[str | None] = mapped_column(

@@ -554,6 +554,11 @@ export type GroupRequestDetail = {
   requested_app_id?: string | null;
   requested_group_tags?: string[];
   requested_ownership_ending_at?: string | null;
+  requested_owner_user_ids?: string[];
+  requested_owner_role_ids?: string[];
+  requested_member_user_ids?: string[];
+  requested_member_role_ids?: string[];
+  requested_membership_ending_at?: string | null;
   /**
    * @default
    */
@@ -573,6 +578,11 @@ export type GroupRequestDetail = {
   resolved_app_id?: string | null;
   resolved_group_tags?: string[];
   resolved_ownership_ending_at?: string | null;
+  resolved_owner_user_ids?: string[];
+  resolved_owner_role_ids?: string[];
+  resolved_member_user_ids?: string[];
+  resolved_member_role_ids?: string[];
+  resolved_membership_ending_at?: string | null;
   /**
    * @default
    */
@@ -589,6 +599,8 @@ export type GroupRequestDetail = {
   updated_at: string | null;
   requester?: OktaUserSummary | null;
   resolver?: OktaUserSummary | null;
+  named_users?: OktaUserSummary[];
+  named_roles?: RoleGroupRef[];
 };
 
 export type GroupSummary =
@@ -1110,6 +1122,11 @@ export type ResolveGroupRequestBody = {
   resolved_plugin_data?: {
     [key: string]: any;
   } | null;
+  resolved_owner_user_ids?: string[] | null;
+  resolved_owner_role_ids?: string[] | null;
+  resolved_member_user_ids?: string[] | null;
+  resolved_member_role_ids?: string[] | null;
+  resolved_membership_ending_at?: string | null;
 };
 
 export type ResolveRoleRequestBody = {
@@ -1624,7 +1641,12 @@ export type AppGroupRequestBody = {
    */
   requested_group_description?: string | null;
   requested_group_tags?: string[];
+  requested_owner_user_ids?: string[];
+  requested_owner_role_ids?: string[];
   requested_ownership_ending_at?: string | null;
+  requested_member_user_ids?: string[];
+  requested_member_role_ids?: string[];
+  requested_membership_ending_at?: string | null;
   /**
    * @default
    */
@@ -1719,7 +1741,12 @@ export type OktaGroupRequestBody = {
    */
   requested_group_description?: string | null;
   requested_group_tags?: string[];
+  requested_owner_user_ids?: string[];
+  requested_owner_role_ids?: string[];
   requested_ownership_ending_at?: string | null;
+  requested_member_user_ids?: string[];
+  requested_member_role_ids?: string[];
+  requested_membership_ending_at?: string | null;
   /**
    * @default
    */
@@ -1806,7 +1833,12 @@ export type RoleGroupRequestBody = {
    */
   requested_group_description?: string | null;
   requested_group_tags?: string[];
+  requested_owner_user_ids?: string[];
+  requested_owner_role_ids?: string[];
   requested_ownership_ending_at?: string | null;
+  requested_member_user_ids?: string[];
+  requested_member_role_ids?: string[];
+  requested_membership_ending_at?: string | null;
   /**
    * @default
    */

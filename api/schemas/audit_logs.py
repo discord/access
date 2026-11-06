@@ -204,8 +204,18 @@ class _AuditGroupRequestRef(BaseModel):
     requested_group_type: str | None = None
     requested_app_id: str | None = None
     requested_ownership_ending_at: datetime | None = None
+    requested_owner_user_ids: list[str] | None = None
+    requested_owner_role_ids: list[str] | None = None
+    requested_member_user_ids: list[str] | None = None
+    requested_member_role_ids: list[str] | None = None
+    requested_membership_ending_at: datetime | None = None
     request_reason: str | None = None
     resolved_ownership_ending_at: datetime | None = None
+    resolved_owner_user_ids: list[str] | None = None
+    resolved_owner_role_ids: list[str] | None = None
+    resolved_member_user_ids: list[str] | None = None
+    resolved_member_role_ids: list[str] | None = None
+    resolved_membership_ending_at: datetime | None = None
     resolution_reason: str | None = None
 
 
@@ -345,8 +355,18 @@ def _as_group_request_ref(v: Any) -> Any:
         "requested_group_type",
         "requested_app_id",
         "requested_ownership_ending_at",
+        "requested_owner_user_ids",
+        "requested_owner_role_ids",
+        "requested_member_user_ids",
+        "requested_member_role_ids",
+        "requested_membership_ending_at",
         "request_reason",
         "resolved_ownership_ending_at",
+        "resolved_owner_user_ids",
+        "resolved_owner_role_ids",
+        "resolved_member_user_ids",
+        "resolved_member_role_ids",
+        "resolved_membership_ending_at",
         "resolution_reason",
     )
 
