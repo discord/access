@@ -169,7 +169,7 @@ export default function ListAppRequests() {
                 ';' +
                 (row.status ?? '') +
                 ';' +
-                displayUserName(row.resolver),
+                (row.resolver_service_principal?.display_name ?? displayUserName(row.resolver)),
             )}
             onChange={handleSearchSubmit}
             onInputChange={(event, newInputValue) => {
@@ -241,7 +241,9 @@ export default function ListAppRequests() {
                   <RequesterLink user={row.requester} servicePrincipal={row.requester_service_principal} />
                 </TableCell>
                 <TableCell>
-                  {row.resolver == null && row.status != 'PENDING' ? (
+                  {row.resolver_service_principal != null ? (
+                    <RequesterLink servicePrincipal={row.resolver_service_principal} />
+                  ) : row.resolver == null && row.status != 'PENDING' ? (
                     'Access'
                   ) : (row.resolver?.deleted_at ?? null) != null ? (
                     <Link
