@@ -1239,7 +1239,11 @@ export default function ReadGroupRequest() {
                   ) : (
                     <Paper sx={{p: 2, my: 2}}>
                       <Typography variant="body1">
-                        {groupRequest.resolver == null ? (
+                        {groupRequest.resolver_service_principal != null ? (
+                          <b>
+                            <RequesterLink servicePrincipal={groupRequest.resolver_service_principal} />
+                          </b>
+                        ) : groupRequest.resolver == null ? (
                           <b>Access</b>
                         ) : (
                           <Link
