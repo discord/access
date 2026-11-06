@@ -9,6 +9,43 @@ from api.models import AppTagMap, OktaUserGroupMember, RoleGroup, Tag
 from api.models.tag import coalesce_constraints
 
 
+async def new_group_tags(tag_ids: list[str], app_id: str | None) -> list[Tag]:
+    """The tags a group about to be created will carry: `tag_ids`, plus its app's tags for an app group."""
+    tags: list[Tag] = []
+    if tag_ids:
+        tags.extend(
+            (await db.session.scalars(select(Tag).where(Tag.id.in_(tag_ids)).where(Tag.deleted_at.is_(None)))).all()
+        )
+    if app_id is not None:
+        app_tag_maps = (
+            await db.session.scalars(
+                select(AppTagMap)
+                .options(joinedload(AppTagMap.active_tag))
+                .where(AppTagMap.app_id == app_id)
+                .where(or_(AppTagMap.ended_at.is_(None), AppTagMap.ended_at > func.now()))
+            )
+        ).all()
+        tags.extend(m.active_tag for m in app_tag_maps if m.active_tag is not None)
+    return tags
+
+
+def missing_reason_message(
+    tags: list[Tag], reason: str | None, *, grants_ownership: bool, grants_membership: bool
+) -> str | None:
+    """Explain why a request-driven grant needs a reason it lacks, or return None.
+
+    A request's reason stands in for the reason a direct add would ask for, so
+    tags that require one are met only by a request that gives one.
+    """
+    if reason is not None and reason.strip():
+        return None
+    if grants_ownership and coalesce_constraints(Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY, tags) is True:
+        return "This request needs a reason: the tags on the new group require one for ownership"
+    if grants_membership and coalesce_constraints(Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY, tags) is True:
+        return "This request needs a reason: the tags on the new group require one for membership"
+    return None
+
+
 @dataclass
 class GroupRequestSelfAdd:
     """The grants in a group request that would add its approver to the new group
@@ -39,8 +76,10 @@ class CheckGroupRequestSelfAdd:
     to the new group, directly or through a role, where the group's tags forbid it.
 
     The group does not exist yet, so the constraints are read from the tags it
-    will carry: the request's tags plus, for an app group, its app's tags. Access
-    admins and plugin approvals (no approver) are exempt, as for a direct add.
+    will carry (see `new_group_tags`) rather than through `CheckForSelfAdd`,
+    which reads them off an existing group. Checking before creation means a
+    violation never leaves a half-created group. Access admins and plugin
+    approvals (no approver) are exempt, as for a direct add.
 
     Args:
         approver_id: The approving user, or None for a plugin approval.
@@ -77,7 +116,7 @@ class CheckGroupRequestSelfAdd:
         if self.approver_id is None or await is_access_admin(db.session, self.approver_id):
             return result
 
-        tags = await self._tags()
+        tags = await new_group_tags(self.tag_ids, self.app_id)
         disallow_owner = coalesce_constraints(Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY, tags) is True
         disallow_member = coalesce_constraints(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, tags) is True
         if not disallow_owner and not disallow_member:
@@ -102,28 +141,6 @@ class CheckGroupRequestSelfAdd:
                 "role they are a member of, because its tags restrict self-adding membership"
             )
         return result
-
-    async def _tags(self) -> list[Tag]:
-        tags: list[Tag] = []
-        if self.tag_ids:
-            tags.extend(
-                (
-                    await db.session.scalars(
-                        select(Tag).where(Tag.id.in_(self.tag_ids)).where(Tag.deleted_at.is_(None))
-                    )
-                ).all()
-            )
-        if self.app_id is not None:
-            app_tag_maps = (
-                await db.session.scalars(
-                    select(AppTagMap)
-                    .options(joinedload(AppTagMap.active_tag))
-                    .where(AppTagMap.app_id == self.app_id)
-                    .where(or_(AppTagMap.ended_at.is_(None), AppTagMap.ended_at > func.now()))
-                )
-            ).all()
-            tags.extend(m.active_tag for m in app_tag_maps if m.active_tag is not None)
-        return tags
 
     async def _approver_role_ids(self, role_ids: set[str]) -> set[str]:
         if not role_ids:

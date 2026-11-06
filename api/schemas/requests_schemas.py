@@ -427,6 +427,8 @@ class ResolveGroupRequestBody(BaseModel):
     resolved_group_type: str | None = None
     resolved_app_id: str | None = None
     resolved_group_tags: list[str] | None = None
+    # Each end date, when sent, replaces the requested one on approval; an
+    # explicit null means indefinite.
     resolved_ownership_ending_at: FlexibleDatetime | None = None
     resolved_plugin_data: dict[str, Any] | None = None
     # Each list, when sent, replaces the requested one on approval.
