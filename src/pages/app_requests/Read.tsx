@@ -44,6 +44,7 @@ import {useCurrentUser} from '../../authentication';
 import {canApproveAppRequest} from '../../authorization';
 import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
+import DepartedPrincipalsWarning, {departedIds, departedLabel} from '../../components/DepartedPrincipalsWarning';
 import Loading from '../../components/Loading';
 import RequesterLink, {requesterName} from '../../components/RequesterLink';
 import {PrincipalChips, pickByIds} from '../../components/Principals';
@@ -66,37 +67,48 @@ interface NamedPrincipals {
   roleIds: string[];
 }
 
-// The ids absent from `named`, which lists only the principals still active.
-function departedIds(ids: string[], named: {id: string}[] | undefined): string[] {
-  const active = new Set((named ?? []).map((principal) => principal.id));
-  return ids.filter((id) => !active.has(id));
+// The seconds from `askedAt` to `endingAt`, rounded as `untilIdFor` rounds, or null for no end.
+function requestedSeconds(endingAt: string | null | undefined, askedAt: string | null | undefined): number | null {
+  if (!endingAt) {
+    return null;
+  }
+  return Math.round(dayjs(endingAt).diff(dayjs(askedAt), 'second') / 100) * 100;
 }
 
-function countLabel(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+function minLimit(a: number | null, b: number | null): number | null {
+  if (a == null) return b;
+  if (b == null) return a;
+  return Math.min(a, b);
+}
+
+// The latest custom end date an approver may pick: the tag limit from now, and no later than the requested date.
+function customMaxDate(tagLimit: number | null, requestedEndingAt: string | null | undefined): Dayjs | undefined {
+  const byTag = tagLimit != null ? dayjs().add(tagLimit, 'second') : undefined;
+  const requested = requestedEndingAt ? dayjs(requestedEndingAt) : undefined;
+  if (byTag == null) return requested;
+  if (requested == null) return byTag;
+  return requested.isBefore(byTag) ? requested : byTag;
 }
 
 function PrincipalsLine({label, userIds, roleIds, appRequest}: NamedPrincipals & {appRequest: AppRequestDetail}) {
   const users = pickByIds(userIds, appRequest.named_users);
   const roles = pickByIds(roleIds, appRequest.named_roles);
-  const departedUsers = departedIds(userIds, appRequest.named_users).length;
-  const deletedRoles = departedIds(roleIds, appRequest.named_roles).length;
-  const departed = [
-    departedUsers > 0 ? countLabel(departedUsers, 'departed user') : null,
-    deletedRoles > 0 ? countLabel(deletedRoles, 'deleted role') : null,
-  ].filter((part) => part != null);
+  const departed = departedLabel(
+    departedIds(userIds, appRequest.named_users).length,
+    departedIds(roleIds, appRequest.named_roles).length,
+  );
   return (
     <Stack direction="row" spacing={1} sx={{flexWrap: 'wrap', alignItems: 'center'}}>
       <Typography variant="body2">
         <b>{label}:</b>
       </Typography>
       {users.length + roles.length > 0 && <PrincipalChips users={users} roles={roles} />}
-      {departed.length > 0 && (
+      {departed !== '' && (
         <Typography variant="body2" sx={{color: 'text.secondary'}}>
-          {departed.join(', ')}
+          {departed}
         </Typography>
       )}
-      {users.length + roles.length + departed.length === 0 && <Typography variant="body2">None</Typography>}
+      {users.length + roles.length === 0 && departed === '' && <Typography variant="body2">None</Typography>}
     </Stack>
   );
 }
@@ -109,11 +121,12 @@ interface ResolveRequestForm {
   reason?: string;
 }
 
-// The end date an approver's choice sends, matching the group request review page:
-// Indefinite (or no choice) sends nothing, which keeps the requested end date.
+// The end date an approver's choice sends. Indefinite (or no choice) sends nothing, which keeps the
+// requested end date, so Indefinite is offered only when the request has no end date.
 function approvalEndingAt(until: string | undefined, custom: string | undefined): string | undefined {
   switch (until) {
     case undefined:
+    case '':
     case 'indefinite':
       return undefined;
     case 'custom':
@@ -155,6 +168,15 @@ export default function ReadAppRequest() {
 
   const ownershipTimeLimit = tagConstraints.timeLimit(true);
   const membershipTimeLimit = tagConstraints.timeLimit(false);
+  // The approver may shorten a requested end date but not lift it, as sending no date keeps the requested one.
+  const ownershipFieldLimit = minLimit(
+    ownershipTimeLimit,
+    requestedSeconds(appRequest.requested_ownership_ending_at, appRequest.created_at),
+  );
+  const membershipFieldLimit = minLimit(
+    membershipTimeLimit,
+    requestedSeconds(appRequest.requested_membership_ending_at, appRequest.created_at),
+  );
 
   const appOwners: NamedPrincipals = {
     label: 'App owners',
@@ -166,20 +188,18 @@ export default function ReadAppRequest() {
     owners: {label: 'Owners', userIds: group.owner_user_ids ?? [], roleIds: group.owner_role_ids ?? []},
     members: {label: 'Members', userIds: group.member_user_ids ?? [], roleIds: group.member_role_ids ?? []},
   }));
-  // Approval refuses a request naming anyone no longer active, so say where they are named.
+  const departedCount = (principals: NamedPrincipals) =>
+    departedIds(principals.userIds, appRequest.named_users).length +
+    departedIds(principals.roleIds, appRequest.named_roles).length;
   const departedPlaces = [
-    {where: 'app owners', principals: appOwners},
+    {where: 'app owners', count: departedCount(appOwners)},
     ...groupPrincipals.flatMap(({group, owners, members}) => [
-      {where: `${group.name} owners`, principals: owners},
-      {where: `${group.name} members`, principals: members},
+      {where: `${group.name} owners`, count: departedCount(owners)},
+      {where: `${group.name} members`, count: departedCount(members)},
     ]),
-  ].flatMap(({where, principals}) => {
-    const count =
-      departedIds(principals.userIds, appRequest.named_users).length +
-      departedIds(principals.roleIds, appRequest.named_roles).length;
-    return count > 0 ? [{where, count}] : [];
-  });
-  const departedCount = departedPlaces.reduce((total, place) => total + place.count, 0);
+  ];
+  const appOwnerCount = appOwners.userIds.length + appOwners.roleIds.length;
+  const noAppOwnerActive = appOwnerCount > 0 && departedCount(appOwners) === appOwnerCount;
 
   const complete = (
     completedRequest: AppRequestDetail | undefined,
@@ -499,12 +519,15 @@ export default function ReadAppRequest() {
                                 {requestError}
                               </Alert>
                             ) : null}
-                            {canApprove && departedCount > 0 && (
-                              <Alert severity="warning" sx={{my: 1}}>
-                                {`This request names ${departedCount} ${departedCount === 1 ? 'user or role' : 'users or roles'} no longer active (` +
-                                  departedPlaces.map((place) => `${place.count} in ${place.where}`).join('; ') +
-                                  "), so it can't be approved as filed."}
-                              </Alert>
+                            {canApprove && (
+                              <DepartedPrincipalsWarning
+                                places={departedPlaces}
+                                hint={
+                                  noAppOwnerActive
+                                    ? 'At least one app owner must still be active to approve it.'
+                                    : 'They will be skipped on approval.'
+                                }
+                              />
                             )}
                             {canApprove && (
                               <>
@@ -523,7 +546,7 @@ export default function ReadAppRequest() {
                                     <AccessEndingField
                                       name="resolved_ownership_ending_at"
                                       label="Ownership Ending At"
-                                      timeLimit={ownershipTimeLimit}
+                                      timeLimit={ownershipFieldLimit}
                                       constraintsBlocked={tagConstraints.blocked}
                                       setUntil={setOwnershipUntil}
                                     />
@@ -535,9 +558,10 @@ export default function ReadAppRequest() {
                                           label="Custom End Date"
                                           name="resolved_ownership_ending_at_custom"
                                           shouldDisableDate={(date: Dayjs) => date.isSameOrBefore(dayjs(), 'day')}
-                                          maxDate={
-                                            ownershipTimeLimit ? dayjs().add(ownershipTimeLimit, 'second') : undefined
-                                          }
+                                          maxDate={customMaxDate(
+                                            ownershipTimeLimit,
+                                            appRequest.requested_ownership_ending_at,
+                                          )}
                                         />
                                       </FormControl>
                                     ) : null}
@@ -558,7 +582,7 @@ export default function ReadAppRequest() {
                                       <AccessEndingField
                                         name="resolved_membership_ending_at"
                                         label="Membership Ending At"
-                                        timeLimit={membershipTimeLimit}
+                                        timeLimit={membershipFieldLimit}
                                         constraintsBlocked={tagConstraints.blocked}
                                         setUntil={setMembershipUntil}
                                       />
@@ -570,11 +594,10 @@ export default function ReadAppRequest() {
                                             label="Custom Membership End Date"
                                             name="resolved_membership_ending_at_custom"
                                             shouldDisableDate={(date: Dayjs) => date.isSameOrBefore(dayjs(), 'day')}
-                                            maxDate={
-                                              membershipTimeLimit
-                                                ? dayjs().add(membershipTimeLimit, 'second')
-                                                : undefined
-                                            }
+                                            maxDate={customMaxDate(
+                                              membershipTimeLimit,
+                                              appRequest.requested_membership_ending_at,
+                                            )}
                                           />
                                         </FormControl>
                                       ) : null}
@@ -612,7 +635,7 @@ export default function ReadAppRequest() {
                                   type="submit"
                                   startIcon={<ApprovedIcon />}
                                   sx={{mx: 2}}
-                                  disabled={submitting || tagConstraints.blocked || departedCount > 0}
+                                  disabled={submitting || tagConstraints.blocked || noAppOwnerActive}
                                   onClick={() => setApproved(true)}>
                                   Approve
                                 </Button>
