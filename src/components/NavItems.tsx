@@ -27,6 +27,7 @@ import ExpiringRolesOwnedByMe from '@mui/icons-material/HowToReg';
 import ExpiringAll from '@mui/icons-material/SwitchAccount';
 import RoleRequestIcon from '@mui/icons-material/WorkHistory';
 import GroupRequestIcon from '@mui/icons-material/GroupAdd';
+import AppRequestIcon from '@mui/icons-material/AddBox';
 import ServicePrincipalIcon from '@mui/icons-material/SmartToy';
 
 import {useCurrentUser} from '../authentication';
@@ -90,6 +91,7 @@ interface NavItemsProps {
 export default function NavItems(props: NavItemsProps) {
   const [openAccessRequests, setOpenAccessRequests] = React.useState(false);
   const [openGroupRequests, setOpenGroupRequests] = React.useState(false);
+  const [openAppRequests, setOpenAppRequests] = React.useState(false);
   const [openExpiringAccess, setOpenExpiringAccess] = React.useState(false);
   const currentUser = useCurrentUser();
 
@@ -208,6 +210,40 @@ export default function NavItems(props: NavItemsProps) {
             displayIcon={<RequestAll />}
             sx={{pl: 4}}
             tooltip="All group creation requests"
+          />
+        </List>
+      </Collapse>
+      <ListItemLink
+        to="/app-requests"
+        displayText="App Requests"
+        displayIcon={<AppRequestIcon />}
+        open={openAppRequests}
+        onClick={() => setOpenAppRequests(!openAppRequests)}
+        sx={{pb: 1}}
+        tooltip="Requests to create new apps with their owners and initial groups"
+      />
+      <Collapse component="li" in={props.open && openAppRequests} timeout="auto" unmountOnExit>
+        <List disablePadding>
+          <ListItemLink
+            to="/app-requests?requester_user_id=@me"
+            displayText="From Me"
+            displayIcon={<RequestFromMe />}
+            sx={{pl: 4}}
+            tooltip="App creation requests you submitted"
+          />
+          <ListItemLink
+            to="/app-requests?assignee_user_id=@me"
+            displayText="Assigned to Me"
+            displayIcon={<RequestToMe />}
+            sx={{pl: 4}}
+            tooltip="App creation requests awaiting your approval"
+          />
+          <ListItemLink
+            to="/app-requests"
+            displayText="All"
+            displayIcon={<RequestAll />}
+            sx={{pl: 4}}
+            tooltip="All app creation requests"
           />
         </List>
       </Collapse>
