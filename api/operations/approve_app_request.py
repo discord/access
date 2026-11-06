@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
@@ -9,8 +10,9 @@ from api.extensions import db
 from api.models import AccessRequestStatus, App, AppGroup, AppRequest, OktaGroup, OktaUser, Tag
 from api.models.app_group import get_access_owners
 from api.models.tag import coalesce_ended_at
-from api.operations._active_ids import require_active_role_ids, require_active_user_ids
+from api.operations._active_ids import partition_active_role_ids, partition_active_user_ids
 from api.operations._fan_out import defer_notification
+from api.operations._grants import carry_out_grants, failed_grants_note
 from api.operations._requesters import load_active_requester, split_requester
 from api.operations._service_principals import audit_ref
 from api.operations.create_app import CreateApp, owner_group_conflict
@@ -47,13 +49,17 @@ class ApproveAppRequest:
         approval_reason: Recorded as the resolution reason.
         ending_at: Caps the owner grants; it never extends them.
         membership_ending_at: Caps the member grants; it never extends them.
+        approver_ownership_ending_at: The approver's end date for the owner grants, replacing the
+            requested one, or None to keep it.
+        approver_membership_ending_at: The same for the member grants.
         notify: Whether to send notifications.
 
     Raises:
         ConflictError: The request is no longer pending, or the app can't be created
             under its name.
-        InvalidRequestError: An end date has passed, or a named owner or member is no
-            longer active.
+        InvalidRequestError: An end date has passed, or none of the named app owners is
+            still active. Other named users and roles that are no longer active are
+            skipped and noted in the resolution reason.
     """
 
     def __init__(
@@ -64,6 +70,8 @@ class ApproveAppRequest:
         approval_reason: str = "",
         ending_at: datetime | None = None,
         membership_ending_at: datetime | None = None,
+        approver_ownership_ending_at: datetime | None = None,
+        approver_membership_ending_at: datetime | None = None,
         notify: bool = True,
     ):
         self.app_request_id = app_request if isinstance(app_request, str) else app_request.id
@@ -71,6 +79,8 @@ class ApproveAppRequest:
         self.approval_reason = approval_reason
         self.ending_at = ending_at
         self.membership_ending_at = membership_ending_at
+        self.approver_ownership_ending_at = approver_ownership_ending_at
+        self.approver_membership_ending_at = approver_membership_ending_at
         self.notify = notify
 
     async def execute(self) -> AppRequest | None:
@@ -115,9 +125,7 @@ class ApproveAppRequest:
         ownership_ending_at = coalesce_ended_at(
             Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY,
             tags,
-            _capped(
-                app_request.resolved_ownership_ending_at or app_request.requested_ownership_ending_at, self.ending_at
-            ),
+            _capped(self.approver_ownership_ending_at or app_request.requested_ownership_ending_at, self.ending_at),
             group_is_managed=True,
         )
         membership_ending_at = (
@@ -125,7 +133,7 @@ class ApproveAppRequest:
                 Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY,
                 tags,
                 _capped(
-                    app_request.resolved_membership_ending_at or app_request.requested_membership_ending_at,
+                    self.approver_membership_ending_at or app_request.requested_membership_ending_at,
                     self.membership_ending_at,
                 ),
                 group_is_managed=True,
@@ -157,11 +165,36 @@ class ApproveAppRequest:
         if conflict is not None:
             raise ConflictError(conflict)
 
-        owner_user_ids = await require_active_user_ids(app_request.requested_owner_user_ids, "owner")
-        owner_role_ids = await require_active_role_ids(app_request.requested_owner_role_ids, "owner")
-        for group in app_groups:
-            await require_active_user_ids(group.owner_user_ids + group.member_user_ids, "app group")
-            await require_active_role_ids(group.owner_role_ids + group.member_role_ids, "app group")
+        # Users and roles named in the request may have been deleted since. They are
+        # skipped and the resolution reason says so, rather than leaving a request
+        # nobody can approve; the app still needs one active owner.
+        departed: list[str] = []
+
+        async def active_users(ids: list[str]) -> list[str]:
+            active, gone = await partition_active_user_ids(ids)
+            departed.extend(f"user {u}" for u in gone)
+            return active
+
+        async def active_roles(ids: list[str]) -> list[str]:
+            active, gone = await partition_active_role_ids(ids)
+            departed.extend(f"role {r}" for r in gone)
+            return active
+
+        owner_user_ids = await active_users(app_request.requested_owner_user_ids)
+        owner_role_ids = await active_roles(app_request.requested_owner_role_ids)
+        if not owner_user_ids and not owner_role_ids:
+            raise InvalidRequestError("None of the app owners this request names is still active")
+        app_groups = [
+            group.model_copy(
+                update={
+                    "owner_user_ids": await active_users(group.owner_user_ids),
+                    "owner_role_ids": await active_roles(group.owner_role_ids),
+                    "member_user_ids": await active_users(group.member_user_ids),
+                    "member_role_ids": await active_roles(group.member_role_ids),
+                }
+            )
+            for group in app_groups
+        ]
 
         prefix = (
             f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_request.requested_app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
@@ -229,73 +262,81 @@ class ApproveAppRequest:
 
         created_reason = f"App request approved: {app_request.request_reason}"
 
-        # The app's owners own and are members of its owners group.
-        if owner_user_ids:
-            await ModifyGroupUsers(
-                group=owners_group_id,
-                members_to_add=owner_user_ids,
-                owners_to_add=owner_user_ids,
-                users_added_ended_at=ownership_ending_at,
-                current_user_id=approver_id,
-                created_reason=created_reason,
-                notify=self.notify,
-            ).execute()
-        for role_id in owner_role_ids:
-            await ModifyRoleGroups(
-                role_group=role_id,
-                groups_to_add=[owners_group_id],
-                owner_groups_to_add=[owners_group_id],
-                groups_added_ended_at=ownership_ending_at,
+        def add_users(
+            group_id: str, owners: list[str], members: list[str], ended_at: datetime | None
+        ) -> Callable[[], Awaitable[object]]:
+            return lambda: ModifyGroupUsers(
+                group=group_id,
+                owners_to_add=owners,
+                members_to_add=members,
+                users_added_ended_at=ended_at,
                 current_user_id=approver_id,
                 created_reason=created_reason,
                 notify=self.notify,
             ).execute()
 
+        def add_role(
+            role_id: str, group_id: str, owner: bool, member: bool, ended_at: datetime | None
+        ) -> Callable[[], Awaitable[object]]:
+            return lambda: ModifyRoleGroups(
+                role_group=role_id,
+                owner_groups_to_add=[group_id] if owner else [],
+                groups_to_add=[group_id] if member else [],
+                groups_added_ended_at=ended_at,
+                current_user_id=approver_id,
+                created_reason=created_reason,
+                notify=self.notify,
+            ).execute()
+
+        # The app's owners own and are members of its owners group.
+        grants: list[tuple[str, Callable[[], Awaitable[object]]]] = []
+        if owner_user_ids:
+            grants.append(
+                (
+                    f"app owners {', '.join(owner_user_ids)}",
+                    add_users(owners_group_id, owner_user_ids, owner_user_ids, ownership_ending_at),
+                )
+            )
+        grants += [
+            (f"app owner role {r}", add_role(r, owners_group_id, True, True, ownership_ending_at))
+            for r in owner_role_ids
+        ]
         for group in app_groups:
             group_id = group_ids[group.name]
             if group.owner_user_ids:
-                await ModifyGroupUsers(
-                    group=group_id,
-                    owners_to_add=group.owner_user_ids,
-                    users_added_ended_at=ownership_ending_at,
-                    current_user_id=approver_id,
-                    created_reason=created_reason,
-                    notify=self.notify,
-                ).execute()
+                grants.append(
+                    (
+                        f"{group.name} owners {', '.join(group.owner_user_ids)}",
+                        add_users(group_id, group.owner_user_ids, [], ownership_ending_at),
+                    )
+                )
             if group.member_user_ids:
-                await ModifyGroupUsers(
-                    group=group_id,
-                    members_to_add=group.member_user_ids,
-                    users_added_ended_at=membership_ending_at,
-                    current_user_id=approver_id,
-                    created_reason=created_reason,
-                    notify=self.notify,
-                ).execute()
-            for role_id in group.owner_role_ids:
-                await ModifyRoleGroups(
-                    role_group=role_id,
-                    owner_groups_to_add=[group_id],
-                    groups_added_ended_at=ownership_ending_at,
-                    current_user_id=approver_id,
-                    created_reason=created_reason,
-                    notify=self.notify,
-                ).execute()
-            for role_id in group.member_role_ids:
-                await ModifyRoleGroups(
-                    role_group=role_id,
-                    groups_to_add=[group_id],
-                    groups_added_ended_at=membership_ending_at,
-                    current_user_id=approver_id,
-                    created_reason=created_reason,
-                    notify=self.notify,
-                ).execute()
+                grants.append(
+                    (
+                        f"{group.name} members {', '.join(group.member_user_ids)}",
+                        add_users(group_id, [], group.member_user_ids, membership_ending_at),
+                    )
+                )
+            grants += [
+                (f"{group.name} owner role {r}", add_role(r, group_id, True, False, ownership_ending_at))
+                for r in group.owner_role_ids
+            ]
+            grants += [
+                (f"{group.name} member role {r}", add_role(r, group_id, False, True, membership_ending_at))
+                for r in group.member_role_ids
+            ]
+        failed = await carry_out_grants(grants, f"app request {self.app_request_id}")
 
         app_request = await db.session.get(AppRequest, self.app_request_id)
         assert app_request is not None
         app_request.status = AccessRequestStatus.APPROVED
         app_request.resolved_at = func.now()
         app_request.resolver_user_id = approver_id
-        app_request.resolution_reason = self.approval_reason
+        app_request.resolution_reason = (
+            self.approval_reason
+            + (f" (Skipped, no longer active: {'; '.join(departed)})" if departed else "")
+            + failed_grants_note(failed)
+        )
         app_request.resolved_ownership_ending_at = ownership_ending_at
         app_request.resolved_membership_ending_at = membership_ending_at
         app_request.approved_app_id = app_id
