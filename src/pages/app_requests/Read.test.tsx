@@ -131,20 +131,32 @@ describe('the requested details', () => {
 describe('a pending request naming principals no longer active', () => {
   const DEPARTED_REQUEST = {
     ...PENDING_REQUEST,
-    requested_owner_user_ids: ['gone-user-000000000'],
+    requested_owner_user_ids: [OWNER_USER.id, 'gone-user-000000000'],
     requested_app_groups: [
       {...PENDING_REQUEST.requested_app_groups![0], member_role_ids: [MEMBER_ROLE.id, 'gone-role-000000000']},
     ],
   } as unknown as AppRequestDetail;
 
-  it('warns an Access admin where they are named and cannot be approved', async () => {
+  it('warns an Access admin where they are named and that approval skips them', async () => {
     appRequest = DEPARTED_REQUEST;
     renderPage();
 
-    const warning = screen.getByText(/can't be approved as filed/);
-    expect(warning).toHaveTextContent('2 users or roles no longer active');
+    const warning = screen.getByText(/will be skipped on approval/);
+    expect(warning).toHaveTextContent('2 named users or roles are no longer active');
     expect(warning).toHaveTextContent('1 in app owners');
     expect(warning).toHaveTextContent('1 in App-Support-Desk-Agents members');
+    expect(screen.getByRole('button', {name: /Approve/})).toBeEnabled();
+    expect(screen.getByRole('button', {name: /Reject/})).toBeEnabled();
+  });
+
+  it('cannot be approved when no app owner is still active', async () => {
+    appRequest = {
+      ...DEPARTED_REQUEST,
+      requested_owner_user_ids: ['gone-user-000000000'],
+    } as unknown as AppRequestDetail;
+    renderPage();
+
+    expect(screen.getByText(/At least one app owner must still be active/)).toBeInTheDocument();
     expect(screen.getByRole('button', {name: /Approve/})).toBeDisabled();
     expect(screen.getByRole('button', {name: /Reject/})).toBeEnabled();
   });
@@ -154,7 +166,7 @@ describe('a pending request naming principals no longer active', () => {
     currentUser = OTHER_USER;
     renderPage();
 
-    expect(screen.queryByText(/can't be approved as filed/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/no longer active/)).not.toBeInTheDocument();
   });
 });
 
@@ -178,11 +190,34 @@ describe('an Access admin reviewing a pending request', () => {
     expect(call.body.resolved_membership_ending_at).toEqual(expect.any(String));
   });
 
-  it('may grant longer than requested', async () => {
+  it.each([
+    ['Ownership Ending At', 'resolved_ownership_ending_at'],
+    ['Membership Ending At', 'resolved_membership_ending_at'],
+  ])('offers %s no longer than requested, nor Indefinite', async (label, field) => {
+    renderPage();
+
+    await userEvent.click(screen.getByRole('combobox', {name: label}));
+    const options = (await screen.findAllByRole('option')).map((option) => option.textContent);
+    expect(options).toEqual(['12 Hours', '5 Days', 'Two Weeks', 'Custom']);
+    await userEvent.click(screen.getByRole('option', {name: '5 Days'}));
+    await userEvent.click(screen.getByRole('button', {name: /Approve/}));
+
+    await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
+    const endingAt = resolveMutate.mock.calls[0][0].body[field];
+    expect(new Date(endingAt).getTime()).toBeLessThan(Date.now() + 6 * 86400 * 1000);
+  });
+
+  it('offers Indefinite and longer durations when the request has no end date', async () => {
+    appRequest = {
+      ...PENDING_REQUEST,
+      requested_ownership_ending_at: null,
+      requested_membership_ending_at: null,
+    } as unknown as AppRequestDetail;
     renderPage();
 
     await userEvent.click(screen.getByRole('combobox', {name: /Ownership Ending At/}));
-    await userEvent.click(await screen.findByRole('option', {name: '90 Days'}));
+    expect(await screen.findByRole('option', {name: 'Indefinite'})).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('option', {name: '90 Days'}));
     await userEvent.click(screen.getByRole('button', {name: /Approve/}));
 
     await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
