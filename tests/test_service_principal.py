@@ -11,7 +11,8 @@ from api.auth.dependencies import get_current_user_id
 from api.auth.permissions import require_access_admin_or_app_creator
 from api.config import settings
 from api.extensions import Db
-from api.models import OktaUser, RoleGroup, ServicePrincipal, ServicePrincipalOwner
+from api.models import OktaUser, RoleGroup, ServicePrincipal, ServicePrincipalOwner, ServicePrincipalProvider
+from api.operations import CreateServicePrincipal, DeleteServicePrincipal, ModifyServicePrincipal
 from tests.factories import OktaUserFactory, RoleGroupFactory, ServicePrincipalFactory
 
 SP_URL = "/api/service-principals"
@@ -109,13 +110,18 @@ async def test_service_principal_reads_open_to_authenticated_users(client: Async
     other = await _create_owned_principal(db, owner, display_name="Other")
     mock_user(owner)
 
+    subject = sp.subject
     rep = await client.get(f"{SP_URL}/{sp.id}")
     assert rep.status_code == 200
     assert rep.json()["display_name"] == "Searchable bot"
+    # The credential's subject is for Access admins only, and can't be searched for.
+    assert rep.json()["subject"] is None
+    assert (await client.get(SP_URL, params={"q": subject})).json()["items"] == []
 
     rep = await client.get(SP_URL)
     assert rep.status_code == 200
     assert {i["id"] for i in rep.json()["items"]} == {sp.id, other.id}
+    assert all(i["subject"] is None for i in rep.json()["items"])
 
     rep = await client.get(SP_URL, params={"q": "searchable"})
     assert [i["id"] for i in rep.json()["items"]] == [sp.id]
@@ -223,14 +229,51 @@ async def test_unregistered_service_token_passes_through(db: Db, cloudflare_payl
     assert await get_current_user_id(_request(), db.session) == "unregistered.access"
 
 
-async def test_deleted_service_principal_token_passes_through(db: Db, cloudflare_payload: dict[str, Any]) -> None:
+async def test_retired_service_token_is_refused(
+    db: Db, cloudflare_payload: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
     owner = await OktaUserFactory.create_async()
-    sp = await _create_owned_principal(db, owner)
-    sp.deleted_at = sp.created_at
-    await db.session.commit()
-    cloudflare_payload["common_name"] = sp.subject
 
-    assert await get_current_user_id(_request(), db.session) == sp.subject
+    async def register(subject: str) -> str:
+        sp = await CreateServicePrincipal(
+            display_name=subject,
+            provider=ServicePrincipalProvider.CLOUDFLARE,
+            subject=subject,
+            owner_user_ids=[owner.id],
+            owner_role_ids=[],
+        ).execute()
+        return sp.id
+
+    deleted = await register("deleted.access")
+    rotated = await register("old.access")
+    await DeleteServicePrincipal(service_principal=deleted).execute()
+    await ModifyServicePrincipal(service_principal=rotated, subject="new.access").execute()
+    # Still in an allowlist, but registration ended that access for good.
+    monkeypatch.setattr(settings, "APP_CREATOR_ID", "deleted.access,old.access")
+
+    for subject in ("deleted.access", "old.access"):
+        cloudflare_payload["common_name"] = subject
+        with pytest.raises(HTTPException) as exc:
+            await get_current_user_id(_request(), db.session)
+        assert exc.value.status_code == 403
+    cloudflare_payload["common_name"] = "new.access"
+    assert await get_current_user_id(_request(), db.session) == rotated
+
+
+async def test_concurrent_subject_registration_conflicts(
+    client: AsyncClient, db: Db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = await OktaUserFactory.create_async()
+    body = {"display_name": "bot", "subject": "race.access", "owner_user_ids": [owner.id]}
+    assert (await client.post(SP_URL, json=body)).status_code == 201
+
+    async def no_check(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    # Lose the race: the pre-check passes, and the unique index refuses the insert.
+    monkeypatch.setattr("api.operations.create_service_principal.ensure_subject_available", no_check)
+    rep = await client.post(SP_URL, json=body)
+    assert rep.status_code == 409
 
 
 async def test_registering_a_token_ends_its_allowlist_access(

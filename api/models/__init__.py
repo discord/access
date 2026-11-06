@@ -15,6 +15,7 @@ from api.models.core_models import (
     ServicePrincipal,
     ServicePrincipalOwner,
     ServicePrincipalProvider,
+    ServicePrincipalSubject,
     Tag,
 )
 
@@ -35,5 +36,6 @@ __all__ = [
     "ServicePrincipal",
     "ServicePrincipalOwner",
     "ServicePrincipalProvider",
+    "ServicePrincipalSubject",
     "Tag",
 ]

@@ -4,6 +4,7 @@ from api.models import ServicePrincipal
 from api.operations._active_ids import require_active_role_ids, require_active_user_ids
 from api.operations._service_principals import (
     audit_snapshot,
+    commit_subject_change,
     emit_audit_log,
     ensure_subject_available,
     load_active_service_principal,
@@ -66,7 +67,8 @@ class ModifyServicePrincipal:
         if not user_ids and not role_ids:
             raise InvalidRequestError("At least one owner is required")
 
-        if self.subject is not None and self.subject != service_principal.subject:
+        subject_changed = self.subject is not None and self.subject != service_principal.subject
+        if subject_changed:
             await ensure_subject_available(service_principal.provider, self.subject, exclude_id=service_principal.id)
             service_principal.subject = self.subject
         if self.display_name is not None:
@@ -74,7 +76,7 @@ class ModifyServicePrincipal:
         if self.owner_user_ids is not None or self.owner_role_ids is not None:
             service_principal.owners = owner_rows(user_ids, role_ids)
         service_principal_id = service_principal.id
-        await db.session.commit()
+        await commit_subject_change(service_principal, subject_changed)
 
         db.session.expire_all()
         modified = await load_active_service_principal(service_principal_id)

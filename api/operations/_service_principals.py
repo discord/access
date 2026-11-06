@@ -8,12 +8,19 @@ import string
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from api.context import get_request_context
 from api.exceptions import ConflictError
 from api.extensions import db
-from api.models import OktaUser, ServicePrincipal, ServicePrincipalOwner, ServicePrincipalProvider
+from api.models import (
+    OktaUser,
+    ServicePrincipal,
+    ServicePrincipalOwner,
+    ServicePrincipalProvider,
+    ServicePrincipalSubject,
+)
 from api.schemas import AuditLogSchema, EventType
 
 _ID_ALPHABET = string.ascii_letters + string.digits
@@ -51,6 +58,29 @@ async def ensure_subject_available(
         stmt = stmt.where(ServicePrincipal.id != exclude_id)
     if (await db.session.scalars(stmt)).first() is not None:
         raise ConflictError("A service principal with this provider and subject already exists")
+
+
+async def commit_subject_change(service_principal: ServicePrincipal, subject_changed: bool) -> None:
+    """Commit a new or changed service principal, recording a new subject in its history.
+
+    Raises:
+        ConflictError: Another active service principal took the subject concurrently.
+    """
+    if subject_changed:
+        db.session.add(
+            ServicePrincipalSubject(
+                service_principal_id=service_principal.id,
+                provider=service_principal.provider,
+                subject=service_principal.subject,
+            )
+        )
+    try:
+        await db.session.commit()
+    except IntegrityError as e:
+        # The partial unique index on (provider, subject) settles a race that
+        # `ensure_subject_available` can't.
+        await db.session.rollback()
+        raise ConflictError("A service principal with this provider and subject already exists") from e
 
 
 def owner_rows(user_ids: list[str], role_ids: list[str]) -> list[ServicePrincipalOwner]:

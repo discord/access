@@ -5,8 +5,8 @@ import Typography from '@mui/material/Typography';
 import UserIcon from '@mui/icons-material/Person';
 import RoleIcon from '@mui/icons-material/Diversity3';
 
-import {ServicePrincipalOwnerDetail} from '../../api/apiSchemas';
-import {displayUserName} from '../../helpers';
+import {ServicePrincipalOwnerDetail} from '../api/apiSchemas';
+import {displayUserName} from '../helpers';
 
 interface ServicePrincipalOwnersProps {
   owners: ServicePrincipalOwnerDetail[] | undefined;

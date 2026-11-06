@@ -4,6 +4,7 @@ from api.models import ServicePrincipal, ServicePrincipalProvider
 from api.operations._active_ids import require_active_role_ids, require_active_user_ids
 from api.operations._service_principals import (
     audit_snapshot,
+    commit_subject_change,
     emit_audit_log,
     ensure_subject_available,
     generate_service_principal_id,
@@ -62,7 +63,7 @@ class CreateServicePrincipal:
             owners=owner_rows(user_ids, role_ids),
         )
         db.session.add(service_principal)
-        await db.session.commit()
+        await commit_subject_change(service_principal, subject_changed=True)
 
         created = await load_active_service_principal(service_principal.id)
         assert created is not None

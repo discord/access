@@ -21,7 +21,7 @@ import ChangeTitle from '../../tab-title';
 import NotFound from '../NotFound';
 import CreateUpdateServicePrincipal from './CreateUpdate';
 import DeleteServicePrincipal from './Delete';
-import ServicePrincipalOwners from './Owners';
+import ServicePrincipalOwners from '../../components/ServicePrincipalOwners';
 
 export default function ReadServicePrincipal() {
   const currentUser = useCurrentUser();
@@ -80,10 +80,12 @@ export default function ReadServicePrincipal() {
                     <TableCell component="th">Provider</TableCell>
                     <TableCell>{data.provider}</TableCell>
                   </TableRow>
-                  <TableRow>
-                    <TableCell component="th">Subject</TableCell>
-                    <TableCell sx={{wordBreak: 'break-all'}}>{data.subject}</TableCell>
-                  </TableRow>
+                  {data.subject != null && (
+                    <TableRow>
+                      <TableCell component="th">Subject</TableCell>
+                      <TableCell sx={{wordBreak: 'break-all'}}>{data.subject}</TableCell>
+                    </TableRow>
+                  )}
                   <TableRow>
                     <TableCell component="th">Owners</TableCell>
                     <TableCell>

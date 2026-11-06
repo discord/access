@@ -2,7 +2,7 @@ import {render, screen} from '@testing-library/react';
 import {MemoryRouter} from 'react-router-dom';
 import {describe, expect, it} from 'vitest';
 
-import ServicePrincipalOwners from './Owners';
+import ServicePrincipalOwners from './ServicePrincipalOwners';
 
 const renderOwners = (owners: any[]) =>
   render(

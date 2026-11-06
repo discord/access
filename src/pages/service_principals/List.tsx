@@ -20,7 +20,7 @@ import {ServicePrincipalDetail} from '../../api/apiSchemas';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import CreateUpdateServicePrincipal from './CreateUpdate';
-import ServicePrincipalOwners from './Owners';
+import ServicePrincipalOwners from '../../components/ServicePrincipalOwners';
 
 export default function ListServicePrincipals() {
   const currentUser = useCurrentUser();
