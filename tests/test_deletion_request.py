@@ -316,3 +316,29 @@ async def test_service_principal_withdrawal_is_recorded(db: Db, client: AsyncCli
     assert [i["id"] for i in found] == [dr_id]
     found = (await client.get(DR_URL, params={"q": "cleanup"})).json()["items"]
     assert [i["id"] for i in found] == [dr_id]
+
+
+async def test_audit_names_requester_service_principal(
+    db: Db, client: AsyncClient, mock_user: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    import json
+    import logging
+
+    group_id, _ = await _owned_group(db)
+    owner = await OktaUserFactory.create_async()
+    sp = ServicePrincipalFactory.build()
+    sp.owners = [ServicePrincipalOwner(user_id=owner.id)]
+    db.session.add(sp)
+    await db.session.commit()
+    sp_id = sp.id
+    mock_user(sp_id)
+
+    with caplog.at_level(logging.INFO, logger="access.audit"):
+        await client.post(DR_URL, json={"group_id": group_id})
+    entry = next(
+        json.loads(r.getMessage())
+        for r in caplog.records
+        if r.name == "access.audit" and "DELETION_REQUEST_CREATE" in r.getMessage()
+    )
+    assert entry["requester_service_principal"]["id"] == sp_id
+    assert "service_principal" not in entry
