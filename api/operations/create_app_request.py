@@ -16,8 +16,8 @@ from api.operations._conditional_access import apply_conditional_access, current
 from api.operations._fan_out import defer_notification
 from api.operations._requesters import load_active_requester, split_requester
 from api.operations._service_principals import audit_ref
-from api.operations.approve_app_request import ApproveAppRequest
-from api.operations.create_app import app_group_conflict, owner_group_conflict
+from api.operations.approve_app_request import ApproveAppRequest, ensure_app_group_names_free
+from api.operations.create_app import owner_group_conflict
 from api.operations.reject_app_request import RejectAppRequest
 from api.plugins import ConditionalAccessHook, NotificationHook, evaluate_conditional_access
 from api.schemas import AuditLogSchema, EventType
@@ -32,7 +32,7 @@ async def validate_app_groups(app_name: str, app_groups: list[AppRequestGroup]) 
     Raises:
         InvalidRequestError: A name lacks the app's prefix, names its owners group,
             repeats, or a named owner or member is unknown.
-        ConflictError: A name is already an app group of another app.
+        ConflictError: A group with one of the names already exists.
     """
     prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
     owners_group_name = f"{prefix}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
@@ -56,9 +56,7 @@ async def validate_app_groups(app_name: str, app_groups: list[AppRequestGroup]) 
                 }
             )
         )
-    conflict = await app_group_conflict([group.name for group in normalized])
-    if conflict is not None:
-        raise ConflictError(conflict)
+    await ensure_app_group_names_free([group.name for group in normalized])
     return normalized
 
 
