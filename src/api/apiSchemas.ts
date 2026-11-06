@@ -1430,17 +1430,20 @@ export type RoleRequestSummary = {
 };
 
 /**
- * A service principal and the users and roles accountable for it.
+ * A service principal as the service principal routes return it.
+ *
+ * `subject` (the credential's identifier) is shown to Access admins only and is
+ * null for everyone else.
  */
 export type ServicePrincipalDetail = {
   id: string;
   display_name: string;
   provider: ServicePrincipalProvider;
-  subject: string;
   created_at: string | null;
   updated_at: string | null;
   deleted_at?: string | null;
   owners?: ServicePrincipalOwnerDetail[];
+  subject?: string | null;
 };
 
 /**
