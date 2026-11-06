@@ -22,6 +22,8 @@ from api.models import (
     OktaUserGroupMember,
     RoleGroup,
     RoleGroupMap,
+    ServicePrincipal,
+    ServicePrincipalOwner,
 )
 
 
@@ -161,4 +163,15 @@ def effective_constraint_options() -> tuple:
         .selectinload(RoleGroupMap.active_group)
         .selectinload(OktaGroup.active_group_tags)
         .joinedload(OktaGroupTagMap.active_tag),
+    )
+
+
+def service_principal_options() -> tuple:
+    """Loader options for a `ServicePrincipal` serialized as `ServicePrincipalDetail`:
+    its owner rows and each owner's active user or role."""
+    return (
+        selectinload(ServicePrincipal.owners).options(
+            joinedload(ServicePrincipalOwner.active_user),
+            joinedload(ServicePrincipalOwner.active_role_group),
+        ),
     )

@@ -19,6 +19,7 @@ from api.models import (
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
+    ServicePrincipal,
     Tag,
 )
 from api.models.app_group import get_access_owners
@@ -28,6 +29,7 @@ from api.models.tag import effective_ended_at
 from api.operations._active_ids import require_active_role_ids, require_active_user_ids
 from api.operations._fan_out import defer_notification
 from api.operations._grants import carry_out_grants, failed_grants_note
+from api.operations._service_principals import audit_ref
 from api.operations.constraints.check_group_request_self_add import CheckGroupRequestSelfAdd
 from api.operations.create_group import CreateGroup
 from api.operations.modify_group_users import ModifyGroupUsers
@@ -122,16 +124,32 @@ class ApproveGroupRequest:
             raise ConflictError("Group request is no longer pending")
 
         # Don't allow requester to approve their own request
-        if group_request.requester_user_id == approver_id and not self.bypass_self_approval:
+        if approver_id is not None and group_request.requester_user_id == approver_id and not self.bypass_self_approval:
             return group_request
 
-        # Don't allow approving a request if the requester is deleted. (Note:
-        # a deleted requester usually can't even load above — active_requester
-        # is an inner join filtering deleted_at — so this is a belt-and-braces
-        # check that mirrors the historical no-op rather than a 4xx path.)
-        requester = await db.session.get(OktaUser, group_request.requester_user_id)
-        if requester is None or requester.deleted_at is not None:
-            return group_request
+        # Don't allow approving a request whose requester is deleted.
+        requester_user: OktaUser | None = None
+        requester_service_principal: ServicePrincipal | None = None
+        if group_request.requester_service_principal_id is not None:
+            requester_service_principal = (
+                await db.session.scalars(
+                    select(ServicePrincipal)
+                    .where(ServicePrincipal.id == group_request.requester_service_principal_id)
+                    .where(ServicePrincipal.deleted_at.is_(None))
+                )
+            ).first()
+            if requester_service_principal is None:
+                return group_request
+        else:
+            requester_user = (
+                await db.session.scalars(
+                    select(OktaUser)
+                    .where(OktaUser.id == group_request.requester_user_id)
+                    .where(OktaUser.deleted_at.is_(None))
+                )
+            ).first()
+            if requester_user is None:
+                return group_request
 
         # Resolve group fields: use resolved_* if set, otherwise fall back to requested_*
         resolved_name = (
@@ -381,7 +399,8 @@ class ApproveGroupRequest:
                     "current_user_id": approver_id,
                     "current_user_email": approver_email,
                     "group_request": group_request,
-                    "requester": await db.session.get(OktaUser, group_request.requester_user_id),
+                    "requester": requester_user,
+                    "service_principal": audit_ref(requester_service_principal),
                 }
             )
         )
@@ -407,6 +426,8 @@ class ApproveGroupRequest:
                 name=resolved_name,
                 description=resolved_description,
             )
+
+        new_group.created_by_service_principal_id = group_request.requester_service_principal_id
 
         created_group: AppGroup | OktaGroup | RoleGroup = await CreateGroup(
             group=new_group,
@@ -509,7 +530,9 @@ class ApproveGroupRequest:
 
         await db.session.commit()
 
-        if self.notify:
+        # A service principal learns the outcome by polling the request, so only a
+        # user requester is notified.
+        if self.notify and group_request.requester_user_id is not None:
             created_group = (
                 await db.session.scalars(
                     select(OktaGroup)

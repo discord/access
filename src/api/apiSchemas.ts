@@ -598,6 +598,7 @@ export type GroupRequestDetail = {
   created_at: string | null;
   updated_at: string | null;
   requester?: OktaUserSummary | null;
+  requester_service_principal?: ServicePrincipalDetail | null;
   resolver?: OktaUserSummary | null;
   named_users?: OktaUserSummary[];
   named_roles?: RoleGroupRef[];

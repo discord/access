@@ -205,7 +205,9 @@ def _is_eligible(
     reviewer = aliased(OktaUser)
     conditions = [
         ownership_condition(request_cls, reviewer_id),
-        request_cls.requester_user_id != reviewer_id,
+        # A service principal's request has no user requester, and `!=` against
+        # NULL is never true, so it must be allowed explicitly.
+        or_(request_cls.requester_user_id.is_(None), request_cls.requester_user_id != reviewer_id),
         _exists((reviewer,), reviewer.id == reviewer_id, reviewer.deleted_at.is_(None)),
     ]
     if request_cls is RoleRequest:
