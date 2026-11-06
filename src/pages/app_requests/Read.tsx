@@ -122,8 +122,13 @@ interface ResolveRequestForm {
 }
 
 // The end date an approver's choice sends. Indefinite (or no choice) sends nothing, which keeps the
-// requested end date, so Indefinite is offered only when the request has no end date.
-function approvalEndingAt(until: string | undefined, custom: string | undefined): string | undefined {
+// requested end date, so Indefinite is offered only when the request has no end date. A duration
+// counts from now, so it is held to the requested end date.
+function approvalEndingAt(
+  until: string | undefined,
+  custom: string | undefined,
+  requestedEndingAt: string | null | undefined,
+): string | undefined {
   switch (until) {
     case undefined:
     case '':
@@ -131,8 +136,11 @@ function approvalEndingAt(until: string | undefined, custom: string | undefined)
       return undefined;
     case 'custom':
       return custom ? dayjs(custom).toISOString() : undefined;
-    default:
-      return dayjs().add(parseInt(until, 10), 'seconds').toISOString();
+    default: {
+      const endingAt = dayjs().add(parseInt(until, 10), 'seconds');
+      const requested = requestedEndingAt ? dayjs(requestedEndingAt) : undefined;
+      return (requested && requested.isBefore(endingAt) ? requested : endingAt).toISOString();
+    }
   }
 }
 
@@ -246,11 +254,13 @@ export default function ReadAppRequest() {
       resolveRequest.resolved_ownership_ending_at = approvalEndingAt(
         responseForm.resolved_ownership_ending_at,
         responseForm.resolved_ownership_ending_at_custom,
+        appRequest.requested_ownership_ending_at,
       );
       if (namesMembers) {
         resolveRequest.resolved_membership_ending_at = approvalEndingAt(
           responseForm.resolved_membership_ending_at,
           responseForm.resolved_membership_ending_at_custom,
+          appRequest.requested_membership_ending_at,
         );
       }
     }
