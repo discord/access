@@ -63,6 +63,7 @@ import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import {displayUserName} from '../../helpers';
 import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
+import DepartedPrincipalsWarning, {departedIds, departedLabel} from '../../components/DepartedPrincipalsWarning';
 
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import Loading from '../../components/Loading';
@@ -346,6 +347,21 @@ export default function ReadGroupRequest() {
 
   const namesMembers = memberUsers.length > 0 || memberRoles.length > 0;
   const rolesBlocked = groupType === 'role_group' && (ownerRoles.length > 0 || memberRoles.length > 0);
+
+  const departed = {
+    ownerUsers: departedIds(groupRequest.requested_owner_user_ids, groupRequest.named_users).length,
+    ownerRoles: departedIds(groupRequest.requested_owner_role_ids, groupRequest.named_roles).length,
+    memberUsers: departedIds(groupRequest.requested_member_user_ids, groupRequest.named_users).length,
+    memberRoles: departedIds(groupRequest.requested_member_role_ids, groupRequest.named_roles).length,
+  };
+  const untouchedDeparted = (picker: keyof typeof departed) => (principalsTouched[picker] ? 0 : departed[picker]);
+  const departedPlaces = [
+    {where: 'Owners: users', count: untouchedDeparted('ownerUsers')},
+    {where: 'Owners: roles', count: untouchedDeparted('ownerRoles')},
+    {where: 'Members: users', count: untouchedDeparted('memberUsers')},
+    {where: 'Members: roles', count: untouchedDeparted('memberRoles')},
+  ];
+  const departedBlocked = departedPlaces.some((place) => place.count > 0);
 
   const isAppOwner = React.useMemo<boolean>(() => {
     if (admin || ownRequest || requestedGroupType !== 'app_group' || !requestedAppId) {
@@ -915,23 +931,41 @@ export default function ReadGroupRequest() {
                             </Typography>
                           </Grid>
                         )}
-                      {requestedOwners.users.length + requestedOwners.roles.length > 0 && (
+                      {requestedOwners.users.length +
+                        requestedOwners.roles.length +
+                        departed.ownerUsers +
+                        departed.ownerRoles >
+                        0 && (
                         <Grid size={12}>
                           <Stack direction="row" spacing={1} sx={{flexWrap: 'wrap', alignItems: 'center'}}>
                             <Typography variant="body2">
                               <b>Owners:</b>
                             </Typography>
                             <PrincipalChips users={requestedOwners.users} roles={requestedOwners.roles} />
+                            {departed.ownerUsers + departed.ownerRoles > 0 && (
+                              <Typography variant="body2" sx={{color: 'text.secondary'}}>
+                                {departedLabel(departed.ownerUsers, departed.ownerRoles)}
+                              </Typography>
+                            )}
                           </Stack>
                         </Grid>
                       )}
-                      {requestedMembers.users.length + requestedMembers.roles.length > 0 && (
+                      {requestedMembers.users.length +
+                        requestedMembers.roles.length +
+                        departed.memberUsers +
+                        departed.memberRoles >
+                        0 && (
                         <Grid size={12}>
                           <Stack direction="row" spacing={1} sx={{flexWrap: 'wrap', alignItems: 'center'}}>
                             <Typography variant="body2">
                               <b>Members:</b>
                             </Typography>
                             <PrincipalChips users={requestedMembers.users} roles={requestedMembers.roles} />
+                            {departed.memberUsers + departed.memberRoles > 0 && (
+                              <Typography variant="body2" sx={{color: 'text.secondary'}}>
+                                {departedLabel(departed.memberUsers, departed.memberRoles)}
+                              </Typography>
+                            )}
                           </Stack>
                         </Grid>
                       )}
@@ -1019,6 +1053,12 @@ export default function ReadGroupRequest() {
                               </Alert>
                             ) : null}
                             <ConstraintsUnavailableAlert constraints={tagConstraints} action="approval" />
+                            {canApprove && (
+                              <DepartedPrincipalsWarning
+                                places={departedPlaces}
+                                hint="Edit those pickers to approve without them, or reject the request."
+                              />
+                            )}
                             {canApprove && (
                               <>
                                 <Typography variant="h6" sx={{mb: 1}}>
@@ -1325,7 +1365,7 @@ export default function ReadGroupRequest() {
                                   type="submit"
                                   startIcon={<ApprovedIcon />}
                                   sx={{mx: 2}}
-                                  disabled={submitting || tagConstraints.blocked || rolesBlocked}
+                                  disabled={submitting || tagConstraints.blocked || rolesBlocked || departedBlocked}
                                   onClick={() => setApproved(true)}>
                                   Approve
                                 </Button>

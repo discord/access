@@ -297,22 +297,43 @@ describe('a request naming owners and members', () => {
     expect(body.resolved_membership_ending_at).toEqual(expect.any(String));
   });
 
-  // `named_users` omits a user deleted since filing, so the pickers start without them.
-  it('leaves untouched lists to the backend even when a named user is gone', async () => {
+  // `named_users` omits a user deleted since filing, so the pickers start without them and an
+  // untouched approval would send the request's own list, naming that user, back to the backend.
+  it('warns about a named user who is gone and refuses approval until the picker is edited', async () => {
     groupRequest = {
       ...NAMING_REQUEST,
       requested_owner_user_ids: [OWNER_USER.id, 'deleted-user-000000'],
     } as unknown as GroupRequestDetail;
     renderPage();
 
-    await userEvent.click(await screen.findByRole('button', {name: /Approve/}));
+    const approve = await screen.findByRole('button', {name: /Approve/});
+    expect(screen.getByText(/no longer active/)).toHaveTextContent(
+      '1 named user or role is no longer active (1 in Owners: users).',
+    );
+    expect(screen.getByText('1 departed user')).toBeInTheDocument();
+    expect(approve).toBeDisabled();
+    expect(screen.getByRole('button', {name: /Reject/})).toBeEnabled();
+
+    const ownerUsers = screen.getByRole('combobox', {name: 'Owners: users'}).closest('.MuiAutocomplete-root');
+    await userEvent.click(within(ownerUsers as HTMLElement).getByTestId('CancelIcon'));
+
+    await waitFor(() => expect(approve).toBeEnabled());
+    expect(screen.queryByText(/no longer active/)).not.toBeInTheDocument();
+    await userEvent.click(approve);
 
     await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
     const body = resolveMutate.mock.calls[0][0].body;
-    expect(body.resolved_owner_user_ids).toBeUndefined();
-    expect(body.resolved_owner_role_ids).toBeUndefined();
-    expect(body.resolved_member_user_ids).toBeUndefined();
+    expect(body.resolved_owner_user_ids).toEqual([]);
     expect(body.resolved_member_role_ids).toBeUndefined();
+  });
+
+  it('shows no departed warning when every named principal is active', async () => {
+    groupRequest = NAMING_REQUEST;
+    renderPage();
+
+    expect(await screen.findByRole('button', {name: /Approve/})).toBeEnabled();
+    expect(screen.queryByText(/no longer active/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/departed/)).not.toBeInTheDocument();
   });
 
   it('sends only the list whose picker the approver changed', async () => {
