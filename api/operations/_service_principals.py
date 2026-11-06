@@ -11,9 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from api.context import get_request_context
-from api.exceptions import ConflictError, InvalidRequestError
+from api.exceptions import ConflictError
 from api.extensions import db
-from api.models import OktaUser, RoleGroup, ServicePrincipal, ServicePrincipalOwner, ServicePrincipalProvider
+from api.models import OktaUser, ServicePrincipal, ServicePrincipalOwner, ServicePrincipalProvider
 from api.schemas import AuditLogSchema, EventType
 
 _ID_ALPHABET = string.ascii_letters + string.digits
@@ -51,42 +51,6 @@ async def ensure_subject_available(
         stmt = stmt.where(ServicePrincipal.id != exclude_id)
     if (await db.session.scalars(stmt)).first() is not None:
         raise ConflictError("A service principal with this provider and subject already exists")
-
-
-async def resolve_owner_user_ids(user_ids: list[str]) -> list[str]:
-    """Return the distinct active user ids in `user_ids`, raising `InvalidRequestError` for any unknown id."""
-    wanted = list(dict.fromkeys(user_ids))
-    if not wanted:
-        return []
-    found = set(
-        (
-            await db.session.scalars(
-                select(OktaUser.id).where(OktaUser.id.in_(wanted)).where(OktaUser.deleted_at.is_(None))
-            )
-        ).all()
-    )
-    missing = [u for u in wanted if u not in found]
-    if missing:
-        raise InvalidRequestError(f"Unknown owner user ids: {', '.join(missing)}")
-    return wanted
-
-
-async def resolve_owner_role_ids(role_ids: list[str]) -> list[str]:
-    """Return the distinct active role ids in `role_ids`, raising `InvalidRequestError` for any unknown id."""
-    wanted = list(dict.fromkeys(role_ids))
-    if not wanted:
-        return []
-    found = set(
-        (
-            await db.session.scalars(
-                select(RoleGroup.id).where(RoleGroup.id.in_(wanted)).where(RoleGroup.deleted_at.is_(None))
-            )
-        ).all()
-    )
-    missing = [r for r in wanted if r not in found]
-    if missing:
-        raise InvalidRequestError(f"Unknown owner role ids: {', '.join(missing)}")
-    return wanted
 
 
 def owner_rows(user_ids: list[str], role_ids: list[str]) -> list[ServicePrincipalOwner]:
