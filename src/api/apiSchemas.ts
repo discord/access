@@ -416,6 +416,25 @@ export type CreateRoleRequestBody = {
 };
 
 /**
+ * Body for POST /api/service-principals. At least one owner is required.
+ */
+export type CreateServicePrincipalBody = {
+  owner_user_ids?: string[];
+  owner_role_ids?: string[];
+  /**
+   * @maxLength 100
+   * @minLength 1
+   */
+  display_name: string;
+  provider?: ServicePrincipalProvider;
+  /**
+   * @maxLength 255
+   * @minLength 1
+   */
+  subject: string;
+};
+
+/**
  * Body for POST /api/tags.
  */
 export type CreateTagBody = {
@@ -946,6 +965,26 @@ export type PageTypeVarCustomizedRoleRequestSummary = {
   pages: number;
 };
 
+export type PageTypeVarCustomizedServicePrincipalDetail = {
+  items: ServicePrincipalDetail[];
+  /**
+   * @minimum 0
+   */
+  total: number;
+  /**
+   * @minimum 1
+   */
+  page: number;
+  /**
+   * @minimum 1
+   */
+  size: number;
+  /**
+   * @minimum 0
+   */
+  pages: number;
+};
+
 export type PageTypeVarCustomizedTagListItem = {
   items: TagListItem[];
   /**
@@ -1373,6 +1412,37 @@ export type RoleRequestSummary = {
   active_resolver?: OktaUserSummary | null;
 };
 
+/**
+ * A service principal as the service principal routes return it.
+ *
+ * `subject` (the credential's identifier) is shown to Access admins only and is
+ * null for everyone else.
+ */
+export type ServicePrincipalDetail = {
+  id: string;
+  display_name: string;
+  provider: ServicePrincipalProvider;
+  created_at: string | null;
+  updated_at: string | null;
+  deleted_at?: string | null;
+  owners?: ServicePrincipalOwnerDetail[];
+  subject?: string | null;
+};
+
+/**
+ * One owner of a service principal: exactly one of `active_user` or
+ * `active_role_group` is set. Both are null when the owning user or role
+ * has been deleted.
+ */
+export type ServicePrincipalOwnerDetail = {
+  user_id?: string | null;
+  role_group_id?: string | null;
+  active_user?: OktaUserSummary | null;
+  active_role_group?: RoleGroupRef | null;
+};
+
+export type ServicePrincipalProvider = 'cloudflare';
+
 export type TagDetail = {
   id: string;
   name: string;
@@ -1447,6 +1517,18 @@ export type UpdateAppBody = {
   } | null;
   tags_to_add?: string[] | null;
   tags_to_remove?: string[] | null;
+};
+
+/**
+ * Body for PUT /api/service-principals/{id}. Every field is optional.
+ * A sent owner list replaces the owners of that kind; the resulting owner
+ * set must still name at least one owner.
+ */
+export type UpdateServicePrincipalBody = {
+  display_name?: string | null;
+  subject?: string | null;
+  owner_user_ids?: string[] | null;
+  owner_role_ids?: string[] | null;
 };
 
 /**
