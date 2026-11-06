@@ -39,15 +39,15 @@ import {
   useAppRequestById,
   useAppRequestByIdPut,
 } from '../../api/apiComponents';
-import {AppRequestDetail, OktaUserSummary, ResolveAppRequestBody} from '../../api/apiSchemas';
+import {AppRequestDetail, ResolveAppRequestBody} from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {canApproveAppRequest} from '../../authorization';
 import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import Loading from '../../components/Loading';
 import RequesterLink, {requesterName} from '../../components/RequesterLink';
-import {PrincipalChips, RoleOption, pickByIds} from '../../components/Principals';
-import {AccessEndingField, untilIdFor} from '../../components/AccessLength';
+import {PrincipalChips, pickByIds} from '../../components/Principals';
+import {AccessEndingField, resolvedEndingAt, untilIdFor} from '../../components/AccessLength';
 import {useTagsByIds} from '../../components/useTagsByIds';
 import ServicePrincipalOwners from '../../components/ServicePrincipalOwners';
 import ChangeTitle from '../../tab-title';
@@ -56,48 +56,48 @@ import NotFound from '../NotFound';
 dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
 
-// The seconds from `askedAt` to `endingAt`, rounded as `untilIdFor` rounds, or null for no end.
-function requestedSeconds(endingAt: string | null | undefined, askedAt: string | null | undefined): number | null {
-  if (!endingAt) {
-    return null;
-  }
-  return Math.round(dayjs(endingAt).diff(dayjs(askedAt), 'second') / 100) * 100;
-}
-
-function minLimit(a: number | null, b: number | null): number | null {
-  if (a == null) return b;
-  if (b == null) return a;
-  return Math.min(a, b);
-}
-
-// The end date an approver's selection sets, or undefined to keep the requested one.
-function resolvedEndingAt(until: string | undefined, custom: string | undefined): string | undefined {
-  switch (until) {
-    case 'indefinite':
-    case undefined:
-      return undefined;
-    case 'custom':
-      return custom ? dayjs(custom).toISOString() : undefined;
-    default:
-      return dayjs().add(parseInt(until, 10), 'seconds').toISOString();
-  }
-}
-
 function endingLabel(endingAt: string | null | undefined): string {
   return endingAt ? dayjs(endingAt).startOf('second').fromNow() : 'Indefinite';
 }
 
-function PrincipalsLine({label, users, roles}: {label: string; users: OktaUserSummary[]; roles: RoleOption[]}) {
+// A labelled set of principals the request names, by id.
+interface NamedPrincipals {
+  label: string;
+  userIds: string[];
+  roleIds: string[];
+}
+
+// The ids absent from `named`, which lists only the principals still active.
+function departedIds(ids: string[], named: {id: string}[] | undefined): string[] {
+  const active = new Set((named ?? []).map((principal) => principal.id));
+  return ids.filter((id) => !active.has(id));
+}
+
+function countLabel(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+function PrincipalsLine({label, userIds, roleIds, appRequest}: NamedPrincipals & {appRequest: AppRequestDetail}) {
+  const users = pickByIds(userIds, appRequest.named_users);
+  const roles = pickByIds(roleIds, appRequest.named_roles);
+  const departedUsers = departedIds(userIds, appRequest.named_users).length;
+  const deletedRoles = departedIds(roleIds, appRequest.named_roles).length;
+  const departed = [
+    departedUsers > 0 ? countLabel(departedUsers, 'departed user') : null,
+    deletedRoles > 0 ? countLabel(deletedRoles, 'deleted role') : null,
+  ].filter((part) => part != null);
   return (
     <Stack direction="row" spacing={1} sx={{flexWrap: 'wrap', alignItems: 'center'}}>
       <Typography variant="body2">
         <b>{label}:</b>
       </Typography>
-      {users.length + roles.length > 0 ? (
-        <PrincipalChips users={users} roles={roles} />
-      ) : (
-        <Typography variant="body2">None</Typography>
+      {users.length + roles.length > 0 && <PrincipalChips users={users} roles={roles} />}
+      {departed.length > 0 && (
+        <Typography variant="body2" sx={{color: 'text.secondary'}}>
+          {departed.join(', ')}
+        </Typography>
       )}
+      {users.length + roles.length + departed.length === 0 && <Typography variant="body2">None</Typography>}
     </Stack>
   );
 }
@@ -140,16 +140,33 @@ export default function ReadAppRequest() {
     (group) => (group.member_user_ids ?? []).length > 0 || (group.member_role_ids ?? []).length > 0,
   );
 
-  // The approver may shorten the requested end dates, not lift them: the API keeps the
-  // requested date when none is sent, so Indefinite and longer durations are not offered.
-  const ownershipTimeLimit = minLimit(
-    tagConstraints.timeLimit(true),
-    requestedSeconds(appRequest.requested_ownership_ending_at, appRequest.created_at),
-  );
-  const membershipTimeLimit = minLimit(
-    tagConstraints.timeLimit(false),
-    requestedSeconds(appRequest.requested_membership_ending_at, appRequest.created_at),
-  );
+  const ownershipTimeLimit = tagConstraints.timeLimit(true);
+  const membershipTimeLimit = tagConstraints.timeLimit(false);
+
+  const appOwners: NamedPrincipals = {
+    label: 'App owners',
+    userIds: appRequest.requested_owner_user_ids ?? [],
+    roleIds: appRequest.requested_owner_role_ids ?? [],
+  };
+  const groupPrincipals = appGroups.map((group) => ({
+    group,
+    owners: {label: 'Owners', userIds: group.owner_user_ids ?? [], roleIds: group.owner_role_ids ?? []},
+    members: {label: 'Members', userIds: group.member_user_ids ?? [], roleIds: group.member_role_ids ?? []},
+  }));
+  // Approval refuses a request naming anyone no longer active, so say where they are named.
+  const departedPlaces = [
+    {where: 'app owners', principals: appOwners},
+    ...groupPrincipals.flatMap(({group, owners, members}) => [
+      {where: `${group.name} owners`, principals: owners},
+      {where: `${group.name} members`, principals: members},
+    ]),
+  ].flatMap(({where, principals}) => {
+    const count =
+      departedIds(principals.userIds, appRequest.named_users).length +
+      departedIds(principals.roleIds, appRequest.named_roles).length;
+    return count > 0 ? [{where, count}] : [];
+  });
+  const departedCount = departedPlaces.reduce((total, place) => total + place.count, 0);
 
   const complete = (
     completedRequest: AppRequestDetail | undefined,
@@ -196,11 +213,13 @@ export default function ReadAppRequest() {
       resolveRequest.resolved_ownership_ending_at = resolvedEndingAt(
         responseForm.resolved_ownership_ending_at,
         responseForm.resolved_ownership_ending_at_custom,
+        appRequest.requested_ownership_ending_at,
       );
       if (namesMembers) {
         resolveRequest.resolved_membership_ending_at = resolvedEndingAt(
           responseForm.resolved_membership_ending_at,
           responseForm.resolved_membership_ending_at_custom,
+          appRequest.requested_membership_ending_at,
         );
       }
     }
@@ -221,8 +240,6 @@ export default function ReadAppRequest() {
       {appName}
     </Link>
   );
-  const ownerUsers = pickByIds(appRequest.requested_owner_user_ids, appRequest.named_users);
-  const ownerRoles = pickByIds(appRequest.requested_owner_role_ids, appRequest.named_roles);
 
   return (
     <React.Fragment>
@@ -366,13 +383,7 @@ export default function ReadAppRequest() {
                         </Typography>
                       </Grid>
                       <Grid size={12}>
-                        {ownerUsers.length + ownerRoles.length > 0 ? (
-                          <PrincipalsLine label="App owners" users={ownerUsers} roles={ownerRoles} />
-                        ) : (
-                          <Typography variant="body2">
-                            <b>App owners:</b> The requester
-                          </Typography>
-                        )}
+                        <PrincipalsLine {...appOwners} appRequest={appRequest} />
                       </Grid>
                       {requestedTags.length > 0 && (
                         <Grid size={12}>
@@ -403,7 +414,7 @@ export default function ReadAppRequest() {
                           <b>Initial app groups:</b> {appGroups.length === 0 ? 'None' : null}
                         </Typography>
                       </Grid>
-                      {appGroups.map((group) => (
+                      {groupPrincipals.map(({group, owners, members}) => (
                         <Grid key={group.name} size={12}>
                           <Paper variant="outlined" sx={{p: 1.5}}>
                             <Typography variant="body1" sx={{fontWeight: 500}}>
@@ -414,17 +425,9 @@ export default function ReadAppRequest() {
                                 {group.description}
                               </Typography>
                             ) : null}
-                            <PrincipalsLine
-                              label="Owners"
-                              users={pickByIds(group.owner_user_ids, appRequest.named_users)}
-                              roles={pickByIds(group.owner_role_ids, appRequest.named_roles)}
-                            />
+                            <PrincipalsLine {...owners} appRequest={appRequest} />
                             <Box sx={{pt: 0.5}}>
-                              <PrincipalsLine
-                                label="Members"
-                                users={pickByIds(group.member_user_ids, appRequest.named_users)}
-                                roles={pickByIds(group.member_role_ids, appRequest.named_roles)}
-                              />
+                              <PrincipalsLine {...members} appRequest={appRequest} />
                             </Box>
                           </Paper>
                         </Grid>
@@ -470,7 +473,7 @@ export default function ReadAppRequest() {
                               </>
                             ) : (
                               <>
-                                Request is <b>pending</b>. Review the requested app above, optionally shorten the end
+                                Request is <b>pending</b>. Review the requested app above, optionally change the end
                                 dates, then approve or reject.
                               </>
                             )}
@@ -485,15 +488,22 @@ export default function ReadAppRequest() {
                                 {requestError}
                               </Alert>
                             ) : null}
+                            {canApprove && departedCount > 0 && (
+                              <Alert severity="warning" sx={{my: 1}}>
+                                {`This request names ${departedCount} ${departedCount === 1 ? 'user or role' : 'users or roles'} no longer active (` +
+                                  departedPlaces.map((place) => `${place.count} in ${place.where}`).join('; ') +
+                                  "), so it can't be approved as filed."}
+                              </Alert>
+                            )}
                             {canApprove && (
                               <>
                                 <ConstraintsUnavailableAlert constraints={tagConstraints} action="approval" />
                                 <Grid container columnSpacing={2} rowSpacing={0} sx={{alignItems: 'flex-start'}}>
-                                  {tagConstraints.timeLimit(true) != null && (
+                                  {ownershipTimeLimit != null && (
                                     <Grid size={12}>
                                       <Typography variant="subtitle2" sx={{color: 'text.accent', pt: 1}}>
                                         {'Ownership is limited to ' +
-                                          timeLimitLabel(tagConstraints.timeLimit(true)!) +
+                                          timeLimitLabel(ownershipTimeLimit) +
                                           ' by a tag constraint.'}
                                       </Typography>
                                     </Grid>
@@ -524,11 +534,11 @@ export default function ReadAppRequest() {
                                 </Grid>
                                 {namesMembers && (
                                   <Grid container columnSpacing={2} rowSpacing={0} sx={{alignItems: 'flex-start'}}>
-                                    {tagConstraints.timeLimit(false) != null && (
+                                    {membershipTimeLimit != null && (
                                       <Grid size={12}>
                                         <Typography variant="subtitle2" sx={{color: 'text.accent', pt: 1}}>
                                           {'Membership is limited to ' +
-                                            timeLimitLabel(tagConstraints.timeLimit(false)!) +
+                                            timeLimitLabel(membershipTimeLimit) +
                                             ' by a tag constraint.'}
                                         </Typography>
                                       </Grid>
@@ -591,7 +601,7 @@ export default function ReadAppRequest() {
                                   type="submit"
                                   startIcon={<ApprovedIcon />}
                                   sx={{mx: 2}}
-                                  disabled={submitting || tagConstraints.blocked}
+                                  disabled={submitting || tagConstraints.blocked || departedCount > 0}
                                   onClick={() => setApproved(true)}>
                                   Approve
                                 </Button>
@@ -622,7 +632,11 @@ export default function ReadAppRequest() {
                   ) : (
                     <Paper sx={{p: 2, my: 2}}>
                       <Typography variant="body1">
-                        {appRequest.resolver == null ? (
+                        {appRequest.resolver_service_principal != null ? (
+                          <b>
+                            <RequesterLink servicePrincipal={appRequest.resolver_service_principal} />
+                          </b>
+                        ) : appRequest.resolver == null ? (
                           <b>Access</b>
                         ) : (
                           <Link

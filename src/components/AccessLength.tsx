@@ -78,6 +78,38 @@ export function untilIdFor(endingAt: string | null | undefined, askedAt: string 
   return delta in RESOLVE_UNTIL_ID_TO_LABELS ? delta.toString() : 'custom';
 }
 
+/**
+ * The end date an approver's length selection sends with a resolution.
+ *
+ * Undefined keeps the requested end date and null asks for indefinite access. Indefinite is
+ * sent only over a requested end date, since without one it is what was asked for.
+ *
+ * Args:
+ *   until: The selected option id: a number of seconds, 'indefinite', or 'custom'.
+ *   custom: The custom end date, read when `until` is 'custom'.
+ *   requested: The end date the request asked for, or none for indefinite access.
+ *
+ * Returns:
+ *   The end date as an ISO string, null for indefinite access, or undefined to keep the
+ *   requested end date.
+ */
+export function resolvedEndingAt(
+  until: string | undefined,
+  custom: string | undefined,
+  requested: string | null | undefined,
+): string | null | undefined {
+  switch (until) {
+    case undefined:
+      return undefined;
+    case 'indefinite':
+      return requested ? null : undefined;
+    case 'custom':
+      return custom ? dayjs(custom).toISOString() : undefined;
+    default:
+      return dayjs().add(parseInt(until, 10), 'seconds').toISOString();
+  }
+}
+
 interface AccessLengthFieldProps {
   name: 'ownershipUntil' | 'membershipUntil';
   label: string;

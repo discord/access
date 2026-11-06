@@ -231,13 +231,15 @@ export default function NavItems(props: NavItemsProps) {
             sx={{pl: 4}}
             tooltip="App creation requests you submitted"
           />
-          <ListItemLink
-            to="/app-requests?assignee_user_id=@me"
-            displayText="Assigned to Me"
-            displayIcon={<RequestToMe />}
-            sx={{pl: 4}}
-            tooltip="App creation requests awaiting your approval"
-          />
+          {isAccessAdmin(currentUser) && (
+            <ListItemLink
+              to="/app-requests?assignee_user_id=@me"
+              displayText="Assigned to Me"
+              displayIcon={<RequestToMe />}
+              sx={{pl: 4}}
+              tooltip="App creation requests awaiting your approval"
+            />
+          )}
           <ListItemLink
             to="/app-requests"
             displayText="All"
