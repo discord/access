@@ -1416,3 +1416,25 @@ class ServicePrincipalOwner(Base):
         viewonly=True,
         lazy="raise_on_sql",
     )
+
+
+class ServicePrincipalSubject(Base):
+    """Every subject a service principal has been registered with.
+
+    A credential whose subject was ever registered is refused once no active
+    service principal holds it (after a deletion or a rotation), rather than
+    falling back to unregistered pass-through.
+    """
+
+    # See https://stackoverflow.com/a/60840921
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        autoincrement=True,
+        primary_key=True,
+    )
+    service_principal_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("service_principal.id"), nullable=False)
+    provider: Mapped[ServicePrincipalProvider] = mapped_column(Enum(ServicePrincipalProvider), nullable=False)
+    subject: Mapped[str] = mapped_column(Unicode(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+
+    __table_args__ = (Index("idx_service_principal_subject_provider_subject", "provider", "subject"),)
