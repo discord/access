@@ -1,6 +1,7 @@
 from api.exceptions import InvalidRequestError
 from api.extensions import db
 from api.models import ServicePrincipal, ServicePrincipalProvider
+from api.operations._active_ids import require_active_role_ids, require_active_user_ids
 from api.operations._service_principals import (
     audit_snapshot,
     emit_audit_log,
@@ -8,8 +9,6 @@ from api.operations._service_principals import (
     generate_service_principal_id,
     load_active_service_principal,
     owner_rows,
-    resolve_owner_role_ids,
-    resolve_owner_user_ids,
 )
 from api.schemas import EventType
 
@@ -49,8 +48,8 @@ class CreateServicePrincipal:
 
     async def execute(self) -> ServicePrincipal:
         """Create the service principal and return it with its owners loaded."""
-        user_ids = await resolve_owner_user_ids(self.owner_user_ids)
-        role_ids = await resolve_owner_role_ids(self.owner_role_ids)
+        user_ids = await require_active_user_ids(self.owner_user_ids, "owner")
+        role_ids = await require_active_role_ids(self.owner_role_ids, "owner")
         if not user_ids and not role_ids:
             raise InvalidRequestError("At least one owner is required")
         await ensure_subject_available(self.provider, self.subject)

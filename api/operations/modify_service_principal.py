@@ -1,14 +1,13 @@
 from api.exceptions import InvalidRequestError, ResourceGoneError
 from api.extensions import db
 from api.models import ServicePrincipal
+from api.operations._active_ids import require_active_role_ids, require_active_user_ids
 from api.operations._service_principals import (
     audit_snapshot,
     emit_audit_log,
     ensure_subject_available,
     load_active_service_principal,
     owner_rows,
-    resolve_owner_role_ids,
-    resolve_owner_user_ids,
 )
 from api.schemas import EventType
 
@@ -55,12 +54,12 @@ class ModifyServicePrincipal:
         old = audit_snapshot(service_principal)
 
         user_ids = (
-            await resolve_owner_user_ids(self.owner_user_ids)
+            await require_active_user_ids(self.owner_user_ids, "owner")
             if self.owner_user_ids is not None
             else old["owner_user_ids"]
         )
         role_ids = (
-            await resolve_owner_role_ids(self.owner_role_ids)
+            await require_active_role_ids(self.owner_role_ids, "owner")
             if self.owner_role_ids is not None
             else old["owner_role_ids"]
         )
