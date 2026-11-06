@@ -329,6 +329,7 @@ def _group_request_load_options() -> tuple:
         joinedload(GroupRequest.requester),
         joinedload(GroupRequest.active_requester),
         joinedload(GroupRequest.requester_service_principal).options(*service_principal_options()),
+        joinedload(GroupRequest.resolver_service_principal).options(*service_principal_options()),
         joinedload(GroupRequest.resolver),
         joinedload(GroupRequest.active_resolver),
         joinedload(GroupRequest.approved_group),

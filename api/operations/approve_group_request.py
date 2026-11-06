@@ -18,7 +18,6 @@ from api.models import (
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
-    ServicePrincipal,
     Tag,
 )
 from api.models.access_request import get_all_possible_request_approvers
@@ -28,6 +27,7 @@ from api.models.tag import effective_ended_at
 from api.operations._active_ids import granted_access, require_active_role_ids, require_active_user_ids
 from api.operations._ending_at import USE_REQUESTED, EndingAtChoice, choose_ending_at
 from api.operations._fan_out import defer_notification
+from api.operations._requesters import load_active_requester, split_requester
 from api.operations._service_principals import audit_ref
 from api.operations.constraints.check_group_request_self_add import (
     CheckGroupRequestSelfAdd,
@@ -138,28 +138,10 @@ class ApproveGroupRequest:
             return group_request
 
         # Don't allow approving a request whose requester is deleted.
-        requester_user: OktaUser | None = None
-        requester_service_principal: ServicePrincipal | None = None
-        if group_request.requester_service_principal_id is not None:
-            requester_service_principal = (
-                await db.session.scalars(
-                    select(ServicePrincipal)
-                    .where(ServicePrincipal.id == group_request.requester_service_principal_id)
-                    .where(ServicePrincipal.deleted_at.is_(None))
-                )
-            ).first()
-            if requester_service_principal is None:
-                return group_request
-        else:
-            requester_user = (
-                await db.session.scalars(
-                    select(OktaUser)
-                    .where(OktaUser.id == group_request.requester_user_id)
-                    .where(OktaUser.deleted_at.is_(None))
-                )
-            ).first()
-            if requester_user is None:
-                return group_request
+        requester = await load_active_requester(group_request.requester_id)
+        if requester is None:
+            return group_request
+        requester_user, requester_service_principal = split_requester(requester)
 
         # Resolve group fields: use resolved_* if set, otherwise fall back to requested_*
         resolved_name = (
@@ -392,7 +374,7 @@ class ApproveGroupRequest:
                     "current_user_email": approver_email,
                     "group_request": group_request,
                     "requester": requester_user,
-                    "service_principal": audit_ref(requester_service_principal),
+                    "requester_service_principal": audit_ref(requester_service_principal),
                 }
             )
         )

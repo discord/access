@@ -72,7 +72,7 @@ import PluginConfigDisplay from './PluginConfigDisplay';
 import TagsField, {inheritedAppTags} from './TagsField';
 import {PrincipalChips, PrincipalsField, RoleOption, pickByIds, sameIds} from './Principals';
 import RequesterLink, {requesterName} from '../../components/RequesterLink';
-import ServicePrincipalOwners from '../service_principals/Owners';
+import ServicePrincipalOwners from '../../components/ServicePrincipalOwners';
 import ChangeTitle from '../../tab-title';
 import NotFound from '../NotFound';
 

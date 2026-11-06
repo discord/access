@@ -71,10 +71,7 @@ class RejectGroupRequest:
         )
 
         if rejecter_id is not None:
-            is_self_rejection = rejecter_id in (
-                group_request.requester_user_id,
-                group_request.requester_service_principal_id,
-            )
+            is_self_rejection = group_request.is_requested_by(rejecter_id)
 
             if not is_self_rejection:
                 access_owner_ids = {u.id for u in await get_access_owners()}
@@ -129,18 +126,17 @@ class RejectGroupRequest:
                         if group_request.requester_user_id is not None
                         else None
                     ),
-                    "service_principal": audit_ref(requester_service_principal),
+                    "requester_service_principal": audit_ref(requester_service_principal),
                 }
             )
         )
 
         group_request.status = AccessRequestStatus.REJECTED
         group_request.resolved_at = func.now()
-        # `resolver_user_id` names a user; a service principal withdrawing its own
-        # request leaves it empty, and the audit log records who acted.
-        group_request.resolver_user_id = (
-            rejecter_id if not ServicePrincipal.is_service_principal_id(rejecter_id) else None
-        )
+        if ServicePrincipal.is_service_principal_id(rejecter_id):
+            group_request.resolver_service_principal_id = rejecter_id
+        else:
+            group_request.resolver_user_id = rejecter_id
         group_request.resolution_reason = self.rejection_reason
 
         await db.session.commit()

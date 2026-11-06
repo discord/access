@@ -7,13 +7,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from sqlalchemy import String, and_, cast, false, or_, select
+from sqlalchemy import String, and_, cast, false, func, or_, select
 from sqlalchemy.orm import aliased, joinedload
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentRequester, CurrentUserId
 from api.database import DbSession
-from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, RoleGroup, ServicePrincipal, Tag
+from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, RoleGroup, Tag
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
 from api.operations._ending_at import USE_REQUESTED
 from api.pagination import Page, validated
@@ -24,6 +24,7 @@ from api.plugins.app_group_lifecycle import (
 )
 from api.routers._eager import service_principal_options
 from api.routers._fan_out import defer_fan_out
+from api.routers._requests import filter_by_requester, join_requester_for_search, withdraw_prior_requests
 from api.schemas import (
     CreateGroupRequestBody,
     GroupRequestDetail,
@@ -47,6 +48,7 @@ def _load_options() -> tuple:
     return (
         joinedload(GroupRequest.requester),
         joinedload(GroupRequest.requester_service_principal).options(*service_principal_options()),
+        joinedload(GroupRequest.resolver_service_principal).options(*service_principal_options()),
         joinedload(GroupRequest.resolver),
     )
 
@@ -120,28 +122,7 @@ async def list_group_requests(
         stmt = stmt.where(GroupRequest.status == q_args.status)
 
     if q_args.requester_user_id:
-        if q_args.requester_user_id == "@me":
-            stmt = stmt.where(
-                or_(
-                    GroupRequest.requester_user_id == current_user_id,
-                    GroupRequest.requester_service_principal_id == current_user_id,
-                )
-            )
-        else:
-            requester_alias = aliased(OktaUser)
-            requester_sp_alias = aliased(ServicePrincipal)
-            stmt = (
-                stmt.outerjoin(GroupRequest.requester.of_type(requester_alias))
-                .outerjoin(GroupRequest.requester_service_principal.of_type(requester_sp_alias))
-                .where(
-                    or_(
-                        GroupRequest.requester_user_id == q_args.requester_user_id,
-                        requester_alias.email.ilike(q_args.requester_user_id),
-                        GroupRequest.requester_service_principal_id == q_args.requester_user_id,
-                        requester_sp_alias.display_name.ilike(q_args.requester_user_id),
-                    )
-                )
-            )
+        stmt = filter_by_requester(stmt, GroupRequest, q_args.requester_user_id, current_user_id)
 
     if q_args.requested_group_type:
         stmt = stmt.where(GroupRequest.requested_group_type == q_args.requested_group_type)
@@ -198,35 +179,24 @@ async def list_group_requests(
     # name+email, requested + resolved group name/description/type.
     if q_args.q:
         like = f"%{q_args.q}%"
-        q_requester_alias = aliased(OktaUser)
-        q_requester_sp_alias = aliased(ServicePrincipal)
         q_resolver_alias = aliased(OktaUser)
-        stmt = (
-            stmt.outerjoin(GroupRequest.requester.of_type(q_requester_alias))
-            .outerjoin(GroupRequest.requester_service_principal.of_type(q_requester_sp_alias))
-            .outerjoin(GroupRequest.resolver.of_type(q_resolver_alias))
-            .where(
-                or_(
-                    GroupRequest.id.like(f"{q_args.q}%"),
-                    cast(GroupRequest.status, String).ilike(like),
-                    q_requester_alias.email.ilike(like),
-                    q_requester_alias.first_name.ilike(like),
-                    q_requester_alias.last_name.ilike(like),
-                    q_requester_alias.display_name.ilike(like),
-                    (q_requester_alias.first_name + " " + q_requester_alias.last_name).ilike(like),
-                    q_requester_sp_alias.display_name.ilike(like),
-                    GroupRequest.requested_group_name.ilike(like),
-                    GroupRequest.requested_group_description.ilike(like),
-                    GroupRequest.requested_group_type.ilike(like),
-                    GroupRequest.resolved_group_name.ilike(like),
-                    GroupRequest.resolved_group_description.ilike(like),
-                    GroupRequest.resolved_group_type.ilike(like),
-                    q_resolver_alias.email.ilike(like),
-                    q_resolver_alias.first_name.ilike(like),
-                    q_resolver_alias.last_name.ilike(like),
-                    q_resolver_alias.display_name.ilike(like),
-                    (q_resolver_alias.first_name + " " + q_resolver_alias.last_name).ilike(like),
-                )
+        stmt, requester_clauses = join_requester_for_search(stmt, GroupRequest, like)
+        stmt = stmt.outerjoin(GroupRequest.resolver.of_type(q_resolver_alias)).where(
+            or_(
+                GroupRequest.id.like(f"{q_args.q}%"),
+                cast(GroupRequest.status, String).ilike(like),
+                *requester_clauses,
+                GroupRequest.requested_group_name.ilike(like),
+                GroupRequest.requested_group_description.ilike(like),
+                GroupRequest.requested_group_type.ilike(like),
+                GroupRequest.resolved_group_name.ilike(like),
+                GroupRequest.resolved_group_description.ilike(like),
+                GroupRequest.resolved_group_type.ilike(like),
+                q_resolver_alias.email.ilike(like),
+                q_resolver_alias.first_name.ilike(like),
+                q_resolver_alias.last_name.ilike(like),
+                q_resolver_alias.display_name.ilike(like),
+                (q_resolver_alias.first_name + " " + q_resolver_alias.last_name).ilike(like),
             )
         )
 
@@ -281,30 +251,24 @@ async def post_group_request(
         if len(tags) != len(body.requested_group_tags):
             raise HTTPException(400, "One or more tags not found")
 
-    # Auto-cancel any prior PENDING request from the same requester for the same
-    # group name (and same app, for app-group requests). Without this a user
-    # clicking "Request" twice, or a service retrying, produces multiple PENDING rows.
-    requester_column = (
-        GroupRequest.requester_service_principal_id
-        if isinstance(requester, ServicePrincipal)
-        else GroupRequest.requester_user_id
-    )
-    existing_stmt = (
-        select(GroupRequest)
-        .where(GroupRequest.requested_group_name == body.requested_group_name)
-        .where(requester_column == current_user_id)
-        .where(GroupRequest.status == AccessRequestStatus.PENDING)
-        .where(GroupRequest.resolved_at.is_(None))
-    )
+    # A retry replaces the requester's pending request for the same group name
+    # (and app, for an app group), so clicking "Request" twice or a service
+    # retrying doesn't leave several pending.
+    same_target = [func.lower(GroupRequest.requested_group_name) == func.lower(body.requested_group_name)]
     if body.requested_group_type == "app_group":
-        existing_stmt = existing_stmt.where(GroupRequest.requested_app_id == requested_app_id)
-    for prior in (await db.scalars(existing_stmt)).all():
-        await RejectGroupRequest(
+        same_target.append(GroupRequest.requested_app_id == requested_app_id)
+    await withdraw_prior_requests(
+        db,
+        GroupRequest,
+        requester,
+        same_target,
+        lambda prior: RejectGroupRequest(
             group_request=prior,
             rejection_reason="Closed due to duplicate group request creation",
             notify_requester=False,
             current_user_id=current_user_id,
-        ).execute()
+        ).execute(),
+    )
 
     # execute() may auto-approve (app-owner self-approval / conditional access), which
     # re-validates plugin config; a ValueError is bad input, while a filtering error
@@ -362,7 +326,7 @@ async def put_group_request(
 
     # Authorization: requester can always reject their own; otherwise admin
     # or app-owner-of-the-target-app.
-    is_requester = current_user_id in (gr.requester_user_id, gr.requester_service_principal_id)
+    is_requester = gr.is_requested_by(current_user_id)
     if is_requester:
         if body.approved:
             raise HTTPException(403, "Users cannot approve their own requests")

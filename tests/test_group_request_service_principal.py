@@ -225,6 +225,7 @@ async def test_service_principal_can_cancel_but_not_approve(
     assert rep.status_code == 200, rep.text
     assert rep.json()["status"] == AccessRequestStatus.REJECTED
     assert rep.json()["resolver"] is None
+    assert rep.json()["resolver_service_principal"]["id"] == sp_id
     assert notifications["completed"].call_count == 0
 
 
@@ -268,3 +269,52 @@ async def test_service_principal_cannot_request_or_manage_access(db: Db, client:
     assert rep.status_code == 403
     rep = await client.put(f"/api/apps/{app_id}", json={"name": "Renamed"})
     assert rep.status_code == 403
+
+
+async def test_deleting_principal_rejects_its_pending_requests(db: Db, client: AsyncClient, mock_user: Any) -> None:
+    sp_id, owner_id = await _principal(db)
+    admin_id = await _admin_id(db)
+    mock_user(sp_id)
+    gr_id = (await client.post(GR_URL, json=_body("Stranded", requested_owner_user_ids=[owner_id]))).json()["id"]
+
+    mock_user(admin_id)
+    assert (await client.delete(f"/api/service-principals/{sp_id}")).status_code == 200
+    assert (await client.get(f"{GR_URL}/{gr_id}")).json()["status"] == AccessRequestStatus.REJECTED
+
+
+async def test_plugin_approval_needs_named_grants_opt_in(db: Db, mocker: MockerFixture) -> None:
+    sp_id, owner_id = await _principal(db)
+    mocker.patch(
+        "api.operations.create_group_request.evaluate_conditional_access",
+        return_value=[ConditionalAccessResponse(approved=True, reason="legacy rule")],
+    )
+    gr = await CreateGroupRequest(
+        requester_user=sp_id,
+        requested_group_name="Needs-Opt-In",
+        requested_group_type="okta_group",
+        requested_owner_user_ids=[owner_id],
+    ).execute()
+    assert gr is not None
+    await db.session.refresh(gr)
+    # A service principal's request always names someone else as owner.
+    assert gr.status == AccessRequestStatus.PENDING
+
+
+async def test_request_audit_names_requester_service_principal(
+    db: Db, client: AsyncClient, mock_user: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    import json
+    import logging
+
+    sp_id, owner_id = await _principal(db)
+    mock_user(sp_id)
+    with caplog.at_level(logging.INFO, logger="access.audit"):
+        await client.post(GR_URL, json=_body("Audited", requested_owner_user_ids=[owner_id]))
+    entry = next(
+        json.loads(r.getMessage())
+        for r in caplog.records
+        if r.name == "access.audit" and "GROUP_REQUEST_CREATE" in r.getMessage()
+    )
+    assert entry["current_user_id"] == sp_id
+    assert entry["requester_service_principal"]["id"] == sp_id
+    assert "service_principal" not in entry

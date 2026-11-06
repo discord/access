@@ -22,11 +22,18 @@ from api.models.app_group import get_access_owners, get_app_managers
 from api.models.okta_group import is_group_name_taken
 from api.models.tag import coalesce_ended_at
 from api.operations._active_ids import require_active_role_ids, require_active_user_ids
+from api.operations._conditional_access import apply_conditional_access
 from api.operations._fan_out import defer_notification
+from api.operations._requesters import load_active_requester, split_requester
 from api.operations._service_principals import audit_ref
 from api.operations.approve_group_request import ApproveGroupRequest
 from api.operations.reject_group_request import RejectGroupRequest
-from api.plugins import ConditionalAccessHook, NotificationHook, evaluate_conditional_access
+from api.plugins import (
+    ConditionalAccessHook,
+    ConditionalAccessResponse,
+    NotificationHook,
+    evaluate_conditional_access,
+)
 from api.schemas import AuditLogSchema, EventType
 
 logger = logging.getLogger(__name__)
@@ -82,14 +89,9 @@ class CreateGroupRequest:
         self.requested_membership_ending_at = requested_membership_ending_at
 
     async def execute(self) -> GroupRequest | None:
-        requester: OktaUser | ServicePrincipal | None
-        if ServicePrincipal.is_service_principal_id(self.requester_id):
-            requester = await db.session.get(ServicePrincipal, self.requester_id)
-        else:
-            requester = await db.session.get(OktaUser, self.requester_id)
+        requester = await load_active_requester(self.requester_id)
         assert requester is not None
-        requester_user = requester if isinstance(requester, OktaUser) else None
-        requester_service_principal = requester if isinstance(requester, ServicePrincipal) else None
+        requester_user, requester_service_principal = split_requester(requester)
 
         # Don't allow creating groups with -Owners suffix (reserved for app owner groups)
         if self.requested_group_name.endswith(f"-{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"):
@@ -260,7 +262,7 @@ class CreateGroupRequest:
                     "current_user_email": requester_user.email if requester_user else None,
                     "group_request": group_request,
                     "requester": requester_user,
-                    "service_principal": audit_ref(requester_service_principal),
+                    "requester_service_principal": audit_ref(requester_service_principal),
                 }
             )
         )
@@ -278,7 +280,8 @@ class CreateGroupRequest:
         names_more_than_requester = not (
             owner_user_ids == [requester.id] and not owner_role_ids and not member_user_ids and not member_role_ids
         )
-        for response in conditional_access_responses:
+
+        def honored(response: ConditionalAccessResponse | None) -> ConditionalAccessResponse | None:
             if (
                 response is not None
                 and response.approved
@@ -290,35 +293,25 @@ class CreateGroupRequest:
                     "requester and the response did not set allow_named_grants",
                     group_request.id,
                 )
-                continue
-            if response is not None:
-                if response.approved:
-                    try:
-                        await ApproveGroupRequest(
-                            group_request=group_request,
-                            approval_reason=response.reason,
-                            ending_at=response.ending_at,
-                            membership_ending_at=response.membership_ending_at,
-                            notify=False,
-                        ).execute()
-                    except (ConflictError, InvalidRequestError) as e:
-                        logger.warning(
-                            "Conditional access approval of group request %s failed: %s", group_request.id, e
-                        )
-                    # Approval leaves the request pending when the group can't be
-                    # created as requested (e.g. its name is already taken, or the
-                    # plugin's ending_at has passed); route it to reviewers like any
-                    # other pending request.
-                    if group_request.status == AccessRequestStatus.PENDING:
-                        break
-                else:
-                    await RejectGroupRequest(
-                        group_request=group_request,
-                        rejection_reason=response.reason,
-                        notify=False,
-                    ).execute()
+                return None
+            return response
 
-                return group_request
+        if await apply_conditional_access(
+            [honored(r) for r in conditional_access_responses],
+            request_label=f"group request {group_request.id}",
+            approve=lambda r: ApproveGroupRequest(
+                group_request=group_request,
+                approval_reason=r.reason,
+                ending_at=r.ending_at,
+                membership_ending_at=r.membership_ending_at,
+                notify=False,
+            ).execute(),
+            reject=lambda r: RejectGroupRequest(
+                group_request=group_request, rejection_reason=r.reason, notify=False
+            ).execute(),
+            status=lambda: group_request.status,
+        ):
+            return group_request
 
         # Send notification to approvers (deferred to after the response)
         await defer_notification(
