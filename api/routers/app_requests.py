@@ -19,7 +19,6 @@ from api.auth.permissions import is_access_admin
 from api.database import DbSession
 from api.models import AccessRequestStatus, AppRequest, OktaUser
 from api.operations import ApproveAppRequest, CreateAppRequest, RejectAppRequest
-from api.operations._ending_at import USE_REQUESTED
 from api.pagination import Page, validated
 from api.routers._eager import service_principal_options
 from api.routers._fan_out import defer_fan_out
@@ -139,6 +138,21 @@ async def post_app_request(
     db: DbSession,
     requester: CurrentRequester,
 ) -> AppRequestDetail:
+    # Validate before replacing anything, so a bad retry leaves the pending request alone.
+    create = CreateAppRequest(
+        requester=requester,
+        requested_app_name=body.requested_app_name,
+        requested_app_description=body.requested_app_description,
+        requested_app_tags=body.requested_app_tags,
+        requested_owner_user_ids=body.requested_owner_user_ids,
+        requested_owner_role_ids=body.requested_owner_role_ids,
+        requested_app_groups=body.requested_app_groups,
+        requested_ownership_ending_at=body.requested_ownership_ending_at,
+        requested_membership_ending_at=body.requested_membership_ending_at,
+        request_reason=body.request_reason or "",
+    )
+    await create.validate()
+
     # A retry replaces the requester's pending request for the same app name.
     await withdraw_prior_requests(
         db,
@@ -153,18 +167,7 @@ async def post_app_request(
         ).execute(),
     )
 
-    app_request = await CreateAppRequest(
-        requester=requester,
-        requested_app_name=body.requested_app_name,
-        requested_app_description=body.requested_app_description,
-        requested_app_tags=body.requested_app_tags,
-        requested_owner_user_ids=body.requested_owner_user_ids,
-        requested_owner_role_ids=body.requested_owner_role_ids,
-        requested_app_groups=body.requested_app_groups,
-        requested_ownership_ending_at=body.requested_ownership_ending_at,
-        requested_membership_ending_at=body.requested_membership_ending_at,
-        request_reason=body.request_reason or "",
-    ).execute()
+    app_request = await create.execute()
     return await _detail(db, app_request.id)
 
 
@@ -191,21 +194,14 @@ async def put_app_request(
         raise HTTPException(409, "App request is not pending")
 
     if body.approved:
-        # A sent end date (null meaning indefinite) replaces the requested one.
+        # A sent end date replaces the requested one for this approval, as on group
+        # requests, without being saved onto the request should the approval fail.
         await ApproveAppRequest(
             app_request=app_request_id,
             approver_user=current_user_id,
             approval_reason=body.reason or "",
-            approver_ownership_ending_at=(
-                body.resolved_ownership_ending_at
-                if "resolved_ownership_ending_at" in body.model_fields_set
-                else USE_REQUESTED
-            ),
-            approver_membership_ending_at=(
-                body.resolved_membership_ending_at
-                if "resolved_membership_ending_at" in body.model_fields_set
-                else USE_REQUESTED
-            ),
+            approver_ownership_ending_at=body.resolved_ownership_ending_at,
+            approver_membership_ending_at=body.resolved_membership_ending_at,
         ).execute()
     else:
         await RejectAppRequest(

@@ -116,28 +116,43 @@ class CreateAppRequest:
         self.requested_membership_ending_at = requested_membership_ending_at
         self.request_reason = request_reason
 
-    async def execute(self) -> AppRequest:
-        """Create the request and return it."""
+    async def validate(self) -> None:
+        """Check the request without creating it, so a caller can do so before acting on it.
+
+        Raises:
+            The same errors as `execute`.
+        """
         requester = await load_active_requester(self.requester_id)
         assert requester is not None
-        requester_user, requester_service_principal = split_requester(requester)
+        self._requester = requester
+        requester_user, _ = split_requester(requester)
 
         await ensure_app_name_available(self.requested_app_name)
 
         tag_ids = list(dict.fromkeys(self.requested_app_tags))
-        tags = list(
+        self._tags = list(
             (await db.session.scalars(select(Tag).where(Tag.id.in_(tag_ids)).where(Tag.deleted_at.is_(None)))).all()
         )
-        if len(tags) != len(tag_ids):
+        if len(self._tags) != len(tag_ids):
             raise InvalidRequestError("One or more tags not found")
+        self._tag_ids = tag_ids
 
-        owner_user_ids = await require_active_user_ids(self.requested_owner_user_ids, "owner")
-        owner_role_ids = await require_active_role_ids(self.requested_owner_role_ids, "owner")
-        if not owner_user_ids and not owner_role_ids:
+        self._owner_user_ids = await require_active_user_ids(self.requested_owner_user_ids, "owner")
+        self._owner_role_ids = await require_active_role_ids(self.requested_owner_role_ids, "owner")
+        if not self._owner_user_ids and not self._owner_role_ids:
             if requester_user is None:
                 raise InvalidRequestError("A service principal's app request must name at least one owner")
-            owner_user_ids = [requester_user.id]
-        app_groups = await validate_app_groups(self.requested_app_name, self.requested_app_groups)
+            self._owner_user_ids = [requester_user.id]
+        self._app_groups = await validate_app_groups(self.requested_app_name, self.requested_app_groups)
+
+    async def execute(self) -> AppRequest:
+        """Validate and create the request and return it."""
+        await self.validate()
+        requester = self._requester
+        requester_user, requester_service_principal = split_requester(requester)
+        tags, tag_ids = self._tags, self._tag_ids
+        owner_user_ids, owner_role_ids = self._owner_user_ids, self._owner_role_ids
+        app_groups = self._app_groups
 
         app_request = AppRequest(
             id=self.id,
