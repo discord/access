@@ -27,18 +27,30 @@ class ServicePrincipalOwnerDetail(BaseModel):
     active_role_group: RoleGroupRef | None = None
 
 
-class ServicePrincipalDetail(BaseModel):
-    """A service principal and the users and roles accountable for it."""
+class ServicePrincipalSummary(BaseModel):
+    """A service principal and the users and roles accountable for it, without its credential's subject.
+
+    The shape embedded wherever a service principal appears, such as a request's requester.
+    """
 
     model_config = ConfigDict(from_attributes=True)
     id: str
     display_name: str
     provider: ServicePrincipalProvider
-    subject: str
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
     deleted_at: FlexibleDatetime | None = None
     owners: list[ServicePrincipalOwnerDetail] = Field(default_factory=list)
+
+
+class ServicePrincipalDetail(ServicePrincipalSummary):
+    """A service principal as the service principal routes return it.
+
+    `subject` (the credential's identifier) is shown to Access admins only and is
+    null for everyone else.
+    """
+
+    subject: str | None = None
 
 
 class SearchServicePrincipalQuery(SearchQuery):

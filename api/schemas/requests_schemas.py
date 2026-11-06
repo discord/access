@@ -40,7 +40,7 @@ from api.schemas.core_schemas import (
     RoleRequestRequesterRoleRef,
 )
 from api.schemas.datetimes import FlexibleDatetime
-from api.schemas.service_principals import ServicePrincipalDetail
+from api.schemas.service_principals import ServicePrincipalSummary
 
 # Anchored at both ends so a name like "Bad Name!" can't slip past on the
 # strength of an unanchored prefix match.
@@ -354,8 +354,10 @@ class GroupRequestDetail(BaseModel):
     updated_at: FlexibleDatetime
     # Exactly one of `requester` and `requester_service_principal` is set.
     requester: OktaUserSummary | None = None
-    requester_service_principal: ServicePrincipalDetail | None = None
+    requester_service_principal: ServicePrincipalSummary | None = None
+    # Set when a service principal withdrew its own request; `resolver` names a user resolver.
     resolver: OktaUserSummary | None = None
+    resolver_service_principal: ServicePrincipalSummary | None = None
     # The active users and roles named by the `*_user_ids` / `*_role_ids` fields,
     # so a client can render them without a lookup per id.
     named_users: list[OktaUserSummary] = Field(default_factory=list)
@@ -430,6 +432,8 @@ class ResolveGroupRequestBody(BaseModel):
     resolved_group_type: str | None = None
     resolved_app_id: str | None = None
     resolved_group_tags: list[str] | None = None
+    # Each end date, when sent, replaces the requested one on approval; an
+    # explicit null means indefinite.
     resolved_ownership_ending_at: FlexibleDatetime | None = None
     resolved_plugin_data: dict[str, Any] | None = None
     # Each list, when sent, replaces the requested one on approval.

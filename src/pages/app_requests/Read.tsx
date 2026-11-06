@@ -46,9 +46,10 @@ import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import Loading from '../../components/Loading';
 import RequesterLink, {requesterName} from '../../components/RequesterLink';
-import {PrincipalChips, RoleOption, pickByIds} from '../group_requests/Principals';
-import {AccessEndingField, untilIdFor, useTagsByIds} from '../group_requests/Read';
-import ServicePrincipalOwners from '../service_principals/Owners';
+import {PrincipalChips, RoleOption, pickByIds} from '../../components/Principals';
+import {AccessEndingField, untilIdFor} from '../../components/AccessLength';
+import {useTagsByIds} from '../../components/useTagsByIds';
+import ServicePrincipalOwners from '../../components/ServicePrincipalOwners';
 import ChangeTitle from '../../tab-title';
 import NotFound from '../NotFound';
 

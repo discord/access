@@ -42,9 +42,9 @@ import {
 } from '../../api/apiSchemas';
 import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
-import TagsField from '../group_requests/TagsField';
-import {PrincipalsField, RoleOption} from '../group_requests/Principals';
-import {AccessLengthField, endingAt} from '../group_requests/Create';
+import TagsField from '../../components/TagsField';
+import {PrincipalsField, RoleOption} from '../../components/Principals';
+import {AccessLengthField, endingAt} from '../../components/AccessLength';
 
 dayjs.extend(IsSameOrBefore);
 
