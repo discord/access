@@ -116,11 +116,45 @@ describe('the requested details', () => {
     expect(screen.getByText(/Membership Ending:/)).toBeInTheDocument();
   });
 
-  it('names the requester as owner when the request names none', async () => {
-    appRequest = {...PENDING_REQUEST, requested_owner_user_ids: []} as unknown as AppRequestDetail;
+  it('counts named owners who are no longer active as departed', async () => {
+    appRequest = {
+      ...PENDING_REQUEST,
+      requested_owner_user_ids: [OWNER_USER.id, 'gone-user-000000000'],
+    } as unknown as AppRequestDetail;
     renderPage();
 
-    expect(screen.getByText(/The requester/)).toBeInTheDocument();
+    expect(screen.getByText(OWNER_USER.display_name)).toBeInTheDocument();
+    expect(screen.getByText('1 departed user')).toBeInTheDocument();
+  });
+});
+
+describe('a pending request naming principals no longer active', () => {
+  const DEPARTED_REQUEST = {
+    ...PENDING_REQUEST,
+    requested_owner_user_ids: ['gone-user-000000000'],
+    requested_app_groups: [
+      {...PENDING_REQUEST.requested_app_groups![0], member_role_ids: [MEMBER_ROLE.id, 'gone-role-000000000']},
+    ],
+  } as unknown as AppRequestDetail;
+
+  it('warns an Access admin where they are named and cannot be approved', async () => {
+    appRequest = DEPARTED_REQUEST;
+    renderPage();
+
+    const warning = screen.getByText(/can't be approved as filed/);
+    expect(warning).toHaveTextContent('2 users or roles no longer active');
+    expect(warning).toHaveTextContent('1 in app owners');
+    expect(warning).toHaveTextContent('1 in App-Support-Desk-Agents members');
+    expect(screen.getByRole('button', {name: /Approve/})).toBeDisabled();
+    expect(screen.getByRole('button', {name: /Reject/})).toBeEnabled();
+  });
+
+  it('shows no warning to a user who cannot approve it', async () => {
+    appRequest = DEPARTED_REQUEST;
+    currentUser = OTHER_USER;
+    renderPage();
+
+    expect(screen.queryByText(/can't be approved as filed/)).not.toBeInTheDocument();
   });
 });
 
@@ -144,18 +178,37 @@ describe('an Access admin reviewing a pending request', () => {
     expect(call.body.resolved_membership_ending_at).toEqual(expect.any(String));
   });
 
-  // The API keeps the requested end date when none is sent, so offering Indefinite
-  // or a longer duration would promise access the approval does not grant.
-  it('is offered only durations up to the requested one', async () => {
+  it('sends an explicit null for Indefinite over a requested end date', async () => {
     renderPage();
 
-    const select = screen.getByRole('combobox', {name: /Ownership Ending At/});
-    await waitFor(() => expect(select).toHaveTextContent('Two Weeks'));
-    await userEvent.click(select);
-    const offered = screen.getAllByRole('option').map((option) => option.textContent);
-    expect(offered).not.toContain('Indefinite');
-    expect(offered).not.toContain('30 Days');
-    expect(offered).toContain('Two Weeks');
+    await userEvent.click(screen.getByRole('combobox', {name: /Ownership Ending At/}));
+    await userEvent.click(await screen.findByRole('option', {name: 'Indefinite'}));
+    await userEvent.click(screen.getByRole('button', {name: /Approve/}));
+
+    await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
+    expect(resolveMutate.mock.calls[0][0].body.resolved_ownership_ending_at).toBeNull();
+  });
+
+  it('may grant longer than requested', async () => {
+    renderPage();
+
+    await userEvent.click(screen.getByRole('combobox', {name: /Ownership Ending At/}));
+    await userEvent.click(await screen.findByRole('option', {name: '90 Days'}));
+    await userEvent.click(screen.getByRole('button', {name: /Approve/}));
+
+    await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
+    const endingAt = resolveMutate.mock.calls[0][0].body.resolved_ownership_ending_at;
+    expect(new Date(endingAt).getTime()).toBeGreaterThan(Date.now() + 89 * 86400 * 1000);
+  });
+
+  it('sends nothing when the request asked for indefinite ownership and it is kept', async () => {
+    appRequest = {...PENDING_REQUEST, requested_ownership_ending_at: null} as unknown as AppRequestDetail;
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', {name: /Approve/}));
+
+    await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
+    expect(resolveMutate.mock.calls[0][0].body.resolved_ownership_ending_at).toBeUndefined();
   });
 });
 
@@ -197,5 +250,21 @@ describe('an approved request', () => {
 
     expect(screen.getByText(/approved the request and created app/)).toBeInTheDocument();
     expect(screen.queryByRole('button', {name: /Approve/})).not.toBeInTheDocument();
+  });
+});
+
+describe('a request its service principal withdrew', () => {
+  it('names the service principal as the resolver', async () => {
+    appRequest = {
+      ...PENDING_REQUEST,
+      status: 'REJECTED',
+      resolved_at: '2026-09-02T00:00:00Z',
+      resolver: null,
+      resolver_service_principal: {id: 'sp-0000000000000000', display_name: 'Provisioning Bot', owners: []},
+    } as unknown as AppRequestDetail;
+    renderPage();
+
+    expect(screen.getByText('Provisioning Bot')).toBeInTheDocument();
+    expect(screen.getByText(/rejected the request/)).toBeInTheDocument();
   });
 });

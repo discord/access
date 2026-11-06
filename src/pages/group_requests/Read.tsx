@@ -58,7 +58,7 @@ import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import {displayUserName} from '../../helpers';
 import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
-import {AccessEndingField, untilIdFor} from '../../components/AccessLength';
+import {AccessEndingField, resolvedEndingAt, untilIdFor} from '../../components/AccessLength';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
@@ -525,32 +525,13 @@ export default function ReadGroupRequest() {
       resolveRequest.resolved_member_role_ids = ids(principalsTouched.memberRoles, memberRoles);
     }
 
-    // Undefined keeps the requested end date and null asks for indefinite access. Indefinite
-    // is sent only over a requested end date, since without one it is what was asked for.
-    const resolvedEnding = (
-      until: string | undefined,
-      custom: string | undefined,
-      requested: string | null | undefined,
-    ): string | null | undefined => {
-      switch (until) {
-        case undefined:
-          return undefined;
-        case 'indefinite':
-          return requested ? null : undefined;
-        case 'custom':
-          return custom ? dayjs(custom).toISOString() : undefined;
-        default:
-          return dayjs().add(parseInt(until, 10), 'seconds').toISOString();
-      }
-    };
-
-    resolveRequest.resolved_ownership_ending_at = resolvedEnding(
+    resolveRequest.resolved_ownership_ending_at = resolvedEndingAt(
       responseForm.resolved_ownership_ending_at,
       responseForm.resolved_ownership_ending_at_custom,
       groupRequest.requested_ownership_ending_at,
     );
     if (namesMembers) {
-      resolveRequest.resolved_membership_ending_at = resolvedEnding(
+      resolveRequest.resolved_membership_ending_at = resolvedEndingAt(
         responseForm.resolved_membership_ending_at,
         responseForm.resolved_membership_ending_at_custom,
         groupRequest.requested_membership_ending_at,
