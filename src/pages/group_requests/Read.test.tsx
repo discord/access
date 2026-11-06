@@ -303,6 +303,7 @@ describe('a request naming owners and members', () => {
     groupRequest = {
       ...NAMING_REQUEST,
       requested_owner_user_ids: [OWNER_USER.id, 'deleted-user-000000'],
+      requested_owner_role_ids: [MEMBER_ROLE.id],
     } as unknown as GroupRequestDetail;
     renderPage();
 
@@ -336,8 +337,19 @@ describe('a request naming owners and members', () => {
     expect(screen.queryByText(/departed/)).not.toBeInTheDocument();
   });
 
-  it('sends only the list whose picker the approver changed', async () => {
+  it('refuses approval once the approver removes every owner', async () => {
     groupRequest = NAMING_REQUEST;
+    renderPage();
+
+    const approve = await screen.findByRole('button', {name: /Approve/});
+    const ownerUsers = screen.getByRole('combobox', {name: 'Owners: users'}).closest('.MuiAutocomplete-root');
+    await userEvent.click(within(ownerUsers as HTMLElement).getByTestId('CancelIcon'));
+
+    await waitFor(() => expect(approve).toBeDisabled());
+  });
+
+  it('sends only the list whose picker the approver changed', async () => {
+    groupRequest = {...NAMING_REQUEST, requested_owner_role_ids: [MEMBER_ROLE.id]} as unknown as GroupRequestDetail;
     renderPage();
 
     const approve = await screen.findByRole('button', {name: /Approve/});

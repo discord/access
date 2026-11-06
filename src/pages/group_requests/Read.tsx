@@ -362,6 +362,8 @@ export default function ReadGroupRequest() {
     {where: 'Members: roles', count: untouchedDeparted('memberRoles')},
   ];
   const departedBlocked = departedPlaces.some((place) => place.count > 0);
+  const ownersCleared =
+    (principalsTouched.ownerUsers || principalsTouched.ownerRoles) && ownerUsers.length + ownerRoles.length === 0;
 
   const isAppOwner = React.useMemo<boolean>(() => {
     if (admin || ownRequest || requestedGroupType !== 'app_group' || !requestedAppId) {
@@ -1365,7 +1367,13 @@ export default function ReadGroupRequest() {
                                   type="submit"
                                   startIcon={<ApprovedIcon />}
                                   sx={{mx: 2}}
-                                  disabled={submitting || tagConstraints.blocked || rolesBlocked || departedBlocked}
+                                  disabled={
+                                    submitting ||
+                                    tagConstraints.blocked ||
+                                    rolesBlocked ||
+                                    departedBlocked ||
+                                    ownersCleared
+                                  }
                                   onClick={() => setApproved(true)}>
                                   Approve
                                 </Button>
