@@ -31,6 +31,7 @@ from api.schemas.app_requests import AppRequestGroup
 from api.services import okta
 from tests.factories import (
     AppFactory,
+    AppGroupFactory,
     OktaGroupFactory,
     OktaUserFactory,
     RoleGroupFactory,
@@ -506,3 +507,43 @@ async def test_failed_grant_still_approves_the_app(db: Db, client: AsyncClient, 
     assert f"App-Flaky-Users member role {ids['bad']}" in rep.json()["resolution_reason"]
     users = await _grants(db, await _group_id(db, "App-Flaky-Users"))
     assert set(users["member_roles"]) == {ids["good"]}
+
+
+async def test_another_apps_group_cant_be_named(db: Db, client: AsyncClient) -> None:
+    # "Foo-Bar" is its own app, and its group's name also carries the prefix of an app named "Foo".
+    other_app = await AppFactory.create_async(name="Foo-Bar")
+    other_group = await AppGroupFactory.create_async(app_id=other_app.id, is_owner=False, name="App-Foo-Bar-Admins")
+    other_app_id, other_group_id = other_app.id, other_group.id
+
+    rep = await client.post(
+        AR_URL, json={"requested_app_name": "Foo", "requested_app_groups": [{"name": "App-Foo-Bar-Admins"}]}
+    )
+    assert rep.status_code == 409
+
+    # A group claimed by another app after the request was filed is refused at approval.
+    ar = await CreateAppRequest(
+        requester=await OktaUserFactory.create_async(),
+        requested_app_name="Foo",
+        requested_app_groups=[AppRequestGroup(name="App-Foo-Late")],
+    ).execute()
+    ar_id = ar.id
+    await AppGroupFactory.create_async(app_id=other_app_id, is_owner=False, name="App-Foo-Late")
+    rep = await client.put(f"{AR_URL}/{ar_id}", json={"approved": True})
+    assert rep.status_code == 409
+    group = await db.session.get(AppGroup, other_group_id)
+    assert group is not None
+    assert group.app_id == other_app_id
+
+
+async def test_approving_for_a_departed_requester_fails(db: Db, client: AsyncClient) -> None:
+    requester = await OktaUserFactory.create_async()
+    ar = await CreateAppRequest(
+        requester=requester, requested_owner_user_ids=[(await _admin_id(db))], requested_app_name="Gone"
+    ).execute()
+    ar_id = ar.id
+    requester.deleted_at = requester.created_at
+    await db.session.commit()
+
+    rep = await client.put(f"{AR_URL}/{ar_id}", json={"approved": True})
+    assert rep.status_code == 409
+    assert (await client.get(f"{AR_URL}/{ar_id}")).json()["status"] == AccessRequestStatus.PENDING

@@ -167,6 +167,23 @@ async def test_approver_can_replace_named_grants(db: Db, client: AsyncClient) ->
     assert grants["member_users"] == {}
 
 
+async def test_approver_cannot_remove_every_owner(db: Db, client: AsyncClient) -> None:
+    gr = await CreateGroupRequest(
+        requester_user=await OktaUserFactory.create_async(),
+        requested_group_name="Ownerless",
+        requested_group_type="okta_group",
+    ).execute()
+    assert gr is not None
+    gr_id = gr.id
+
+    rep = await client.put(
+        f"{GR_URL}/{gr_id}",
+        json={"approved": True, "resolved_owner_user_ids": [], "resolved_owner_role_ids": []},
+    )
+    assert rep.status_code == 400
+    assert (await client.get(f"{GR_URL}/{gr_id}")).json()["status"] == AccessRequestStatus.PENDING
+
+
 async def test_create_validates_named_grants(db: Db, client: AsyncClient) -> None:
     role = await RoleGroupFactory.create_async()
     role_id = role.id

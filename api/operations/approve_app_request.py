@@ -15,7 +15,7 @@ from api.operations._fan_out import defer_notification
 from api.operations._grants import carry_out_grants, failed_grants_note
 from api.operations._requesters import load_active_requester, split_requester
 from api.operations._service_principals import audit_ref
-from api.operations.create_app import CreateApp, owner_group_conflict
+from api.operations.create_app import CreateApp, app_group_conflict, owner_group_conflict
 from api.operations.create_group import GroupDict
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_role_groups import ModifyRoleGroups
@@ -55,8 +55,9 @@ class ApproveAppRequest:
         notify: Whether to send notifications.
 
     Raises:
-        ConflictError: The request is no longer pending, or the app can't be created
-            under its name.
+        ConflictError: The request is no longer pending, its requester is no longer
+            active, the app can't be created under its name, or an initial app group
+            already belongs to another app.
         InvalidRequestError: An end date has passed, or none of the named app owners is
             still active. Other named users and roles that are no longer active are
             skipped and noted in the resolution reason.
@@ -107,7 +108,7 @@ class ApproveAppRequest:
 
         requester = await load_active_requester(app_request.requester_id)
         if requester is None:
-            return app_request
+            raise ConflictError("The requester is no longer active")
         requester_user, requester_service_principal = split_requester(requester)
 
         app_groups = [AppRequestGroup.model_validate(group) for group in app_request.requested_app_groups]
@@ -162,6 +163,9 @@ class ApproveAppRequest:
         if existing is not None:
             raise ConflictError(f"An app named '{app_request.requested_app_name}' already exists.")
         conflict = await owner_group_conflict(app_request.requested_app_name)
+        if conflict is not None:
+            raise ConflictError(conflict)
+        conflict = await app_group_conflict([group.name for group in app_groups])
         if conflict is not None:
             raise ConflictError(conflict)
 
