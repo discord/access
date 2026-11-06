@@ -458,3 +458,84 @@ async def test_approver_sets_membership_end_date(db: Db, client: AsyncClient) ->
     assert rep.status_code == 200, rep.text
     grants = await _grants(db, rep.json()["approved_group_id"])
     assert _close(grants["member_users"][member_id], chosen)
+
+
+async def test_app_owner_auto_approval_failure_leaves_request_pending(db: Db) -> None:
+    app = await AppFactory.create_async()
+    app_owner = await _app_owner(db, app)
+    member = await OktaUserFactory.create_async()
+
+    # An already-passed membership window makes the auto-approval fail; the request
+    # is saved, so it goes to reviewers instead of the caller getting an error.
+    gr = await CreateGroupRequest(
+        requester_user=app_owner,
+        requested_group_name=f"App-{app.name}-Lapsed",
+        requested_group_type="app_group",
+        requested_app_id=app.id,
+        requested_member_user_ids=[member.id],
+        requested_membership_ending_at=datetime.now(UTC) - DAY,
+    ).execute()
+    assert gr is not None
+    await db.session.refresh(gr)
+    assert gr.status == AccessRequestStatus.PENDING
+
+
+async def test_ignored_plugin_approval_stops_evaluation(db: Db, mocker: MockerFixture) -> None:
+    requester = await OktaUserFactory.create_async()
+    member = await OktaUserFactory.create_async()
+    mocker.patch(
+        "api.operations.create_group_request.evaluate_conditional_access",
+        return_value=[
+            ConditionalAccessResponse(approved=True, reason="legacy rule"),
+            ConditionalAccessResponse(approved=False, reason="a later plugin"),
+        ],
+    )
+    gr = await CreateGroupRequest(
+        requester_user=requester,
+        requested_group_name="First-Decision",
+        requested_group_type="okta_group",
+        requested_member_user_ids=[member.id],
+    ).execute()
+    assert gr is not None
+    await db.session.refresh(gr)
+    assert gr.status == AccessRequestStatus.PENDING
+
+
+async def test_failed_grant_still_approves_with_the_rest(db: Db, mocker: MockerFixture) -> None:
+    requester = await OktaUserFactory.create_async()
+    member = await OktaUserFactory.create_async()
+    good_role = await RoleGroupFactory.create_async()
+    bad_role = await RoleGroupFactory.create_async()
+    ids = {"member": member.id, "good": good_role.id, "bad": bad_role.id}
+    gr = await CreateGroupRequest(
+        requester_user=requester,
+        requested_group_name="Partial",
+        requested_group_type="okta_group",
+        requested_member_user_ids=[member.id],
+        requested_member_role_ids=[good_role.id, bad_role.id],
+    ).execute()
+    assert gr is not None
+    gr_id = gr.id
+
+    from api.operations import modify_role_groups
+
+    real_execute = modify_role_groups.ModifyRoleGroups.execute
+
+    async def flaky(self: Any) -> Any:
+        if self.role_group_id == ids["bad"]:
+            raise RuntimeError("role vanished")
+        return await real_execute(self)
+
+    mocker.patch.object(modify_role_groups.ModifyRoleGroups, "execute", flaky)
+    await ApproveGroupRequest(group_request=gr_id, approver_user=await _admin(db)).execute()
+
+    reloaded = await db.session.get(GroupRequest, gr_id)
+    assert reloaded is not None
+    await db.session.refresh(reloaded)
+    assert reloaded.status == AccessRequestStatus.APPROVED
+    assert reloaded.resolved_member_role_ids == [ids["good"]]
+    assert f"member role {ids['bad']}" in reloaded.resolution_reason
+    assert reloaded.approved_group_id is not None
+    grants = await _grants(db, reloaded.approved_group_id)
+    assert set(grants["member_roles"]) == {ids["good"]}
+    assert set(grants["member_users"]) == {ids["member"]}

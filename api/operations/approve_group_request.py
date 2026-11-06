@@ -1,5 +1,6 @@
 import copy
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -26,6 +27,7 @@ from api.models.okta_group import is_group_name_taken
 from api.models.tag import effective_ended_at
 from api.operations._active_ids import require_active_role_ids, require_active_user_ids
 from api.operations._fan_out import defer_notification
+from api.operations._grants import carry_out_grants, failed_grants_note
 from api.operations.constraints.check_group_request_self_add import CheckGroupRequestSelfAdd
 from api.operations.create_group import CreateGroup
 from api.operations.modify_group_users import ModifyGroupUsers
@@ -433,61 +435,84 @@ class ApproveGroupRequest:
             else None
         )
 
-        # Update the group request with the coalesced values to ensure consistency
+        created_reason = f"Group request approved: {group_request.request_reason}"
+        created_group_id = created_group.id
+        group_request_id = group_request.id
+
+        def add_users(
+            owners: list[str], members: list[str], ended_at: datetime | None
+        ) -> Callable[[], Awaitable[object]]:
+            return lambda: ModifyGroupUsers(
+                group=created_group_id,
+                owners_to_add=owners,
+                members_to_add=members,
+                users_added_ended_at=ended_at,
+                current_user_id=approver_id,
+                created_reason=created_reason,
+                notify=self.notify,
+            ).execute()
+
+        def add_role(role_id: str, owner: bool, ended_at: datetime | None) -> Callable[[], Awaitable[object]]:
+            return lambda: ModifyRoleGroups(
+                role_group=role_id,
+                owner_groups_to_add=[created_group_id] if owner else [],
+                groups_to_add=[] if owner else [created_group_id],
+                groups_added_ended_at=ended_at,
+                current_user_id=approver_id,
+                created_reason=created_reason,
+                notify=self.notify,
+            ).execute()
+
+        grants: list[tuple[str, Callable[[], Awaitable[object]]]] = []
+        if owner_user_ids:
+            grants.append(
+                (
+                    "owner users " + ", ".join(owner_user_ids),
+                    add_users(owner_user_ids, [], coalesced_ownership_ending_at),
+                )
+            )
+        if member_user_ids:
+            grants.append(
+                (
+                    "member users " + ", ".join(member_user_ids),
+                    add_users([], member_user_ids, coalesced_membership_ending_at),
+                )
+            )
+        grants += [(f"owner role {r}", add_role(r, True, coalesced_ownership_ending_at)) for r in owner_role_ids]
+        grants += [(f"member role {r}", add_role(r, False, coalesced_membership_ending_at)) for r in member_role_ids]
+        failed = await carry_out_grants(grants, f"group request {group_request_id}")
+
+        # A failed grant rolled the session back, so re-read the request before resolving it.
+        reloaded = await db.session.get(GroupRequest, group_request_id)
+        assert reloaded is not None
+        group_request = reloaded
         group_request.resolved_ownership_ending_at = coalesced_ownership_ending_at
         group_request.resolved_membership_ending_at = coalesced_membership_ending_at
-        group_request.resolved_owner_user_ids = owner_user_ids
-        group_request.resolved_owner_role_ids = owner_role_ids
-        group_request.resolved_member_user_ids = member_user_ids
-        group_request.resolved_member_role_ids = member_role_ids
-
-        created_reason = f"Group request approved: {group_request.request_reason}"
-        if owner_user_ids:
-            await ModifyGroupUsers(
-                group=created_group_with_tags,
-                owners_to_add=owner_user_ids,
-                users_added_ended_at=coalesced_ownership_ending_at,
-                current_user_id=approver_id,
-                created_reason=created_reason,
-                notify=self.notify,
-            ).execute()
-        if member_user_ids:
-            await ModifyGroupUsers(
-                group=created_group_with_tags,
-                members_to_add=member_user_ids,
-                users_added_ended_at=coalesced_membership_ending_at,
-                current_user_id=approver_id,
-                created_reason=created_reason,
-                notify=self.notify,
-            ).execute()
-        for role_id in owner_role_ids:
-            await ModifyRoleGroups(
-                role_group=role_id,
-                owner_groups_to_add=[created_group.id],
-                groups_added_ended_at=coalesced_ownership_ending_at,
-                current_user_id=approver_id,
-                created_reason=created_reason,
-                notify=self.notify,
-            ).execute()
-        for role_id in member_role_ids:
-            await ModifyRoleGroups(
-                role_group=role_id,
-                groups_to_add=[created_group.id],
-                groups_added_ended_at=coalesced_membership_ending_at,
-                current_user_id=approver_id,
-                created_reason=created_reason,
-                notify=self.notify,
-            ).execute()
+        group_request.resolved_owner_user_ids = (
+            [] if any(f.startswith("owner users") for f in failed) else owner_user_ids
+        )
+        group_request.resolved_member_user_ids = (
+            [] if any(f.startswith("member users") for f in failed) else member_user_ids
+        )
+        group_request.resolved_owner_role_ids = [r for r in owner_role_ids if f"owner role {r}" not in failed]
+        group_request.resolved_member_role_ids = [r for r in member_role_ids if f"member role {r}" not in failed]
 
         group_request.status = AccessRequestStatus.APPROVED
         group_request.resolved_at = func.now()
         group_request.resolver_user_id = approver_id
-        group_request.resolution_reason = self.approval_reason
-        group_request.approved_group_id = created_group.id
+        group_request.resolution_reason = self.approval_reason + failed_grants_note(failed)
+        group_request.approved_group_id = created_group_id
 
         await db.session.commit()
 
         if self.notify:
+            created_group = (
+                await db.session.scalars(
+                    select(OktaGroup)
+                    .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                    .where(OktaGroup.id == created_group_id)
+                )
+            ).one()
             requester = await db.session.get(OktaUser, group_request.requester_user_id)
             approvers = await get_all_possible_request_approvers(group_request)
             await defer_notification(

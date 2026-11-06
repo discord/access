@@ -196,8 +196,9 @@ class CreateGroupRequest:
                         bypass_self_approval=True,
                     ).execute()
                     return group_request
-                except ConflictError as e:
-                    # The name was taken after the check above; the request is
+                except (ConflictError, InvalidRequestError) as e:
+                    # The name was taken after the check above, or a named grant can't be
+                    # made (for example, a self-add the group's tags forbid); the request is
                     # already saved, so route it to reviewers like any other.
                     logger.warning("App owner auto-approval of group request %s failed: %s", group_request.id, e)
 
@@ -265,7 +266,8 @@ class CreateGroupRequest:
                     "requester and the response did not set allow_named_grants",
                     group_request.id,
                 )
-                continue
+                # The first decision stands: the request stays pending for its reviewers.
+                break
             if response is not None:
                 if response.approved:
                     try:
