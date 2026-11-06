@@ -238,19 +238,6 @@ describe('an approver choosing how long ownership lasts', () => {
     requested_ownership_ending_at: '2026-09-06T00:00:00Z',
   } as unknown as GroupRequestDetail;
 
-  it('sends an explicit null for Indefinite over a requested end date', async () => {
-    groupRequest = FIVE_DAY_REQUEST;
-    renderPage();
-
-    const approve = await screen.findByRole('button', {name: /Approve/});
-    await userEvent.click(screen.getByRole('combobox', {name: /Ownership Ending At/}));
-    await userEvent.click(await screen.findByRole('option', {name: 'Indefinite'}));
-    await userEvent.click(approve);
-
-    await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
-    expect(resolveMutate.mock.calls[0][0].body.resolved_ownership_ending_at).toBeNull();
-  });
-
   it('may grant longer than requested', async () => {
     groupRequest = FIVE_DAY_REQUEST;
     renderPage();

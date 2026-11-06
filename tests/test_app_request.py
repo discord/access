@@ -343,20 +343,20 @@ async def test_approver_end_dates_replace_requested_and_tags_cap(db: Db, client:
         requested_membership_ending_at=datetime.now(UTC) + 5 * DAY,
     ).execute()
 
-    # Ownership goes indefinite; membership asks for 60 days and the tag caps it at 20.
+    # Ownership is extended to 15 days; membership asks for 60 days and the tag caps it at 20.
     rep = await client.put(
         f"{AR_URL}/{ar.id}",
         json={
             "approved": True,
-            "resolved_ownership_ending_at": None,
+            "resolved_ownership_ending_at": (datetime.now(UTC) + 15 * DAY).isoformat(),
             "resolved_membership_ending_at": (datetime.now(UTC) + 60 * DAY).isoformat(),
         },
     )
     assert rep.status_code == 200, rep.text
-    assert rep.json()["resolved_ownership_ending_at"] is None
+    assert _close(datetime.fromisoformat(rep.json()["resolved_ownership_ending_at"]), datetime.now(UTC) + 15 * DAY)
     assert _close(datetime.fromisoformat(rep.json()["resolved_membership_ending_at"]), datetime.now(UTC) + 20 * DAY)
     owners = await _grants(db, await _group_id(db, "App-Dated-Owners"))
-    assert owners["owner_users"][requester_id] is None
+    assert _close(owners["owner_users"][requester_id], datetime.now(UTC) + 15 * DAY)
     users = await _grants(db, await _group_id(db, "App-Dated-Users"))
     assert _close(users["member_users"][member_id], datetime.now(UTC) + 20 * DAY)
 
@@ -374,16 +374,6 @@ async def test_no_membership_window_without_members(db: Db) -> None:
         requester=await OktaUserFactory.create_async(), requested_app_name="Memberless", requested_app_tags=[tag.id]
     ).execute()
     assert ar.requested_membership_ending_at is None
-
-
-async def test_tag_reason_requirement_needs_request_reason(db: Db, client: AsyncClient) -> None:
-    tag = await TagFactory.create_async(constraints={Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY: True})
-    ar = await CreateAppRequest(
-        requester=await OktaUserFactory.create_async(), requested_app_name="Unreasoned", requested_app_tags=[tag.id]
-    ).execute()
-    rep = await client.put(f"{AR_URL}/{ar.id}", json={"approved": True})
-    assert rep.status_code == 400
-    assert "needs a reason" in rep.json()["detail"]
 
 
 async def test_groups_created_for_a_service_principal_record_it(

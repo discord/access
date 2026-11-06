@@ -3,7 +3,7 @@ import {render, screen, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {describe, expect, it, vi} from 'vitest';
 
-import {AppDetail, TagListItem, TagSummary} from '../api/apiSchemas';
+import {AppDetail, TagListItem, TagSummary} from '../../api/apiSchemas';
 import TagsField, {inheritedAppTags} from './TagsField';
 
 const SOX = {id: 'sox-tag-00000000000', name: 'SOX'};

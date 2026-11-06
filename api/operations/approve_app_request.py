@@ -10,11 +10,9 @@ from api.models import AccessRequestStatus, App, AppGroup, AppRequest, OktaGroup
 from api.models.app_group import get_access_owners
 from api.models.tag import coalesce_ended_at
 from api.operations._active_ids import require_active_role_ids, require_active_user_ids
-from api.operations._ending_at import USE_REQUESTED, EndingAtChoice, choose_ending_at
 from api.operations._fan_out import defer_notification
 from api.operations._requesters import load_active_requester, split_requester
 from api.operations._service_principals import audit_ref
-from api.operations.constraints.check_group_request_self_add import missing_reason_message
 from api.operations.create_app import CreateApp, owner_group_conflict
 from api.operations.create_group import GroupDict
 from api.operations.modify_group_users import ModifyGroupUsers
@@ -24,6 +22,16 @@ from api.schemas import AuditLogSchema, EventType
 from api.schemas.app_requests import AppRequestGroup
 
 logger = logging.getLogger(__name__)
+
+
+def _capped(requested: datetime | None, cap: datetime | None) -> datetime | None:
+    """`requested`, shortened to `cap` when `cap` is earlier; a cap never extends it."""
+    if requested is not None:
+        requested = requested.replace(tzinfo=UTC) if requested.tzinfo is None else requested.astimezone(UTC)
+    if cap is None:
+        return requested
+    cap = cap.replace(tzinfo=UTC) if cap.tzinfo is None else cap.astimezone(UTC)
+    return cap if requested is None else min(requested, cap)
 
 
 class ApproveAppRequest:
@@ -39,16 +47,13 @@ class ApproveAppRequest:
         approval_reason: Recorded as the resolution reason.
         ending_at: Caps the owner grants; it never extends them.
         membership_ending_at: Caps the member grants; it never extends them.
-        approver_ownership_ending_at: The approver's end date for the owner grants, replacing
-            the requested one (None for indefinite), or `USE_REQUESTED` to keep it.
-        approver_membership_ending_at: The same for the member grants.
         notify: Whether to send notifications.
 
     Raises:
         ConflictError: The request is no longer pending, or the app can't be created
             under its name.
-        InvalidRequestError: An end date has passed, a named owner or member is no
-            longer active, or the app's tags require a reason the request lacks.
+        InvalidRequestError: An end date has passed, or a named owner or member is no
+            longer active.
     """
 
     def __init__(
@@ -59,8 +64,6 @@ class ApproveAppRequest:
         approval_reason: str = "",
         ending_at: datetime | None = None,
         membership_ending_at: datetime | None = None,
-        approver_ownership_ending_at: EndingAtChoice = USE_REQUESTED,
-        approver_membership_ending_at: EndingAtChoice = USE_REQUESTED,
         notify: bool = True,
     ):
         self.app_request_id = app_request if isinstance(app_request, str) else app_request.id
@@ -68,8 +71,6 @@ class ApproveAppRequest:
         self.approval_reason = approval_reason
         self.ending_at = ending_at
         self.membership_ending_at = membership_ending_at
-        self.approver_ownership_ending_at = approver_ownership_ending_at
-        self.approver_membership_ending_at = approver_membership_ending_at
         self.notify = notify
 
     async def execute(self) -> AppRequest | None:
@@ -114,10 +115,8 @@ class ApproveAppRequest:
         ownership_ending_at = coalesce_ended_at(
             Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY,
             tags,
-            choose_ending_at(
-                app_request.resolved_ownership_ending_at or app_request.requested_ownership_ending_at,
-                self.approver_ownership_ending_at,
-                self.ending_at,
+            _capped(
+                app_request.resolved_ownership_ending_at or app_request.requested_ownership_ending_at, self.ending_at
             ),
             group_is_managed=True,
         )
@@ -125,9 +124,8 @@ class ApproveAppRequest:
             coalesce_ended_at(
                 Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY,
                 tags,
-                choose_ending_at(
+                _capped(
                     app_request.resolved_membership_ending_at or app_request.requested_membership_ending_at,
-                    self.approver_membership_ending_at,
                     self.membership_ending_at,
                 ),
                 group_is_managed=True,
@@ -145,12 +143,6 @@ class ApproveAppRequest:
                 "The membership window for this request has already passed. "
                 "Set a membership end date when approving it."
             )
-        reason_error = missing_reason_message(
-            tags, app_request.request_reason, grants_ownership=True, grants_membership=has_members
-        )
-        if reason_error is not None:
-            raise InvalidRequestError(reason_error)
-
         # The app may have been created, or its name claimed, since the request was filed.
         existing = (
             await db.session.scalars(

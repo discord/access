@@ -26,8 +26,12 @@ import Link from '@mui/material/Link';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import {AutocompleteElement, FormContainer, SelectElement, TextFieldElement} from 'react-hook-form-mui';
+import {AutocompleteElement, FormContainer, SelectElement, TextFieldElement, useFormContext} from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
+import InputLabel from '@mui/material/InputLabel';
+import MenuItem from '@mui/material/MenuItem';
+import Select from '@mui/material/Select';
+import {Controller, useWatch} from 'react-hook-form';
 import {useQueries} from '@tanstack/react-query';
 
 import dayjs, {Dayjs} from 'dayjs';
@@ -58,7 +62,6 @@ import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import {displayUserName} from '../../helpers';
 import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
-import {AccessEndingField, resolvedEndingAt, untilIdFor} from '../../components/AccessLength';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
@@ -66,11 +69,10 @@ import Loading from '../../components/Loading';
 import accessConfig from '../../config/accessConfig';
 import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
 import PluginConfigDisplay from './PluginConfigDisplay';
-import TagsField, {inheritedAppTags} from '../../components/TagsField';
+import TagsField, {inheritedAppTags} from './TagsField';
 import {PrincipalChips, PrincipalsField, RoleOption, pickByIds, sameIds} from '../../components/Principals';
 import RequesterLink, {requesterName} from '../../components/RequesterLink';
 import ServicePrincipalOwners from '../../components/ServicePrincipalOwners';
-import {useTagsByIds} from '../../components/useTagsByIds';
 import ChangeTitle from '../../tab-title';
 import NotFound from '../NotFound';
 
@@ -85,9 +87,130 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
 
 const GROUP_TYPE_OPTIONS = Object.entries(GROUP_TYPE_ID_TO_LABELS).map(([id, label]) => ({id, label}));
 
+const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABELS;
+const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id, label}));
+const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
+);
+
 const APP_GROUP_PREFIX = 'App-';
 const APP_NAME_APP_GROUP_SEPARATOR = '-';
 const ROLE_GROUP_PREFIX = 'Role-';
+
+// The `until` option an end date asks for, measured from when it was asked.
+export function untilIdFor(endingAt: string | null | undefined, askedAt: string | null | undefined): string {
+  if (!endingAt) {
+    return 'indefinite';
+  }
+  const delta = Math.round(dayjs(endingAt).diff(dayjs(askedAt), 'second') / 100) * 100;
+  return delta in UNTIL_ID_TO_LABELS ? delta.toString() : 'custom';
+}
+
+interface AccessEndingFieldProps {
+  name: 'resolved_ownership_ending_at' | 'resolved_membership_ending_at';
+  label: string;
+  timeLimit: number | null;
+  constraintsBlocked: boolean;
+  setUntil: (v: string | null) => void;
+}
+
+export function AccessEndingField({name, label, timeLimit, constraintsBlocked, setUntil}: AccessEndingFieldProps) {
+  const {control, setValue} = useFormContext();
+
+  const [availableUntilOptions, defaultUntilId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
+    // While the tag-mode answer is in flight the limit reads as null. Holding
+    // the narrower list rather than re-offering the full one keeps a duration
+    // the chosen tags forbid from being briefly clickable.
+    if (timeLimit == null) {
+      return constraintsBlocked
+        ? [[], accessConfig.DEFAULT_ACCESS_TIME]
+        : [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
+    }
+    const [lastId, filtered] = filterUntilLabels(timeLimit);
+    return [filtered, lastId];
+  }, [timeLimit, constraintsBlocked]);
+
+  const selectedUntil = useWatch({control, name});
+
+  React.useEffect(() => {
+    if (timeLimit == null) return;
+    // A limit drops Indefinite and every duration over it from the list. The
+    // field is seeded from the request, so it can be holding one of them: a
+    // Select whose value has no option renders blank, and submits as it stands
+    // for `ApproveGroupRequest` to shorten. Move it to the longest duration
+    // still offered instead.
+    if (!availableUntilOptions.some((option) => option.id === selectedUntil)) {
+      setUntil(defaultUntilId ?? null);
+      setValue(name, defaultUntilId ?? '');
+    }
+  }, [name, timeLimit, selectedUntil, availableUntilOptions, defaultUntilId, setValue, setUntil]);
+
+  return (
+    <FormControl margin="normal" fullWidth>
+      <InputLabel id={`${name}-label`}>{label}</InputLabel>
+      <Controller
+        name={name}
+        control={control}
+        render={({field}) => (
+          <Select
+            {...field}
+            labelId={`${name}-label`}
+            label={label}
+            onChange={(e) => {
+              field.onChange(e);
+              setUntil(e.target.value as string);
+            }}>
+            {availableUntilOptions.map(({id, label}) => (
+              <MenuItem key={id} value={id}>
+                {label}
+              </MenuItem>
+            ))}
+          </Select>
+        )}
+      />
+    </FormControl>
+  );
+}
+
+// Every tag named in `ids`, each fetched by its own id.
+//
+// Not by filtering a page of the tag list: a request can name a tag that no
+// single page of that list contains, and a partial match would drop it from
+// the approval -- and from the constraints answered for -- without saying so.
+export function useTagsByIds(ids: string[]): {tags: TagListItem[]; settled: boolean} {
+  const results = useQueries({queries: ids.map((id) => tagByIdQuery({pathParams: {tagId: id}}))});
+  const signature = results.map((result) => `${result.status}:${result.dataUpdatedAt}`).join('|');
+  return React.useMemo(
+    () => ({
+      // A tag that no longer exists answers with an error rather than data. It
+      // cannot be applied either way, so it is left out of the list while
+      // still counting as settled.
+      tags: results.map((result) => result.data).filter((tag): tag is TagDetail => tag != null),
+      settled: results.every((result) => result.data !== undefined || result.error != null),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [signature],
+  );
+}
+
+function filterUntilLabels(timeLimit: number): [string, Array<{id: string; label: string}>] {
+  const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
+    .filter((key) => Number(key) <= timeLimit)
+    .reduce(
+      (obj, key) => {
+        obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
+        return obj;
+      },
+      {} as Record<string, string>,
+    );
+
+  const filteredLabels = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label]) => ({
+    id,
+    label,
+  }));
+
+  return [Object.keys(filteredUntil).at(-1)!, filteredLabels];
+}
 
 interface ResolveRequestForm {
   resolved_group_name: string;
@@ -525,17 +648,42 @@ export default function ReadGroupRequest() {
       resolveRequest.resolved_member_role_ids = ids(principalsTouched.memberRoles, memberRoles);
     }
 
-    resolveRequest.resolved_ownership_ending_at = resolvedEndingAt(
-      responseForm.resolved_ownership_ending_at,
-      responseForm.resolved_ownership_ending_at_custom,
-      groupRequest.requested_ownership_ending_at,
-    );
+    switch (responseForm.resolved_ownership_ending_at) {
+      case 'indefinite':
+      case undefined:
+        break;
+      case 'custom':
+        if (responseForm.resolved_ownership_ending_at_custom) {
+          resolveRequest.resolved_ownership_ending_at = dayjs(
+            responseForm.resolved_ownership_ending_at_custom,
+          ).toISOString();
+        }
+        break;
+      default:
+        resolveRequest.resolved_ownership_ending_at = dayjs()
+          .add(parseInt(responseForm.resolved_ownership_ending_at, 10), 'seconds')
+          .toISOString();
+        break;
+    }
+
     if (namesMembers) {
-      resolveRequest.resolved_membership_ending_at = resolvedEndingAt(
-        responseForm.resolved_membership_ending_at,
-        responseForm.resolved_membership_ending_at_custom,
-        groupRequest.requested_membership_ending_at,
-      );
+      switch (responseForm.resolved_membership_ending_at) {
+        case 'indefinite':
+        case undefined:
+          break;
+        case 'custom':
+          if (responseForm.resolved_membership_ending_at_custom) {
+            resolveRequest.resolved_membership_ending_at = dayjs(
+              responseForm.resolved_membership_ending_at_custom,
+            ).toISOString();
+          }
+          break;
+        default:
+          resolveRequest.resolved_membership_ending_at = dayjs()
+            .add(parseInt(responseForm.resolved_membership_ending_at, 10), 'seconds')
+            .toISOString();
+          break;
+      }
     }
 
     putResolveRequest.mutate({
