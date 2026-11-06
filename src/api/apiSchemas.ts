@@ -488,6 +488,18 @@ export type CreateAppRequestBody = {
   request_reason?: string | null;
 };
 
+/**
+ * Body for POST /api/deletion-requests. Name exactly one of `group_id` and `app_id`.
+ */
+export type CreateDeletionRequestBody = {
+  group_id?: string | null;
+  app_id?: string | null;
+  /**
+   * @default
+   */
+  request_reason?: string | null;
+};
+
 export type CreateRoleRequestBody = {
   role_id: string;
   group_id: string;
@@ -543,6 +555,29 @@ export type CreateTagBody = {
 
 export type DeleteMessage = {
   deleted: boolean;
+};
+
+export type DeletionRequestDetail = {
+  id: string;
+  status: string;
+  group_id?: string | null;
+  app_id?: string | null;
+  group?: GroupRef | null;
+  app?: AppSummary | null;
+  /**
+   * @default
+   */
+  request_reason?: string | null;
+  /**
+   * @default
+   */
+  resolution_reason?: string | null;
+  resolved_at?: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  requester?: OktaUserSummary | null;
+  requester_service_principal?: ServicePrincipalDetail | null;
+  resolver?: OktaUserSummary | null;
 };
 
 export type EffectiveConstraintDetail = {
@@ -966,6 +1001,26 @@ export type PageTypeVarCustomizedAuditUserGroupRow = {
   pages: number;
 };
 
+export type PageTypeVarCustomizedDeletionRequestDetail = {
+  items: DeletionRequestDetail[];
+  /**
+   * @minimum 0
+   */
+  total: number;
+  /**
+   * @minimum 1
+   */
+  page: number;
+  /**
+   * @minimum 1
+   */
+  size: number;
+  /**
+   * @minimum 0
+   */
+  pages: number;
+};
+
 export type PageTypeVarCustomizedGroupRequestDetail = {
   items: GroupRequestDetail[];
   /**
@@ -1251,6 +1306,17 @@ export type ResolveAppRequestBody = {
   reason?: string | null;
   resolved_ownership_ending_at?: string | null;
   resolved_membership_ending_at?: string | null;
+};
+
+/**
+ * Body for PUT /api/deletion-requests/{id}.
+ */
+export type ResolveDeletionRequestBody = {
+  approved: boolean;
+  /**
+   * @default
+   */
+  reason?: string | null;
 };
 
 export type ResolveGroupRequestBody = {

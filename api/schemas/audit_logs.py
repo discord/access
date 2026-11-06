@@ -27,6 +27,9 @@ class EventType(Enum):
     app_modify_name = "APP_MODIFY_NAME"
     app_modify_plugin = "APP_MODIFY_PLUGIN"
     app_modify_tags = "APP_MODIFY_TAG"
+    deletion_request_approve = "DELETION_REQUEST_APPROVE"
+    deletion_request_create = "DELETION_REQUEST_CREATE"
+    deletion_request_reject = "DELETION_REQUEST_REJECT"
     app_request_approve = "APP_REQUEST_APPROVE"
     app_request_create = "APP_REQUEST_CREATE"
     app_request_reject = "APP_REQUEST_REJECT"
@@ -241,6 +244,17 @@ class _AuditAppRequestRef(BaseModel):
     approved_app_id: str | None = None
 
 
+class _AuditDeletionRequestRef(BaseModel):
+    """DeletionRequest projection for the `deletion_request` field."""
+
+    model_config = ConfigDict(extra="ignore")
+    id: str | None = None
+    group_id: str | None = None
+    app_id: str | None = None
+    request_reason: str | None = None
+    resolution_reason: str | None = None
+
+
 class _AuditTagRef(BaseModel):
     """Tag projection for `tag` / `tags_added` / `tags_removed`."""
 
@@ -399,6 +413,12 @@ def _as_app_request_ref(v: Any) -> Any:
     return _project(v, *_AuditAppRequestRef.model_fields)
 
 
+def _as_deletion_request_ref(v: Any) -> Any:
+    if v is None or isinstance(v, dict):
+        return v
+    return _project(v, *_AuditDeletionRequestRef.model_fields)
+
+
 def _as_tag_ref(v: Any) -> Any:
     if v is None or isinstance(v, dict):
         return v
@@ -470,6 +490,7 @@ class AuditLogPayload(BaseModel):
     role_request: _AuditRoleRequestRef | None = None
     group_request: _AuditGroupRequestRef | None = None
     app_request: _AuditAppRequestRef | None = None
+    deletion_request: _AuditDeletionRequestRef | None = None
     requester: _AuditUserRef | None = None
 
     # App-related fields
@@ -533,6 +554,9 @@ class AuditLogPayload(BaseModel):
     )
     _coerce_app_request = field_validator("app_request", mode="before")(
         classmethod(lambda cls, v: _as_app_request_ref(v))
+    )
+    _coerce_deletion_request = field_validator("deletion_request", mode="before")(
+        classmethod(lambda cls, v: _as_deletion_request_ref(v))
     )
     _coerce_tag = field_validator("tag", mode="before")(classmethod(lambda cls, v: _as_tag_ref(v)))
     _coerce_old_tag = field_validator("old_tag", mode="before")(classmethod(lambda cls, v: _as_old_tag_ref(v)))
