@@ -509,7 +509,7 @@ async def test_failed_grant_still_approves_the_app(db: Db, client: AsyncClient, 
     assert set(users["member_roles"]) == {ids["good"]}
 
 
-async def test_another_apps_group_cant_be_named(db: Db, client: AsyncClient) -> None:
+async def test_an_existing_group_cant_be_named(db: Db, client: AsyncClient) -> None:
     # "Foo-Bar" is its own app, and its group's name also carries the prefix of an app named "Foo".
     other_app = await AppFactory.create_async(name="Foo-Bar")
     other_group = await AppGroupFactory.create_async(app_id=other_app.id, is_owner=False, name="App-Foo-Bar-Admins")
@@ -517,6 +517,13 @@ async def test_another_apps_group_cant_be_named(db: Db, client: AsyncClient) -> 
 
     rep = await client.post(
         AR_URL, json={"requested_app_name": "Foo", "requested_app_groups": [{"name": "App-Foo-Bar-Admins"}]}
+    )
+    assert rep.status_code == 409
+
+    # So is a plain group, which creating the app would convert into one of its app groups.
+    await OktaGroupFactory.create_async(name="App-Foo-Synced")
+    rep = await client.post(
+        AR_URL, json={"requested_app_name": "Foo", "requested_app_groups": [{"name": "App-Foo-SYNCED"}]}
     )
     assert rep.status_code == 409
 
