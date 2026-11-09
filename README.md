@@ -114,6 +114,8 @@ make ruff            # ruff check + ruff format --check
 make ty              # ty check (type checking)
 ```
 
+`npm install` also sets up a git pre-commit hook (`.husky/pre-commit`) that runs prettier on staged JavaScript and TypeScript files through lint-staged. It works in every git worktree of the clone, including ones where you never ran `npm install`. Set `HUSKY=0` to skip it for a commit.
+
 ## Production Setup
 
 Create a `.env.production` file in the repo root with the following variables. Access supports running against PostgreSQL 14 and above.
