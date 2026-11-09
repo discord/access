@@ -1,0 +1,28 @@
+{
+  "adminEmail": "ada.admin@example.com",
+  "users": {
+    "admin": "00uvdadmin0000000001",
+    "owner": "00uvdowner0000000002",
+    "member": "00uvdmember000000003",
+    "requester": "00uvdrequester000004"
+  },
+  "apps": {
+    "access": "appvdaccess000000001",
+    "wiki": "appvdwiki00000000002"
+  },
+  "groups": {
+    "accessOwners": "00gvdaccessowners001",
+    "wikiOwners": "00gvdwikiowners00002",
+    "wikiEditors": "00gvdwikieditors0003",
+    "engineering": "00gvdengineering0004",
+    "role": "00gvdrole00000000005"
+  },
+  "tags": {
+    "sox": "tagvdsox000000000001"
+  },
+  "requests": {
+    "access": "arvdaccess0000000001",
+    "role": "rrvdrole000000000001",
+    "group": "grvdgroup00000000001"
+  }
+}

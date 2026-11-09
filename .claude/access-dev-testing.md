@@ -54,6 +54,15 @@ package in `package-lock.json` doesn't support; CI runs it in the `node-lint` jo
 dependency bump raises its own floor, narrow `engines.node` to the versions every package
 supports, then refresh the lockfile's root metadata with the npm version CI pins.
 
+## Visual diff
+
+tsc and vitest don't render pages. Before opening a PR that upgrades a frontend dependency (MUI,
+MUI X, React, React Router, Emotion) or changes layout, theming, or a shared component, run
+`npm run visual-diff`. It renders every page on the branch and on its merge base with
+`origin/main`, then lists the pages whose screenshots changed and the errors only the branch has.
+`scripts/visual-diff/README.md` covers its output, how it isolates the two sides, and what to
+update when pages or models change.
+
 ## The generated API client must not drift
 
 `src/api/` is generated from the backend's OpenAPI spec and is checked in. The

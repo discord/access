@@ -17,7 +17,7 @@ under `.claude/` that are **not** auto-loaded — read the matching one when you
 that area:
 
 - **Frontend / UI work** → `.claude/access-dev-frontend.md` — generated `src/api/` client,
-  React Query v5, layout & design principles.
+  React Query v5, keeping the visual diff current, layout & design principles.
 - **Running tests or writing migrations** → `.claude/access-dev-testing.md` — the `uv`/`ruff`/`ty`
   toolchain, Alembic migrations and CI, factories, the Okta sandbox.
 - **Syncer or notification-plugin work** → `.claude/access-dev-sync.md` — the sync authority
@@ -687,6 +687,9 @@ infrastructure details live there too.
   can flip `resolved_group_type` to mint a `role_group`/`okta_group` they could never create
   directly. Mirror the check in the corresponding operation class so it holds for callers
   that bypass the route.
+- **Adding a route without a visual-diff case** — every `<Route>` in `src/App.tsx` needs a case
+  in `scripts/visual-diff/pages.spec.ts` (and seed data in `seed.py` if the page needs it); the
+  visual diff fails until it has one
 - **Changing backend auth without updating `authorization.tsx`**
 - **Using Flask patterns** — no `abort()`, no `g`, no `@app.before_request`
 - **Returning bare `{"message": "..."}` or `{"detail": "..."}` errors** — the contract is the
