@@ -82,3 +82,12 @@ def test_ints_below_one_are_rejected_and_the_error_names_never(bad: int) -> None
         with pytest.raises(ValidationError) as exc:
             Settings(**{field: bad})
         assert "never" in str(exc.value)
+
+
+def test_opt_in_group_management_requires_custom_attr() -> None:
+    with pytest.raises(ValidationError, match="OKTA_GROUP_PROFILE_CUSTOM_ATTR"):
+        Settings(OKTA_GROUP_MANAGED_BY_DEFAULT=False, OKTA_GROUP_PROFILE_CUSTOM_ATTR=None)
+
+    settings = Settings(OKTA_GROUP_MANAGED_BY_DEFAULT=False, OKTA_GROUP_PROFILE_CUSTOM_ATTR="accessManaged")
+    assert settings.OKTA_GROUP_MANAGED_BY_DEFAULT is False
+    assert Settings().OKTA_GROUP_MANAGED_BY_DEFAULT is True
