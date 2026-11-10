@@ -6,6 +6,9 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   python-test:
     runs-on: ubuntu-22.04
@@ -33,6 +36,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          # Full history, so the coverage gate can diff against the base branch.
+          fetch-depth: 0
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -58,12 +63,14 @@ jobs:
       # No path argument, so this picks up both roots in `testpaths`: the api suite
       # under tests/ and the example plugins' own tests. The plugin tests stub their
       # third-party SDKs, so they need no plugin installed and no extra dependency.
+      # Both runs record coverage into one data file (the postgres run appends), so
+      # a line exercised on only one engine still counts as covered.
       - name: Test (sqlite)
-        run: uv run pytest -s
+        run: uv run pytest -s --cov --cov-report=
       # Only the DB-backed suite is worth re-running against postgres; the plugin
       # tests never touch a session, hence the explicit path here.
       - name: Test (postgresql)
-        run: uv run pytest -s tests
+        run: uv run pytest -s tests --cov --cov-append --cov-report=
         env:
           TEST_DATABASE_URI: postgresql+asyncpg://postgres:postgres@localhost:5432
       - name: Test installing the notifications plugin
@@ -151,3 +158,22 @@ jobs:
               )
           print(f"OK: installed versions match uv.lock for all {len(locked)} locked packages")
           PY
+      - name: Check coverage of changed lines
+        # Fails when fewer than `[tool.diff_cover] fail_under` percent of the PR's
+        # changed lines in measured files (`[tool.coverage.run] source`) ran under
+        # the tests above. A PR that changes no measured lines passes. The report,
+        # which lists each uncovered line, goes to the job summary either way, and the
+        # uncovered lines are annotated on the PR diff.
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          uv run --no-sync coverage xml --quiet
+          status=0
+          uv run --no-sync diff-cover coverage.xml \
+            --config-file pyproject.toml \
+            --compare-branch "origin/$BASE_REF" \
+            --format "markdown:$RUNNER_TEMP/diff-cover.md,github-annotations:warning" \
+            --show-uncovered || status=$?
+          cat "$RUNNER_TEMP/diff-cover.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"

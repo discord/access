@@ -66,6 +66,7 @@ test = [
     # declared explicitly) provides the built-in `faker` pytest fixture too.
     "polyfactory>=3.3.0,<4",
     "faker>=40.31.0,<41",
+    "pytest-cov>=7,<8",
 ]
 dev = [
     # Lint / format
@@ -81,6 +82,7 @@ dev = [
     # system. Dev-group only, so it is excluded from the production image
     # (`uv sync --no-dev`).
     "app_group_lifecycle_audit_logger",
+    "diff-cover>=10,<11",
 ]
 
 # ----------------------------------------------------------------------
@@ -139,6 +141,38 @@ filterwarnings = [
     # OIDC tests mock authlib's clients, so this is what surfaces it in CI.
     "error::authlib.deprecate.AuthlibDeprecationWarning",
 ]
+
+# ----------------------------------------------------------------------
+# coverage — measured by `pytest --cov` and gated per PR by diff-cover in CI
+# ----------------------------------------------------------------------
+[tool.coverage.run]
+# The shipped app plus the example plugins, which run in the default pytest
+# scope and are the code operators copy. Tests and Alembic migrations are not
+# measured: the suite builds its schema with `create_all`, and the migrations
+# are exercised by their own CI workflow instead.
+source = ["api", "examples/plugins"]
+# Report paths relative to the repo root so they match the paths in `git diff`.
+relative_files = true
+# Async SQLAlchemy runs its database I/O on greenlets. Without "greenlet" the
+# tracer loses its place across those switches and reports most code after an
+# awaited query as never run.
+concurrency = ["thread", "greenlet"]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "@overload",
+    "raise NotImplementedError",
+]
+
+# diff-cover — the share of a PR's changed, measurable lines the suite must
+# execute. Read by `make diff-cover` and the coverage gate in ci.yml, both of
+# which pass `--config-file pyproject.toml`.
+[tool.diff_cover]
+fail_under = 90
+# Re-indenting a block (wrapping it in a `with`, say) changes no behavior, so
+# whitespace-only line changes don't count as changed lines.
+ignore_whitespace = true
 
 # ----------------------------------------------------------------------
 # ty — type checker
