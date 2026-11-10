@@ -23,7 +23,8 @@
     "react-hook-form": "^7.91.0",
     "react-hook-form-mui": "^9.0.1",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.18.5"
+    "react-router-dom": "^7.18.5",
+    "tinymce": "^7.9.3"
   },
   "scripts": {
     "tsc": "./node_modules/.bin/tsc",
