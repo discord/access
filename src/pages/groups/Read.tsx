@@ -45,7 +45,7 @@ import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import Ending from '../../components/Ending';
 import MarkdownDescription from '../../components/MarkdownDescription';
-import {groupBy, displayGroupType, displayUserName} from '../../helpers';
+import {groupBy, displayGroupType, displayUserName, pluginDataEntry} from '../../helpers';
 import {
   useAppById,
   useAppGroupLifecyclePluginGroupStatusProps,
@@ -161,7 +161,7 @@ export default function ReadGroup() {
 
   const reconcilePending = isPluginStatusPending(
     lifecycleStatusProperties,
-    (group as AppGroupDetail).plugin_data?.[lifecyclePluginId]?.status,
+    pluginDataEntry((group as AppGroupDetail).plugin_data, lifecyclePluginId)?.status,
   );
 
   // Restart the window when the page moves to a different group.
@@ -470,12 +470,8 @@ export default function ReadGroup() {
               <AppGroupLifecyclePluginData
                 entityType="group"
                 pluginId={app.app_group_lifecycle_plugin}
-                currentConfig={
-                  group?.plugin_data ? group.plugin_data[app.app_group_lifecycle_plugin]?.configuration || {} : {}
-                }
-                currentStatus={
-                  group?.plugin_data ? group.plugin_data[app.app_group_lifecycle_plugin]?.status || {} : {}
-                }
+                currentConfig={pluginDataEntry(group?.plugin_data, app.app_group_lifecycle_plugin)?.configuration || {}}
+                currentStatus={pluginDataEntry(group?.plugin_data, app.app_group_lifecycle_plugin)?.status || {}}
               />
             </Grid>
           )}

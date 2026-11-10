@@ -50,7 +50,7 @@ import {
 import {AppDetail, GroupRequestDetail, ResolveGroupRequestBody, TagDetail, TagListItem} from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
-import {displayUserName, requestErrorMessage} from '../../helpers';
+import {displayUserName, requestErrorMessage, pluginDataEntry} from '../../helpers';
 import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
@@ -780,7 +780,9 @@ export default function ReadGroupRequest() {
                           <PluginConfigDisplay
                             label="Plugin Configuration"
                             pluginId={requestPluginId}
-                            configuration={groupRequest.requested_plugin_data?.[requestPluginId]?.configuration ?? {}}
+                            configuration={
+                              pluginDataEntry(groupRequest.requested_plugin_data, requestPluginId)?.configuration ?? {}
+                            }
                           />
                         </Grid>
                       )}
@@ -1039,7 +1041,8 @@ export default function ReadGroupRequest() {
                                     entityType="group"
                                     selectedPluginId={requestPluginId}
                                     currentConfig={
-                                      groupRequest.requested_plugin_data?.[requestPluginId]?.configuration ?? {}
+                                      pluginDataEntry(groupRequest.requested_plugin_data, requestPluginId)
+                                        ?.configuration ?? {}
                                     }
                                   />
                                 )}
@@ -1208,12 +1211,12 @@ export default function ReadGroupRequest() {
                             label="Plugin Configuration"
                             pluginId={requestPluginId}
                             configuration={
-                              groupRequest.resolved_plugin_data?.[requestPluginId]?.configuration ??
-                              groupRequest.requested_plugin_data?.[requestPluginId]?.configuration ??
+                              pluginDataEntry(groupRequest.resolved_plugin_data, requestPluginId)?.configuration ??
+                              pluginDataEntry(groupRequest.requested_plugin_data, requestPluginId)?.configuration ??
                               {}
                             }
                             previousConfiguration={
-                              groupRequest.requested_plugin_data?.[requestPluginId]?.configuration ?? {}
+                              pluginDataEntry(groupRequest.requested_plugin_data, requestPluginId)?.configuration ?? {}
                             }
                           />
                         </Box>

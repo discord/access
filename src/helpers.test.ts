@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 
-import {formatPluginValue, requestErrorMessage} from './helpers';
+import {formatPluginValue, pluginDataEntry, requestErrorMessage} from './helpers';
 
 describe('requestErrorMessage', () => {
   it('returns a string payload as is', () => {
@@ -25,5 +25,20 @@ describe('formatPluginValue', () => {
     expect(formatPluginValue({a: 1})).toBe('{"a":1}');
     expect(formatPluginValue(['x', 'y'])).toBe('["x","y"]');
     expect(formatPluginValue(null)).toBe('null');
+  });
+});
+
+describe('pluginDataEntry', () => {
+  const pluginData = {okta: {configuration: {prefix: 'x'}, status: {state: 'ok'}}};
+
+  it("returns the plugin's entry", () => {
+    expect(pluginDataEntry(pluginData, 'okta')?.configuration).toEqual({prefix: 'x'});
+  });
+
+  it('returns undefined without data, a plugin id, or an entry', () => {
+    expect(pluginDataEntry(null, 'okta')).toBeUndefined();
+    expect(pluginDataEntry(pluginData, null)).toBeUndefined();
+    expect(pluginDataEntry(pluginData, '')).toBeUndefined();
+    expect(pluginDataEntry(pluginData, 'other')).toBeUndefined();
   });
 });
