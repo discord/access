@@ -57,7 +57,7 @@ describe('generated mutation hooks', () => {
           throw new Error('expected a string URL and a JSON body');
         }
         const body = JSON.parse(init.body) as {members_to_add: string[]};
-        return [url.split('/').at(-2), body.members_to_add];
+        return [url.split('/').at(-2) ?? '', body.members_to_add];
       }),
     );
     expect(sent).toEqual({g1: ['a', 'b', 'c'], g2: ['a']});

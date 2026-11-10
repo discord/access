@@ -168,7 +168,7 @@ function checkBooleanTag(tags: TagSummary[] | undefined, targetTag: string) {
 
   return tags.reduce((out: boolean, curr: TagSummary) => {
     if (curr.enabled && curr.constraints && Object.keys(curr.constraints).includes(targetTag)) {
-      return out || curr.constraints[targetTag];
+      return out || (curr.constraints[targetTag] as boolean);
     } else return out;
   }, false);
 }
@@ -180,7 +180,8 @@ function minTagTime(tags: TagSummary[], owner: boolean) {
     );
     return timeLimited.length > 0
       ? timeLimited.reduce((prev, curr) => {
-          return prev < curr.constraints!['owner_time_limit'] ? prev : curr.constraints!['owner_time_limit'];
+          const limit = curr.constraints!['owner_time_limit'] as number;
+          return prev < limit ? prev : limit;
         }, Number.MAX_VALUE)
       : null;
   } else {
@@ -189,7 +190,8 @@ function minTagTime(tags: TagSummary[], owner: boolean) {
     );
     return timeLimited.length > 0
       ? timeLimited.reduce((prev, curr) => {
-          return prev < curr.constraints!['member_time_limit'] ? prev : curr.constraints!['member_time_limit'];
+          const limit = curr.constraints!['member_time_limit'] as number;
+          return prev < limit ? prev : limit;
         }, Number.MAX_VALUE)
       : null;
   }
