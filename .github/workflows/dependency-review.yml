@@ -1,0 +1,26 @@
+# Blocks pull requests that add dependencies with known vulnerabilities or with
+# licenses incompatible with Apache-2.0. Policy lives in
+# .github/dependency-review-config.yml.
+#
+# Needs no secrets and only read access, so it runs the same on forked PRs. It
+# writes its report to the job summary rather than a PR comment, since a
+# forked PR's token cannot comment.
+name: Dependency review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-24.04
+    steps:
+      # Checked out only so the action can read the local config file.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          config-file: ./.github/dependency-review-config.yml

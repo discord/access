@@ -1,0 +1,70 @@
+# Configuration for actions/dependency-review-action, run by
+# .github/workflows/dependency-review.yml on every pull request.
+#
+# Access is Apache-2.0, so every dependency a PR adds or changes must carry a
+# license compatible with redistributing Access under Apache-2.0. The action
+# reads licenses from GitHub's dependency graph, which parses both uv.lock and
+# package-lock.json.
+
+# Fail on any newly introduced dependency with a known advisory at or above
+# this severity. Moderate matches what `npm audit` and Dependabot surface.
+fail-on-severity: moderate
+
+# Check dev dependencies too, not only runtime ones (the action's default).
+# Build and test tools run in CI and on contributors' machines, so their
+# vulnerabilities matter; a dev-only tool with an incompatible license can be
+# exempted below once vetted.
+fail-on-scopes:
+  - runtime
+  - development
+
+# Permissive licenses: use, modify, and redistribute with attribution only.
+#
+# Weak copyleft is split by how its obligation reaches Access:
+# - MPL-2.0 and EPL-2.0 are file-level copyleft. Consuming them unmodified from
+#   a registry obliges nothing beyond keeping their notices, so they are allowed
+#   outright. Never vendor and patch their files into this repo.
+# - LGPL is library-level copyleft with a relinking requirement, so it is not
+#   listed here; each LGPL package is vetted below in allow-dependencies-licenses.
+allow-licenses:
+  - 0BSD
+  - Apache-2.0
+  - BlueOak-1.0.0
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - CC0-1.0
+  - EPL-2.0
+  - ISC
+  - MIT
+  - MIT-0
+  - MPL-2.0
+  - PSF-2.0
+  - Python-2.0
+  - Unlicense
+  - Zlib
+
+# Packages vetted by hand whose detected license would otherwise fail the
+# allow-list: LGPL packages, and packages whose dependency-graph license is a
+# scanner artifact or a non-SPDX reference. Versionless so routine bumps pass;
+# re-vet if a package changes its license. Each entry states why it is allowed.
+allow-dependencies-licenses:
+  # LGPL-3.0-or-later. Transitive runtime dependency of the Okta SDK, installed
+  # unmodified from PyPI as its own package, so anyone can swap in a different
+  # jwcrypto build, which satisfies LGPL's replaceable-library requirement.
+  - pkg:pypi/jwcrypto
+  # Licensed PSF-2.0. The dependency graph also reports GPL-1.0-or-later
+  # because the PSF license text mentions GPL compatibility; it carries no GPL
+  # code.
+  - pkg:pypi/typing-extensions
+  - pkg:pypi/aiohappyeyeballs
+  # Licensed BSD-2-Clause, with some files in the public domain; the dependency
+  # graph reports the public-domain files as a non-SPDX LicenseRef.
+  - pkg:pypi/pycryptodomex
+  # Code is ISC; CC-BY-SA-4.0 covers only the logo artwork in the repository.
+  - pkg:npm/glob
+  # CC-BY-4.0 browser-support data used at build time by browserslist;
+  # attribution-only and not part of the shipped bundle.
+  - pkg:npm/caniuse-lite
+  # First-party example plugin in this repository, covered by Access's own
+  # Apache-2.0 license; its metadata declares none.
+  - pkg:pypi/app-group-lifecycle-audit-logger
