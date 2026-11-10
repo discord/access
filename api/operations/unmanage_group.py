@@ -69,14 +69,11 @@ class UnmanageGroup:
             .where(OktaUserGroupMember.role_group_map_id.isnot(None))
         )
 
-        ended_access = []
+        memberships_ended: list[dict[str, str]] = []
+        ownerships_ended: list[dict[str, str]] = []
         for active_access_via_role in (await db.session.scalars(active_access_via_roles_query)).all():
-            ended_access.append(
-                {
-                    "user_id": active_access_via_role.user_id,
-                    "group_id": active_access_via_role.group_id,
-                    "is_owner": active_access_via_role.is_owner,
-                }
+            (ownerships_ended if active_access_via_role.is_owner else memberships_ended).append(
+                {"user_id": active_access_via_role.user_id, "group_id": active_access_via_role.group_id}
             )
             logger.info(
                 f"User {active_access_via_role.user_id} has invalid "
@@ -107,14 +104,11 @@ class UnmanageGroup:
             .where(RoleGroupMap.group_id == group.id)
         )
 
-        ended_role_assignments = []
+        role_memberships_ended: list[dict[str, str]] = []
+        role_ownerships_ended: list[dict[str, str]] = []
         for active_role_assignment in (await db.session.scalars(active_role_assignments_query)).all():
-            ended_role_assignments.append(
-                {
-                    "role_group_id": active_role_assignment.role_group_id,
-                    "group_id": active_role_assignment.group_id,
-                    "is_owner": active_role_assignment.is_owner,
-                }
+            (role_ownerships_ended if active_role_assignment.is_owner else role_memberships_ended).append(
+                {"role_group_id": active_role_assignment.role_group_id, "group_id": active_role_assignment.group_id}
             )
             logger.info(
                 f"Role {active_role_assignment.role_group_id} has invalid "
@@ -143,12 +137,10 @@ class UnmanageGroup:
                         "current_user_id": current_user_id,
                         "current_user_email": current_user_email,
                         "group": audited_group,
-                        "memberships_ended_user_id_group_id": [a for a in ended_access if not a["is_owner"]],
-                        "ownerships_ended_user_id_group_id": [a for a in ended_access if a["is_owner"]],
-                        "role_memberships_ended_role_id_group_id": [
-                            r for r in ended_role_assignments if not r["is_owner"]
-                        ],
-                        "role_ownerships_ended_role_id_group_id": [r for r in ended_role_assignments if r["is_owner"]],
+                        "memberships_ended": memberships_ended,
+                        "ownerships_ended": ownerships_ended,
+                        "role_memberships_ended": role_memberships_ended,
+                        "role_ownerships_ended": role_ownerships_ended,
                     }
                 )
             )

@@ -96,10 +96,12 @@ class DeleteUser:
         # the commit expires these rows, and reading them afterwards would
         # trigger a lazy load.
         audited_user = {"id": user.id, "email": user.email}
-        ended_access = [
-            {"user_id": m.user_id, "group_id": m.group_id, "is_owner": m.is_owner}
-            for m in (await db.session.scalars(group_access_query)).all()
-        ]
+        memberships_ended: list[dict[str, str]] = []
+        ownerships_ended: list[dict[str, str]] = []
+        for m in (await db.session.scalars(group_access_query)).all():
+            (ownerships_ended if m.is_owner else memberships_ended).append(
+                {"user_id": m.user_id, "group_id": m.group_id}
+            )
 
         await db.session.execute(
             update(OktaUserGroupMember)
@@ -126,8 +128,8 @@ class DeleteUser:
                     "current_user_id": current_user_id,
                     "current_user_email": current_user_email,
                     "user": audited_user,
-                    "memberships_ended_user_id_group_id": [a for a in ended_access if not a["is_owner"]],
-                    "ownerships_ended_user_id_group_id": [a for a in ended_access if a["is_owner"]],
+                    "memberships_ended": memberships_ended,
+                    "ownerships_ended": ownerships_ended,
                 }
             )
         )

@@ -56,8 +56,8 @@ async def test_delete_user_logs_ended_access(
     assert event["current_user_id"] == owner_id
     assert event["current_user_email"] == owner_email
     assert event["user"] == {"id": user_id, "email": user_email}
-    assert event["memberships_ended_user_id_group_id"] == [{"user_id": user_id, "group_id": okta_group_id}]
-    assert event["ownerships_ended_user_id_group_id"] == [{"user_id": user_id, "group_id": role_group_id}]
+    assert event["memberships_ended"] == [{"user_id": user_id, "group_id": okta_group_id}]
+    assert event["ownerships_ended"] == [{"user_id": user_id, "group_id": role_group_id}]
 
 
 async def test_unmanage_group_logs_ended_role_access(
@@ -81,12 +81,10 @@ async def test_unmanage_group_logs_ended_role_access(
         "name": okta_group_name,
         "type": "okta_group",
     }
-    assert event["memberships_ended_user_id_group_id"] == [{"user_id": user_id, "group_id": okta_group_id}]
-    assert event["ownerships_ended_user_id_group_id"] == []
-    assert event["role_memberships_ended_role_id_group_id"] == [
-        {"role_group_id": role_group_id, "group_id": okta_group_id}
-    ]
-    assert event["role_ownerships_ended_role_id_group_id"] == []
+    assert event["memberships_ended"] == [{"user_id": user_id, "group_id": okta_group_id}]
+    assert event["ownerships_ended"] == []
+    assert event["role_memberships_ended"] == [{"role_group_id": role_group_id, "group_id": okta_group_id}]
+    assert event["role_ownerships_ended"] == []
 
 
 async def test_unmanage_group_dry_run_logs_nothing(

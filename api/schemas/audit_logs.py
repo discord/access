@@ -425,10 +425,10 @@ class AuditLogPayload(BaseModel):
 
     # Access ended in bulk when a user is deleted or a group becomes unmanaged
     user: _AuditUserRef | None = None
-    memberships_ended_user_id_group_id: list[_AuditUserGroupMemberRef] | None = None
-    ownerships_ended_user_id_group_id: list[_AuditUserGroupMemberRef] | None = None
-    role_memberships_ended_role_id_group_id: list[_AuditRoleGroupMapRef] | None = None
-    role_ownerships_ended_role_id_group_id: list[_AuditRoleGroupMapRef] | None = None
+    memberships_ended: list[_AuditUserGroupMemberRef] | None = None
+    ownerships_ended: list[_AuditUserGroupMemberRef] | None = None
+    role_memberships_ended: list[_AuditRoleGroupMapRef] | None = None
+    role_ownerships_ended: list[_AuditRoleGroupMapRef] | None = None
 
     # ---- coercion validators ----
     _coerce_group = field_validator("group", "active_group", mode="before")(
@@ -448,8 +448,8 @@ class AuditLogPayload(BaseModel):
     _coerce_user_group_member_list = field_validator(
         "owners_should_expire_user_id_group_id",
         "members_should_expire_user_id_group_id",
-        "memberships_ended_user_id_group_id",
-        "ownerships_ended_user_id_group_id",
+        "memberships_ended",
+        "ownerships_ended",
         mode="before",
     )(classmethod(lambda cls, v: _as_user_group_member_ref_list(v)))
     _coerce_role_list = field_validator(
@@ -462,8 +462,8 @@ class AuditLogPayload(BaseModel):
     _coerce_role_group_map_list = field_validator(
         "owner_groups_should_expire_role_id_group_id",
         "groups_should_expire_role_id_group_id",
-        "role_memberships_ended_role_id_group_id",
-        "role_ownerships_ended_role_id_group_id",
+        "role_memberships_ended",
+        "role_ownerships_ended",
         mode="before",
     )(classmethod(lambda cls, v: _as_role_group_map_ref_list(v)))
     _coerce_request = field_validator("request", mode="before")(classmethod(lambda cls, v: _as_access_request_ref(v)))
