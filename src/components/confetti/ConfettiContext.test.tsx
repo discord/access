@@ -23,8 +23,10 @@ let setEnabled: (enabled: boolean) => void;
 
 function DrawerFooterProbe() {
   const context = useConfetti();
-  clickTheme = context.registerThemeToggleClick;
-  setEnabled = context.setEnabled;
+  React.useEffect(() => {
+    clickTheme = context.registerThemeToggleClick;
+    setEnabled = context.setEnabled;
+  });
   return (
     <>
       <div data-testid="unlocked">{String(context.unlocked)}</div>

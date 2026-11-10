@@ -11,8 +11,12 @@ export const InfiniteScrollSentinel: React.FC<{onVisible: () => void; disabled?:
   disabled = false,
 }) => {
   const ref = React.useRef<HTMLDivElement>(null);
+  // The observer calls whichever callback is current, so a parent passing a
+  // fresh closure each render doesn't tear down and re-create the observer.
   const cb = React.useRef(onVisible);
-  cb.current = onVisible;
+  React.useLayoutEffect(() => {
+    cb.current = onVisible;
+  });
 
   React.useEffect(() => {
     if (disabled) {
