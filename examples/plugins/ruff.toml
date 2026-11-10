@@ -1,0 +1,18 @@
+# Lint settings for the example plugins, layered on the repository's root config.
+extend = "../../pyproject.toml"
+# Resolve first-party imports (`api`) from the repository root, as the root config does.
+src = ["../.."]
+
+# Plugins integrate with Access only through the plugin interface: they never call
+# operations or services, and never open or drive a database session.
+[lint.flake8-tidy-imports.banned-api]
+"api.operations".msg = "Plugins integrate through the plugin interface, not Access operations."
+"api.services".msg = "Plugins integrate through the plugin interface, not Access services."
+"api.database".msg = "Plugins never open a database session; Access owns the transaction."
+"api.extensions".msg = "Plugins never touch the database session; Access owns the transaction."
+
+[lint.extend-per-file-ignores]
+# The health-check CLI command reports database connectivity and table sizes, so it
+# connects to the database itself. It runs as a standalone CLI command, outside any
+# request or hook, so there is no Access-owned transaction for it to disturb.
+"health_check_plugin/cli.py" = ["TID251"]

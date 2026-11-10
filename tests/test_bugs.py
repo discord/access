@@ -49,7 +49,14 @@ async def test_sentry_envelope_is_forwarded_with_dsn_rewritten(
         async def __aexit__(self, *args: object) -> None:
             return None
 
-        async def post(self, url: str, *, content: str, headers: dict[str, str], timeout: float) -> None:
+        async def post(
+            self,
+            url: str,
+            *,
+            content: str,
+            headers: dict[str, str],
+            timeout: float,  # noqa: ASYNC109 - mirrors the httpx.AsyncClient.post signature it stands in for
+        ) -> None:
             captured["url"] = url
             captured["content"] = content
             captured["headers"] = headers

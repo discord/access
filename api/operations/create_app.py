@@ -1,5 +1,5 @@
 import logging
-import random
+import secrets
 import string
 from typing import TypedDict, cast
 
@@ -302,4 +302,4 @@ class CreateApp:
 
     # Generate a 20 character alphanumeric ID similar to Okta IDs for users and groups
     def __generate_id(self) -> str:
-        return "".join(random.choices(string.ascii_letters, k=20))
+        return "".join(secrets.choice(string.ascii_letters) for _ in range(20))

@@ -36,6 +36,15 @@ make ty        # uv run ty check .  — don't skip; type annotations are load-be
 Ruff and ty are configured in `pyproject.toml` (`[tool.ruff]`, `[tool.ty.*]`); pytest config is
 in `[tool.pytest.ini_options]` (`asyncio_mode = "auto"`, since the suite is async).
 
+Beyond ruff's defaults, the lint rules enforce several conventions from `.claude/CLAUDE.md`:
+`G004` (parameterized logging, for Sentry grouping), `ASYNC` and `RUF006` (blocking calls in
+`async def`, and unreferenced `asyncio` tasks), `B`, and bandit's `S` checks except `S101`.
+`examples/plugins/ruff.toml` extends the root config and bans plugin imports of
+`api.operations`, `api.services`, `api.database`, and `api.extensions`, which keeps plugins on
+the plugin interface. A suppression is a targeted `# noqa: <code> - <reason>`, never a bare
+`noqa`. Mechanical reformatting commits are listed in `.git-blame-ignore-revs`; to skip them in
+a local `git blame`, run `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
+
 The pytest suite runs against **in-memory SQLite** by default (`sqlite+aiosqlite://`,
 built from the models via `Base.metadata.create_all`, not migrations). To run against Postgres,
 set `TEST_DATABASE_URI`, or use `make pytest-postgres`, which boots a disposable `postgres:16`

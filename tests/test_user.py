@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -181,13 +182,10 @@ async def test_user_email_uniqueness(client: AsyncClient, db: Db) -> None:
     # Trying to insert a user with the same email should fail
     user2 = OktaUserFactory.build()
     user2.email = known_email
-    try:
-        db.session.add(user2)
+    db.session.add(user2)
+    with pytest.raises(IntegrityError, match="constraint"):
         await db.session.commit()
-        assert False
-    except IntegrityError as e:
-        assert "constraint" in str(e)
-        await db.session.rollback()
+    await db.session.rollback()
 
     # Verify another user with the same email can be inserted if its state is deleted
     user2.deleted_at = datetime.now(UTC)
