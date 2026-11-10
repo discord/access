@@ -139,7 +139,7 @@ async def resolve_identity(scope: Scope) -> MCPIdentity | None:
         # Token present but invalid. Log at debug — MCP clients retry
         # aggressively on auth failures and we don't want log spam — and
         # defer to the next provider. The middleware emits 401.
-        logger.debug(f"CF Access token verification failed: {e.detail}")
+        logger.debug("CF Access token verification failed: %s", e.detail)
         return None
     except jwt.PyJWTError:
         logger.debug("CF Access token failed JWT decode")
@@ -164,7 +164,7 @@ async def resolve_identity(scope: Scope) -> MCPIdentity | None:
         )
     ).first()
     if user is None:
-        logger.warning(f"CF Access JWT verified for email={payload['email']!r} but no matching active OktaUser exists")
+        logger.warning("CF Access JWT verified for email=%r but no matching active OktaUser exists", payload["email"])
         return None
     user_id = user.id
 

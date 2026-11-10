@@ -117,8 +117,9 @@ def create_mcp_server() -> MCPServer:
     )
 
     logger.info(
-        f"Access MCP server initialized with {len(mcp._tool_manager._tools)} tools "
-        f"and {len(mcp._prompt_manager._prompts)} prompts"
+        "Access MCP server initialized with %s tools and %s prompts",
+        len(mcp._tool_manager._tools),
+        len(mcp._prompt_manager._prompts),
     )
 
     _mcp_server = mcp

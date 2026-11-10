@@ -43,7 +43,7 @@ async def resolve_identity(scope: Scope) -> MCPIdentity | None:
     ).first()
     if user is None:
         logger.warning(
-            f"Dev MCP auth provider: CURRENT_OKTA_USER_EMAIL={email!r} has no matching active OktaUser; deferring"
+            "Dev MCP auth provider: CURRENT_OKTA_USER_EMAIL=%r has no matching active OktaUser; deferring", email
         )
         return None
 

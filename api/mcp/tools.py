@@ -1265,8 +1265,11 @@ def _register_write_tools(mcp: MCPServer) -> None:
             _ctx = get_request_context()
             if _ctx is not None and _ctx.source == "mcp":
                 logger.info(
-                    f"MCP create_access_request id={ar.id} requester={current_user_id} "
-                    f"group={group.id} ownership={body.group_owner}"
+                    "MCP create_access_request id=%s requester=%s group=%s ownership=%s",
+                    ar.id,
+                    current_user_id,
+                    group.id,
+                    body.group_owner,
                 )
             return AccessRequestSummary.model_validate(refreshed, from_attributes=True).model_dump_json()
 
@@ -1388,8 +1391,12 @@ def _register_write_tools(mcp: MCPServer) -> None:
             _ctx = get_request_context()
             if _ctx is not None and _ctx.source == "mcp":
                 logger.info(
-                    f"MCP create_role_request id={rr.id} requester={current_user_id} "
-                    f"role={role.id} group={group.id} ownership={body.group_owner}"
+                    "MCP create_role_request id=%s requester=%s role=%s group=%s ownership=%s",
+                    rr.id,
+                    current_user_id,
+                    role.id,
+                    group.id,
+                    body.group_owner,
                 )
             return RoleRequestSummary.model_validate(refreshed or rr, from_attributes=True).model_dump_json()
 
@@ -1523,7 +1530,10 @@ def _register_write_tools(mcp: MCPServer) -> None:
             _ctx = get_request_context()
             if _ctx is not None and _ctx.source == "mcp":
                 logger.info(
-                    f"MCP create_group_request id={gr.id} requester={current_user_id} "
-                    f"group_name={body.requested_group_name!r} type={body.requested_group_type}"
+                    "MCP create_group_request id=%s requester=%s group_name=%r type=%s",
+                    gr.id,
+                    current_user_id,
+                    body.requested_group_name,
+                    body.requested_group_type,
                 )
             return GroupRequestDetail.model_validate(refreshed or gr, from_attributes=True).model_dump_json()

@@ -52,7 +52,7 @@ def health_command() -> None:
             db_status = "disconnected"
             error = str(e)
             table_sizes = {}
-            logger.error(f"Database connection error: {error}")
+            logger.error("Database connection error: %s", error)
         finally:
             await db.remove()
             if created_engine:
@@ -69,5 +69,5 @@ def health_command() -> None:
 
     status = asyncio.run(_run())
 
-    logger.info(f"Health status: {status}")
+    logger.info("Health status: %s", status)
     click.echo(json.dumps(status))

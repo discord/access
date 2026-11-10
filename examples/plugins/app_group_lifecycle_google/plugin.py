@@ -438,7 +438,7 @@ class GoogleGroupManagerPlugin:
         try:
             settings = await self._execute_request(self._group_settings_api.get(groupUniqueId=email))
             if settings.get("whoCanViewMembership") != visibility:
-                logger.info(f"Setting membership visibility of Google group {email} to {visibility}")
+                logger.info("Setting membership visibility of Google group %s to %s", email, visibility)
                 await self._execute_request(
                     self._group_settings_api.patch(groupUniqueId=email, body={"whoCanViewMembership": visibility})
                 )
@@ -462,8 +462,8 @@ class GoogleGroupManagerPlugin:
         except HttpError as e:
             if _is_group_absent_error(e):
                 logger.warning(
-                    f"Failed to delete the Google group {google_group_id}, "
-                    "possibly because it does not exist or Access lacks permissions"
+                    "Failed to delete the Google group %s, possibly because it does not exist or Access lacks permissions",
+                    google_group_id,
                 )
                 return
             raise
@@ -524,7 +524,7 @@ class GoogleGroupManagerPlugin:
             ctx: The plugin capability context.
             group: The group being reconciled.
         """
-        logger.debug(f"Reconciled {group.name}.")
+        logger.debug("Reconciled %s.", group.name)
         self._write_sync_status(ctx, group, SYNC_SYNCED, None)
         ctx.set_status(group, STATUS_LAST_SYNCED_AT, datetime.now(UTC).isoformat(), durable_on_failure=True)
 
@@ -540,7 +540,7 @@ class GoogleGroupManagerPlugin:
             group: The group being reconciled.
             reason: What is being waited on, surfaced in the UI.
         """
-        logger.info(f"Deferring {group.name}: {reason}")
+        logger.info("Deferring %s: %s", group.name, reason)
         self._write_sync_status(ctx, group, SYNC_PENDING, reason)
 
     def _mark_skipped(self, ctx: AppGroupLifecycleContext, group: AppGroup, reason: str | None = None) -> None:
@@ -567,9 +567,9 @@ class GoogleGroupManagerPlugin:
                 as a standalone sentence naming the fix. None when there is nothing to act on.
         """
         if reason:
-            logger.info(f"Skipping {group.name}: {reason}")
+            logger.info("Skipping %s: %s", group.name, reason)
         else:
-            logger.debug(f"Skipping {group.name}: not managed by this plugin.")
+            logger.debug("Skipping %s: not managed by this plugin.", group.name)
         self._write_sync_status(ctx, group, SYNC_SKIPPED, reason)
 
     def _mark_error(self, ctx: AppGroupLifecycleContext, group: AppGroup, error: str) -> None:
@@ -617,7 +617,7 @@ class GoogleGroupManagerPlugin:
         except HttpError as e:
             if not _is_group_absent_error(e):
                 raise
-            logger.info(f"Cached Google group id {cached} for {group.name} is gone; clearing and re-resolving.")
+            logger.info("Cached Google group id %s for %s is gone; clearing and re-resolving.", cached, group.name)
             ctx.set_status(group, STATUS_GOOGLE_GROUP_ID, None)
             return None
 
@@ -694,7 +694,7 @@ class GoogleGroupManagerPlugin:
         except HttpError as e:
             if not _is_group_absent_error(e):
                 raise
-            logger.info(f"Cached Google group id {google_group_id} for {group.name} is gone; cannot recover email.")
+            logger.info("Cached Google group id %s for %s is gone; cannot recover email.", google_group_id, group.name)
             return None
         return (live.get("groupKey") or {}).get("id")
 
@@ -814,7 +814,7 @@ class GoogleGroupManagerPlugin:
                             )
                             return
 
-                        logger.info(f"Backfilling group link for {group.name} that was added out-of-band...")
+                        logger.info("Backfilling group link for %s that was added out-of-band...", group.name)
                         candidate_group_id = await self._look_up_google_group_id(resolved_email)
 
                 if candidate_group_id is not None:  # group created or mapped out-of-band; try to claim it
@@ -848,7 +848,7 @@ class GoogleGroupManagerPlugin:
                     return
 
                 if not ctx.get_status(group, STATUS_PUSH_MAPPING_ID):
-                    logger.info(f"Creating and linking a new Google group for {group.name} via Okta group push...")
+                    logger.info("Creating and linking a new Google group for %s via Okta group push...", group.name)
                     # Create a push mapping with a new target group name (the email prefix).
                     # You can't specify all the group config (description, email) when creating it via
                     # Okta, so we give the email prefix which is immutable and then reconcile the other
@@ -889,7 +889,7 @@ class GoogleGroupManagerPlugin:
             # properties onto it (or backfill from it during adoption). A group Okta just created is
             # named after the email prefix and has no description, so this is what applies the real
             # display name and description.
-            logger.debug(f"Reconciling group properties for {group.name}...")
+            logger.debug("Reconciling group properties for %s...", group.name)
             google_group = await self._get_google_group(claimed_google_group_id)
             reconcile_error = await self._adopt_or_enforce(ctx, group, claimed_google_group_id, google_group)
             if reconcile_error is not None:
@@ -965,20 +965,20 @@ class GoogleGroupManagerPlugin:
         google_description = google_group.get("description", "") or ""
 
         if not configured_email_prefix and not configured_display_name:  # adopt Google -> Access
-            logger.info(f"Backfilling group properties from Google to Access for {group.name}...")
+            logger.info("Backfilling group properties from Google to Access for %s...", group.name)
             inferred_email_prefix = self._prefix_from_email(google_email)
             if inferred_email_prefix is None:
                 return f"Live Google group email '{google_email}' is not in domain {self._domain}"
             ctx.set_config(group, CONFIG_EMAIL, inferred_email_prefix)
             ctx.set_config(group, CONFIG_DISPLAY_NAME, google_group.get("displayName", "") or "")
             if not group.description and google_description:
-                logger.info(f"Backfilling group description from Google to Access for {group.name}...")
+                logger.info("Backfilling group description from Google to Access for %s...", group.name)
                 # Route the Access-side description change through the plugin interface, which
                 # updates the ORM and syncs to Okta without committing or re-firing this hook.
                 await ctx.set_group_description(group, google_description)
 
         else:  # enforce Access -> Google
-            logger.debug(f"Pushing Access group config to Google for {group.name}...")
+            logger.debug("Pushing Access group config to Google for %s...", group.name)
             patch_display_name = (
                 configured_display_name if (google_group.get("displayName") or "") != configured_display_name else None
             )
@@ -1021,7 +1021,7 @@ class GoogleGroupManagerPlugin:
         # is orphaned rather than cleaned up; the next reconcile re-resolves and records it.
         google_group_id = ctx.get_status(group, STATUS_GOOGLE_GROUP_ID)
         if not google_group_id:
-            logger.info(f"Group {group.name} owns no linked Google group; nothing to delete")
+            logger.info("Group %s owns no linked Google group; nothing to delete", group.name)
             return
 
         mapping_id = ctx.get_status(group, STATUS_PUSH_MAPPING_ID)
@@ -1034,14 +1034,15 @@ class GoogleGroupManagerPlugin:
             # reported, with what to do about it, by the create path's error.
             try:
                 await ctx.delete_push_mapping(self._okta_app_id, mapping_id, delete_target_group=True)
-                logger.info(f"Unlinked Okta push mapping {mapping_id} for Access group {group.name}")
+                logger.info("Unlinked Okta push mapping %s for Access group %s", mapping_id, group.name)
             except Exception:
                 logger.exception(
-                    f"Failed to unlink Okta push mapping {mapping_id} for {group.name}; "
-                    "deleting the Google group anyway"
+                    "Failed to unlink Okta push mapping %s for %s; deleting the Google group anyway",
+                    mapping_id,
+                    group.name,
                 )
         await self._delete_google_group(google_group_id)
-        logger.info(f"Deleted Google group {google_group_id} for Access group {group.name}")
+        logger.info("Deleted Google group %s for Access group %s", google_group_id, group.name)
 
     @hookimpl
     async def sync_group(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:

@@ -33,11 +33,11 @@ async def access_request_created(
         is_auto_approved_tag = any(tag.name in AUTO_APPROVED_TAG_NAMES for tag in group_tags)
 
         if is_auto_approved_name or is_auto_approved_tag:
-            logger.info(f"Auto-approving access request {access_request.id} to group {group.name}")
+            logger.info("Auto-approving access request %s to group %s", access_request.id, group.name)
             return ConditionalAccessResponse(
                 approved=True, reason="Group membership auto-approved", ending_at=access_request.request_ending_at
             )
 
-    logger.info(f"Access request {access_request.id} to group {group.name} requires manual approval")
+    logger.info("Access request %s to group %s requires manual approval", access_request.id, group.name)
 
     return None

@@ -41,13 +41,13 @@ def _init_datadog() -> Any:
         datadog.statsd.constant_tags = ["service:access", f"env:{env_tag}"]
 
         _datadog_client = datadog.statsd
-        logger.info(f"Datadog initialized for metrics - host: {statsd_host}:{statsd_port}, env: {env_tag}")
+        logger.info("Datadog initialized for metrics - host: %s:%s, env: %s", statsd_host, statsd_port, env_tag)
 
     except ImportError:
         logger.debug("Datadog package not available, metrics disabled")
         _datadog_client = None
     except Exception as e:  # noqa: BLE001 - metrics are optional; Access runs without them
-        logger.warning(f"Failed to initialize Datadog: {e}")
+        logger.warning("Failed to initialize Datadog: %s", e)
         _datadog_client = None
 
     return _datadog_client
@@ -130,7 +130,7 @@ class DatadogMetricsReporter:
         # Note: DogStatsD doesn't support custom buckets directly
         # Buckets are configured on the Datadog Agent side
         if buckets:
-            logger.debug(f"Custom buckets not supported by DogStatsD for {metric_name}")
+            logger.debug("Custom buckets not supported by DogStatsD for %s", metric_name)
 
         if self._should_buffer():
             with self.batch_lock:

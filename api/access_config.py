@@ -49,7 +49,7 @@ def _validate_override_config(config: dict[str, Any]) -> None:
 def _merge_override_config(config: dict[str, Any], config_dir: str, override_filename: str) -> None:
     override_config_path = os.path.join(config_dir, override_filename)
     if os.path.exists(override_config_path):
-        logger.debug(f"Loading access config override from {override_config_path}")
+        logger.debug("Loading access config override from %s", override_config_path)
         with open(override_config_path) as f:
             override_config = json.load(f).get(BACKEND, {})
             _validate_override_config(override_config)
