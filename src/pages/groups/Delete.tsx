@@ -40,13 +40,13 @@ function GroupDialog(props: GroupDialogProps) {
       props.setOpen(false);
       switch (props.group.type) {
         case 'app_group':
-          navigate('/apps/' + encodeURIComponent((props.group as AppGroupDetail).app?.name ?? ''));
+          void navigate('/apps/' + encodeURIComponent((props.group as AppGroupDetail).app?.name ?? ''));
           break;
         case 'role_group':
-          navigate('/roles/');
+          void navigate('/roles/');
           break;
         default:
-          navigate('/groups/');
+          void navigate('/groups/');
           break;
       }
     }

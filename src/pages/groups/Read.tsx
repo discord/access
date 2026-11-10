@@ -404,7 +404,7 @@ export default function ReadGroup() {
                           key={'tag' + tagMap.active_tag!.id}
                           label={tagMap.active_tag!.name}
                           color="primary"
-                          onClick={() => navigate(`/tags/${tagMap.active_tag!.name}`)}
+                          onClick={() => void navigate(`/tags/${tagMap.active_tag!.name}`)}
                           variant={tagMap.active_app_tag_mapping ? 'outlined' : 'filled'}
                           icon={<TagIcon />}
                           sx={{
@@ -794,7 +794,7 @@ export default function ReadGroup() {
                                     label={app.name}
                                     variant="outlined"
                                     color="primary"
-                                    onClick={() => navigate(`/apps/${app.name}`)}
+                                    onClick={() => void navigate(`/apps/${app.name}`)}
                                   />
                                 ) : null}
                                 {users.sort(sortOktaUserGroupMembers).map((user) =>

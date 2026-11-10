@@ -41,7 +41,7 @@ export default function MembershipChip({
         label={activeRoleGroup.name}
         variant="outlined"
         color="primary"
-        onClick={() => navigate(`/roles/${activeRoleGroup.name}`)}
+        onClick={() => void navigate(`/roles/${activeRoleGroup.name}`)}
         onDelete={
           canManageThisGroup || canManageUserRoleGroup
             ? () => {

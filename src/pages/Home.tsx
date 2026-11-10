@@ -337,13 +337,13 @@ function AccordionMaker({which, expandedSlug, onSlugChange, onInternalLink}: Acc
   const handleChange = (slug: string) => (_: React.SyntheticEvent, isExpanded: boolean) => {
     const next = isExpanded ? slug : null;
     onSlugChange(next);
-    navigate({hash: next ? `#${slug}` : ''}, {replace: true});
+    void navigate({hash: next ? `#${slug}` : ''}, {replace: true});
   };
 
   const handleCopyLink = (e: React.MouseEvent, slug: string) => {
     e.stopPropagation();
     const url = `${window.location.origin}${location.pathname}#${slug}`;
-    navigator.clipboard.writeText(url);
+    void navigator.clipboard.writeText(url);
   };
 
   return (
@@ -557,7 +557,7 @@ export default function Home() {
   const handleSectionChange = (key: string) => {
     setWhichAccordion(key);
     setExpandedSlug(null);
-    navigate({hash: ''}, {replace: true});
+    void navigate({hash: ''}, {replace: true});
   };
 
   const handleInternalLink = (slug: string) => {
@@ -565,7 +565,7 @@ export default function Home() {
     if (sections[section]) {
       setWhichAccordion(section);
       setExpandedSlug(slug);
-      navigate({hash: `#${slug}`}, {replace: true});
+      void navigate({hash: `#${slug}`}, {replace: true});
       setTimeout(() => {
         document.getElementById(`${slug}-header`)?.scrollIntoView({behavior: 'smooth', block: 'start'});
       }, 100);
@@ -594,7 +594,7 @@ export default function Home() {
                           else if (stat.id === 'make-group-request') setOpenDialog('group');
                           else if (stat.id === 'explore-user-docs') handleSectionChange('users');
                           else if (stat.id === 'explore-group-owner-docs') handleSectionChange('people-lead');
-                          else if (stat.path) navigate(stat.path);
+                          else if (stat.path) void navigate(stat.path);
                         }}
                         sx={{
                           ...(sectionW > 0 ? {width: sectionW, flexShrink: 0} : {flex: 1}),

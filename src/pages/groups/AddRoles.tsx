@@ -159,7 +159,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
           setRolesUpdatesErrored(0);
         } else {
           props.setOpen(false);
-          navigate(0);
+          void navigate(0);
         }
       }
     }

@@ -117,7 +117,7 @@ export default function ReadApp() {
           {/* Load the next page of app groups when this scrolls into view. */}
           <Grid sx={{py: 0}} size={12}>
             <InfiniteScrollSentinel
-              onVisible={() => nonOwnerGroupsQuery.fetchNextPage()}
+              onVisible={() => void nonOwnerGroupsQuery.fetchNextPage()}
               disabled={!nonOwnerGroupsQuery.hasNextPage || nonOwnerGroupsQuery.isFetchingNextPage}
             />
           </Grid>

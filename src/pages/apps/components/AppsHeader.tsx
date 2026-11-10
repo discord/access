@@ -29,7 +29,7 @@ export const AppsHeader: React.FC<AppsHeaderProps> = React.memo(({app, currentUs
         key={'tag' + tagMap.active_tag!.id}
         label={tagMap.active_tag!.name}
         color="primary"
-        onClick={() => navigate(`/tags/${tagMap.active_tag!.name}`)}
+        onClick={() => void navigate(`/tags/${tagMap.active_tag!.name}`)}
         icon={<TagIcon />}
         sx={{
           margin: '.125rem',

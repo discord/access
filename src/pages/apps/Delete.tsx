@@ -32,7 +32,7 @@ function AppDialog(props: AppDialogProps) {
       setRequestError(error.payload.toString());
     } else {
       props.setOpen(false);
-      navigate('/apps/');
+      void navigate('/apps/');
     }
   };
 

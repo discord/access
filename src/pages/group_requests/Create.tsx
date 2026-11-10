@@ -207,7 +207,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       setRequestError(error.payload.toString());
     } else {
       props.setOpen(false);
-      navigate('/group-requests/' + encodeURIComponent(completedRequest?.id ?? ''));
+      void navigate('/group-requests/' + encodeURIComponent(completedRequest?.id ?? ''));
     }
   };
 

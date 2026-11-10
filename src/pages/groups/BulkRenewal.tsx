@@ -305,7 +305,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
           setGroupUpdatesErrored(0);
         } else {
           props.setOpen(false);
-          navigate(0);
+          void navigate(0);
         }
       }
     }
@@ -324,7 +324,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     ) {
       setSubmitting(false);
       props.setOpen(false);
-      navigate(0);
+      void navigate(0);
       return;
     }
 

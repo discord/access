@@ -83,7 +83,7 @@ export default function ListRequests() {
 
   // If there's only one search result, just redirect to that request page
   if (searchQuery != null && totalRows == 1) {
-    navigate('/requests/' + rows[0].id, {
+    void navigate('/requests/' + rows[0].id, {
       replace: true,
     });
   }

@@ -287,7 +287,7 @@ export default function AuditUser() {
                     <Chip
                       label={row.role_group_mapping?.role_group?.name}
                       color="primary"
-                      onClick={() => navigate(`/roles/${row.role_group_mapping?.role_group?.name}`)}
+                      onClick={() => void navigate(`/roles/${row.role_group_mapping?.role_group?.name}`)}
                     />
                   )}
                 </TableCell>

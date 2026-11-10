@@ -240,7 +240,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       setRequestError(error.payload.toString());
     } else {
       props.setOpen(false);
-      navigate('/requests/' + encodeURIComponent(completedRequest?.id ?? ''));
+      void navigate('/requests/' + encodeURIComponent(completedRequest?.id ?? ''));
     }
   };
 

@@ -114,7 +114,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
       setRequestError(error.payload.toString());
     } else {
       props.setOpen(true);
-      navigate(0);
+      void navigate(0);
     }
   };
 

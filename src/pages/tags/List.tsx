@@ -57,7 +57,7 @@ export default function ListTags() {
 
   // If there's only one search result, just redirect to that app's page
   if (searchQuery != null && totalRows == 1) {
-    navigate('/tags/' + rows[0].name, {
+    void navigate('/tags/' + rows[0].name, {
       replace: true,
     });
   }

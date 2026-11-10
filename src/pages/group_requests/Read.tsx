@@ -363,7 +363,7 @@ export default function ReadGroupRequest() {
     if (error != null) {
       setRequestError(error.payload.toString());
     } else {
-      navigate(0);
+      void navigate(0);
     }
   };
 

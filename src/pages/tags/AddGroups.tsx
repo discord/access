@@ -91,7 +91,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
           setGroupUpdatesErrored(0);
         } else {
           props.setOpen(false);
-          navigate(0);
+          void navigate(0);
         }
       }
     }
