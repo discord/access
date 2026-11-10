@@ -25,7 +25,7 @@ from okta.models.user_schema import UserSchema as OktaUserSchemaType
 from okta.models.user_schema_attribute import UserSchemaAttribute
 from okta.pagination import PaginationHelper
 
-from api.config import OKTA_GROUP_PROFILE_CUSTOM_ATTR
+from api.config import OKTA_GROUP_MANAGED_BY_DEFAULT, OKTA_GROUP_PROFILE_CUSTOM_ATTR
 from api.models import OktaGroup, OktaUser
 
 REQUEST_TIMEOUT = 30
@@ -406,9 +406,7 @@ class OktaService:
 
     async def create_group(self, name: str, description: str) -> Group:
         async with self._okta_client() as client:
-            group, _, error = await client.add_group(
-                AddGroupRequest(profile=OktaUserGroupProfile(name=name, description=description))
-            )
+            group, _, error = await client.add_group(AddGroupRequest(profile=new_group_profile(name, description)))
 
         if error is not None:
             raise OktaResponseError(error)
@@ -819,6 +817,7 @@ def is_managed_group(
     group: Group,
     group_ids_with_group_rules: dict[str, list[OktaGroupRuleType]],
     custom_attr: str | None = OKTA_GROUP_PROFILE_CUSTOM_ATTR,
+    managed_by_default: bool = OKTA_GROUP_MANAGED_BY_DEFAULT,
 ) -> bool:
     # Check if OKTA_GROUP_PROFILE_CUSTOM_ATTR attribute exists as a custom Okta Group Profile attribute and retrieve its value
     if custom_attr:
@@ -839,5 +838,28 @@ def is_managed_group(
         if custom_manage_attr is True and group.type == "OKTA_GROUP":
             return True
 
+        # In opt-in mode, a group without the attribute explicitly set to True is not managed
+        if not managed_by_default:
+            return False
+
     # By default, the group should be of type OKTA_GROUP and should not have any group rules to be managed
     return (group.type == "OKTA_GROUP") and (group.id not in group_ids_with_group_rules)
+
+
+def new_group_profile(
+    name: str,
+    description: str,
+    custom_attr: str | None = OKTA_GROUP_PROFILE_CUSTOM_ATTR,
+    managed_by_default: bool = OKTA_GROUP_MANAGED_BY_DEFAULT,
+) -> OktaUserGroupProfile:
+    """Build the profile for a group Access creates in Okta.
+
+    In opt-in mode the custom attribute is set to True, so the group Access
+    just created is managed on the next sync instead of flipping to unmanaged.
+    The attribute must exist on the Okta group profile schema.
+    """
+    if custom_attr and not managed_by_default:
+        profile = OktaUserGroupProfile.from_dict({"name": name, "description": description, custom_attr: True})
+        assert profile is not None
+        return profile
+    return OktaUserGroupProfile(name=name, description=description)
