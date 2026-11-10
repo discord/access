@@ -59,7 +59,7 @@ const PENDING_APP_GROUP_REQUEST = {
   requested_group_tags: [REQUESTED_TAG_ID],
 } as unknown as GroupRequestDetail;
 
-vi.mock('react-router-dom', async () => {
+vi.mock('react-router-dom', () => {
   return {
     useNavigate: () => vi.fn(),
     useParams: () => ({id: PENDING_APP_GROUP_REQUEST.id}),
@@ -104,7 +104,7 @@ vi.mock('../../api/apiComponents', () => ({
   // The page resolves each requested tag by its own id.
   tagByIdQuery: (variables: {pathParams: {tagId: string}}) => ({
     queryKey: ['tag', variables.pathParams.tagId],
-    queryFn: async () => ({id: variables.pathParams.tagId, name: variables.pathParams.tagId}),
+    queryFn: () => Promise.resolve({id: variables.pathParams.tagId, name: variables.pathParams.tagId}),
   }),
   useGroupRequestById: () => ({data: PENDING_APP_GROUP_REQUEST, isError: false, isLoading: false}),
   useGroupRequestByIdPut: () => ({mutate: resolveMutate}),
