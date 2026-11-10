@@ -55,15 +55,19 @@ export default defineConfig(
         tsconfigRootDir: import.meta.dirname,
       },
     },
-    plugins: {'react-hooks': reactHooks},
+    extends: [reactHooks.configs.flat['recommended-latest']],
     rules: {
-      'react-hooks/rules-of-hooks': 'error',
       // Warnings, not errors: the existing effects and memos this flags are keyed
       // deliberately (on search params, on a joined id string, on a completion
       // counter), and adding the missing dependencies would change when they run.
       // Promote both to 'error' once those call sites are reworked.
       'react-hooks/exhaustive-deps': 'warn',
       '@tanstack/query/exhaustive-deps': 'warn',
+      // Warnings for the same reason: these flag the effects that copy search
+      // params into state and the memos keyed on a joined id string, which are
+      // the call sites exhaustive-deps flags. Promote both to 'error' with it.
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/use-memo': 'warn',
     },
   },
   {
