@@ -66,6 +66,9 @@ allow-dependencies-licenses:
   # CC-BY-4.0 browser-support data used at build time by browserslist;
   # attribution-only and not part of the shipped bundle.
   - pkg:npm/caniuse-lite
-  # First-party example plugin in this repository, covered by Access's own
-  # Apache-2.0 license; its metadata declares none.
+  # First-party packages from this repository, covered by its Apache-2.0
+  # LICENSE. The dependency graph looks lockfile packages up on PyPI by name,
+  # so it reports an unrelated PyPI project's license for `access` and none
+  # for the example plugin, which is not published there.
+  - pkg:pypi/access
   - pkg:pypi/app-group-lifecycle-audit-logger
