@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["spec_available", "focus", "risk_areas", "findings"],
+  "properties": {
+    "spec_available": {"type": "boolean"},
+    "focus": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "reason"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1, "maxLength": 500},
+          "reason": {"type": "string", "minLength": 1, "maxLength": 300}
+        }
+      }
+    },
+    "risk_areas": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "string",
+        "enum": ["auth", "tags", "routing", "data-filters", "async-orm", "plugin-api", "migration", "audit", "operator-leak"]
+      }
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "classification",
+          "severity",
+          "confidence",
+          "title",
+          "body",
+          "path",
+          "side",
+          "start_line",
+          "line",
+          "suggestion"
+        ],
+        "properties": {
+          "classification": {
+            "type": "string",
+            "enum": [
+              "authz_tier",
+              "resolved_target_authz",
+              "tag_constraint_bypass",
+              "approver_routing",
+              "missing_active_filter",
+              "async_orm",
+              "plugin_api_compat",
+              "migration_safety",
+              "audit_event_contract",
+              "operator_leak",
+              "frontend_authz_drift",
+              "spec_mismatch",
+              "runtime_correctness",
+              "runtime_security"
+            ]
+          },
+          "severity": {"type": "string", "enum": ["blocker", "advisory"]},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "title": {"type": "string", "minLength": 1, "maxLength": 160},
+          "body": {"type": "string", "minLength": 1, "maxLength": 2000},
+          "path": {"type": "string", "minLength": 1, "maxLength": 500},
+          "side": {"type": "string", "enum": ["base", "head"]},
+          "start_line": {"type": ["integer", "null"], "minimum": 1},
+          "line": {"type": "integer", "minimum": 1},
+          "suggestion": {"type": ["string", "null"], "maxLength": 2000}
+        }
+      }
+    }
+  }
+}
