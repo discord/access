@@ -1,0 +1,203 @@
+name: AI review
+
+# An AI review of each pull request against REVIEWING.md, posted as an advisory pull request
+# review. It lightens human review; it does not replace it.
+#
+# Trust model:
+#   - Policy (prompt, schema, REVIEWING.md, and every script) comes from the base commit
+#     (github.sha). The pull request's head is checked out only as data and is never executed.
+#   - The review job holds the model credential and only read permissions. The credential lives in
+#     a proxy container; the agent runs in a separate container with no credential, read-only
+#     mounts, and a network whose only other member is the proxy.
+#   - The publish job holds the write token and never calls the model. It validates the review
+#     and refuses to post if the pull request moved since the review ran.
+#
+# When it runs: automatically for pull requests opened by someone with triage access or higher on
+# this repository, and otherwise when someone with triage access or higher adds the one-shot
+# `ai-review` label (which reviews the head recorded in that event and is then removed). Drafts
+# and bots are skipped. Without the AI_REVIEW_API_KEY secret, every run is a silent no-op, so forks
+# and other operators are unaffected.
+#
+# The check: the publish job always reports when the gate makes a decision about the pull
+# request's contents, so a required check never passes merely because it was skipped. It passes
+# for drafts and bots, fails an enforced gate while an untrusted author's pull request awaits the
+# label, and otherwise reports the review. Events that say nothing about the contents (another
+# label, or an `ai-review` label from someone without triage access) report under a different
+# name, so they cannot overwrite an earlier result.
+#
+# Configuration (repository variables): AI_REVIEW_PROVIDER (anthropic or openai, default
+# anthropic), AI_REVIEW_MODEL, AI_REVIEW_MAX_BUDGET_USD, and AI_REVIEW_ENFORCE (true makes blockers
+# fail the check; the default is advisory).
+
+on:
+  # pull_request_target is required: the model credential is not available to pull_request runs
+  # from forks. It is safe here because no job executes the pull request's code: the head is
+  # checked out as data, read by an agent with no shell in a container with no credential, and
+  # every executed script comes from the base commit.
+  pull_request_target: # zizmor: ignore[dangerous-triggers] the head is never executed; see above
+    types: [opened, reopened, synchronize, ready_for_review, labeled]
+
+permissions: {}
+
+# A new push supersedes an in-flight review. A `labeled` event for any other label gets its own
+# group, so labeling a pull request cannot cancel a review that is running.
+concurrency:
+  group: >-
+    ai-review-${{ github.event.pull_request.number }}-${{
+    (github.event.action == 'labeled' && github.event.label.name != 'ai-review') && github.run_id || 'review' }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Decide whether to review
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+      check: ${{ steps.gate.outputs.check }}
+      head-sha: ${{ steps.gate.outputs.head_sha }}
+      base-sha: ${{ steps.gate.outputs.base_sha }}
+      labeled: ${{ steps.gate.outputs.labeled }}
+    steps:
+      - name: Check out trusted policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/ai-review
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Decide
+        id: gate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HAS_API_KEY: ${{ secrets.AI_REVIEW_API_KEY != '' }}
+        run: node .github/ai-review/gate.mjs
+
+  review:
+    name: Review
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # Read the issues the pull request links, as spec context.
+      issues: read
+      pull-requests: read
+    outputs:
+      review-base64: ${{ steps.review.outputs.review-base64 }}
+      review-error-base64: ${{ steps.review.outputs.review-error-base64 }}
+    steps:
+      - name: Check out trusted policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: policy
+          persist-credentials: false
+      - name: Check out the pull request as untrusted data
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gate.outputs.head-sha }}
+          path: submission
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Build the agent image
+        run: docker build --tag ai-review-agent:local policy/.github/ai-review/agent
+      - name: Run the review
+        id: review
+        continue-on-error: true
+        env:
+          AGENT_IMAGE: ai-review-agent:local
+          AI_REVIEW_API_KEY: ${{ secrets.AI_REVIEW_API_KEY }}
+          AI_REVIEW_MAX_BUDGET_USD: ${{ vars.AI_REVIEW_MAX_BUDGET_USD }}
+          AI_REVIEW_MODEL: ${{ vars.AI_REVIEW_MODEL }}
+          AI_REVIEW_PROVIDER: ${{ vars.AI_REVIEW_PROVIDER }}
+          BASE_SHA: ${{ needs.gate.outputs.base-sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ needs.gate.outputs.head-sha }}
+          POLICY_DIR: ${{ github.workspace }}/policy
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          REVIEW_ERROR_FILE: ${{ runner.temp }}/ai-review/error.txt
+          REVIEW_FILE: ${{ runner.temp }}/ai-review/review.json
+          SUBMISSION_DIR: ${{ github.workspace }}/submission
+        run: |
+          set -uo pipefail
+          if node policy/.github/ai-review/runner.mjs; then
+            printf 'review-base64=%s\n' "$(base64 --wrap=0 < "$REVIEW_FILE")" >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            if [[ -s "$REVIEW_ERROR_FILE" ]]; then
+              printf 'review-error-base64=%s\n' "$(base64 --wrap=0 < "$REVIEW_ERROR_FILE")" >> "$GITHUB_OUTPUT"
+            fi
+            exit "$status"
+          fi
+
+  publish:
+    name: >-
+      ${{ needs.gate.outputs.check == 'ignore' && 'AI review (event ignored)'
+      || vars.AI_REVIEW_ENFORCE == 'true' && 'AI review gate' || 'AI review (advisory)' }}
+    needs: [gate, review]
+    # Also runs when the gate job failed (its check output is then empty), so an enforced gate
+    # fails rather than passing as skipped.
+    if: >-
+      always() &&
+      needs.gate.outputs.check != 'disabled' &&
+      needs.review.result != 'cancelled'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # Post the unavailable notice and manage the risk:* and ai-review labels.
+      issues: write
+      # Post the review, minimize superseded ones, and resolve their threads.
+      pull-requests: write
+    env:
+      BASE_SHA: ${{ needs.gate.outputs.base-sha }}
+      CHECK: ${{ needs.gate.outputs.check }}
+      HEAD_SHA: ${{ needs.gate.outputs.head-sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Check out trusted publisher
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/ai-review
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Publish the review
+        env:
+          ENFORCE: ${{ vars.AI_REVIEW_ENFORCE || 'false' }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REVIEW_BASE64: ${{ needs.review.outputs.review-base64 }}
+          REVIEW_ERROR_BASE64: ${{ needs.review.outputs.review-error-base64 }}
+          REVIEW_FILE: ${{ runner.temp }}/ai-review/review.json
+        run: |
+          set -euo pipefail
+          mkdir --parents "$(dirname "$REVIEW_FILE")"
+          if [[ -n "$REVIEW_BASE64" ]]; then
+            printf '%s' "$REVIEW_BASE64" | base64 --decode > "$REVIEW_FILE"
+          fi
+          if [[ -n "$REVIEW_ERROR_BASE64" ]]; then
+            REVIEW_ERROR="$(printf '%s' "$REVIEW_ERROR_BASE64" | base64 --decode)"
+            export REVIEW_ERROR
+          fi
+          node .github/ai-review/publish.mjs
+      - name: Remove the one-shot ai-review label
+        if: always() && needs.gate.outputs.labeled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels/ai-review" || true
