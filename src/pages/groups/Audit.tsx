@@ -31,6 +31,7 @@ import Started from '../../components/Started';
 import Ending from '../../components/Ending';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {renderUserOption, TableTopBarAutocomplete} from '../../components/TableTopBar';
+import {useSearchInput} from '../../useSearchInput';
 
 type OrderBy = 'moniker' | 'created_at' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -44,7 +45,7 @@ export default function AuditGroup() {
   const [orderBy, setOrderBy] = React.useState<OrderBy>('created_at');
   const [orderDirection, setOrderDirection] = React.useState<OrderDirection>('desc');
   const [searchQuery, setSearchQuery] = React.useState<string | null>(null);
-  const [searchInput, setSearchInput] = React.useState('');
+  const [searchInput, setSearchInput] = useSearchInput(searchParams);
 
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(20);
@@ -56,9 +57,6 @@ export default function AuditGroup() {
     setOrderBy((searchParams.get('order_by') as OrderBy) ?? 'created_at');
     setOrderDirection((searchParams.get('order_desc') ?? 'true') === 'true' ? 'desc' : 'asc');
     setSearchQuery(searchParams.get('q') ?? null);
-    if (searchInput == '') {
-      setSearchInput(searchParams.get('q') ?? '');
-    }
     setFilterActive(searchParams.get('active') == null ? null : searchParams.get('active') == 'true');
     setFilterOwner(searchParams.get('owner') == null ? null : searchParams.get('owner') == 'true');
     setPage(parseInt(searchParams.get('page') ?? '0', 10));

@@ -100,6 +100,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
   const [roles, setRoles] = React.useState<Array<RoleGroupDetail>>([]);
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+  const [numUpdates, setNumUpdates] = React.useState(0);
 
   const [rolesUpdatesCompleted, setRolesUpdatesCompleted] = React.useState(0);
   const [rolesUpdatesErrored, setRolesUpdatesErrored] = React.useState(0);
@@ -150,20 +151,22 @@ function AddRolesDialog(props: AddRolesDialogProps) {
     }
   };
 
+  const {setOpen} = props;
   React.useEffect(() => {
     if (submitting) {
-      if (roles.length == rolesUpdatesCompleted + rolesUpdatesErrored) {
+      if (numUpdates == rolesUpdatesCompleted + rolesUpdatesErrored) {
         setSubmitting(false);
         if (rolesUpdatesErrored > 0) {
+          setNumUpdates(0);
           setRolesUpdatesCompleted(0);
           setRolesUpdatesErrored(0);
         } else {
-          props.setOpen(false);
+          setOpen(false);
           navigate(0);
         }
       }
     }
-  }, [rolesUpdatesCompleted, rolesUpdatesErrored]);
+  }, [submitting, numUpdates, rolesUpdatesCompleted, rolesUpdatesErrored, setOpen, navigate]);
 
   const putGroupUsers = useRoleMembersByIdPut({
     onSettled: complete,
@@ -180,6 +183,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
 
   const submit = (rolesForm: AddRolesForm) => {
     setSubmitting(true);
+    setNumUpdates(roles.length);
 
     const roleMembers: RoleMember = {
       groups_to_add: [],

@@ -74,6 +74,7 @@ function AddAppsDialog(props: AddAppsDialogProps) {
     }
   };
 
+  const {setOpen} = props;
   React.useEffect(() => {
     if (submitting) {
       if (numUpdates == appUpdatesCompleted + appUpdatesErrored) {
@@ -83,12 +84,12 @@ function AddAppsDialog(props: AddAppsDialogProps) {
           setAppUpdatesCompleted(0);
           setAppUpdatesErrored(0);
         } else {
-          props.setOpen(false);
+          setOpen(false);
           navigate(0);
         }
       }
     }
-  }, [appUpdatesCompleted, appUpdatesErrored]);
+  }, [submitting, numUpdates, appUpdatesCompleted, appUpdatesErrored, setOpen, navigate]);
 
   const updateApp = useAppByIdPut({
     onSettled: complete,
@@ -198,7 +199,7 @@ function AddAppsDialog(props: AddAppsDialogProps) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => props.setOpen(false)}>Cancel</Button>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting || apps.length === 0}>
             {submitting ? <CircularProgress size={24} /> : 'Add'}
           </Button>
         </DialogActions>
