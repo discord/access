@@ -1,0 +1,55 @@
+# squawk lints the Postgres SQL that Alembic migrations render to; see
+# .github/scripts/squawk_migrations.py for how CI produces that SQL.
+
+# README: "Access supports running against PostgreSQL 14 and above."
+pg_version = "14.0"
+
+# The rendered SQL carries Alembic's own BEGIN/COMMIT, so squawk sees the real
+# transaction boundaries and `assume_in_transaction` stays off.
+
+# Access's tables are small (users, groups, and their memberships for a single
+# company), so DDL that holds a lock for the length of a scan or index build
+# finishes in well under a second. The rules below guard against exactly that
+# lock duration and would flag nearly every Access migration without pointing
+# at a real risk. The rules left enabled catch problems that do not shrink with
+# table size: DDL that fails outright against populated tables, and changes
+# that break the previous release's pods during a rolling deploy.
+excluded_rules = [
+    # A plain CREATE/DROP INDEX blocks writes to one table while it runs. The
+    # migrations deliberately build indexes non-concurrently so they stay
+    # transactional: a cancelled or failed build rolls back cleanly instead of
+    # leaving an INVALID index to repair by hand.
+    "require-concurrent-index-creation",
+    "require-concurrent-index-deletion",
+
+    # Ask every migration to SET lock_timeout / statement_timeout first. Those
+    # protect a large table's long-running DDL from piling up queued queries;
+    # Access's DDL is too short for that queue to form.
+    "require-lock-timeout",
+    "require-statement-timeout",
+
+    # SET NOT NULL, and adding a foreign key or CHECK constraint without
+    # NOT VALID, scan the table under lock to validate existing rows. The scan
+    # is brief at Access's size. `adding-required-field` stays enabled: a
+    # NOT NULL column with no default fails on any populated table, which an
+    # empty CI database never shows.
+    "adding-not-nullable-field",
+    "adding-foreign-key-constraint",
+    "constraint-missing-not-valid",
+
+    # A UNIQUE constraint not built from a pre-existing index builds that index
+    # under lock; brief at this size.
+    "disallowed-unique-constraint",
+
+    # Changing a varchar's length takes an ACCESS EXCLUSIVE lock, which is
+    # brief here. The models declare bounded `String(n)` columns throughout,
+    # and that convention is the models' to change, not one migration's.
+    "prefer-text-field",
+
+    # Schema conventions set by the models, not by any single migration:
+    # every timestamp column is a `NaiveUTCDateTime` (naive, holding UTC), and
+    # SQLAlchemy renders autoincrement integer primary keys as SERIAL. Moving
+    # to TIMESTAMPTZ or IDENTITY columns would be a model-wide change.
+    "prefer-timestamp-tz",
+    "prefer-identity",
+]

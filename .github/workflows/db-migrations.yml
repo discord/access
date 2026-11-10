@@ -51,6 +51,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          # The squawk step diffs HEAD against its first parent: the base
+          # branch for a PR's merge commit, the previous commit on main.
+          fetch-depth: 2
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -73,6 +76,22 @@ jobs:
             echo "::error::Expected exactly one migration head but found $count. Two migrations likely branched from the same parent; reconcile them with 'alembic merge'."
             exit 1
           fi
+
+      - name: Install squawk
+        if: matrix.database == 'postgresql'
+        # Hash-pinned PyPI wheels that bundle the squawk binary, installed into
+        # their own venv so they stay out of the app's locked environment.
+        run: |
+          uv venv "$RUNNER_TEMP/squawk"
+          uv pip install --python "$RUNNER_TEMP/squawk" --require-hashes --only-binary :all: --requirement .github/requirements/squawk.txt
+          echo "$RUNNER_TEMP/squawk/bin" >> "$GITHUB_PATH"
+
+      - name: Lint the Postgres SQL of changed migrations (squawk)
+        if: matrix.database == 'postgresql'
+        # Renders each migration this change adds or modifies to Postgres SQL
+        # offline and lints it against .squawk.toml, which explains each rule
+        # left off. A no-op when no migration changed.
+        run: uv run python .github/scripts/squawk_migrations.py --base HEAD^1
 
       - name: Apply all migrations (alembic upgrade head)
         run: uv run alembic upgrade head

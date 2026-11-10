@@ -75,6 +75,13 @@ updates:
         update-types:
           - "minor"
           - "patch"
+  # squawk, the migration linter CI installs from hash-pinned wheels.
+  - package-ecosystem: "pip"
+    directory: "/.github/requirements"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
   - package-ecosystem: "github-actions"
     # Workflow files stored in the
     # default location of `.github/workflows`
