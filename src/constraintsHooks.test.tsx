@@ -104,7 +104,7 @@ describe('useConstraintsForGroups', () => {
   it('treats an id the response did not answer for as unknown, not unrestricted', async () => {
     // The endpoint drops ids naming a group that no longer exists, so a row
     // whose group was deleted since the page rendered gets no `by_group` key.
-    server.respond = async () => ({coalesced: [], by_group: {}});
+    server.respond = () => Promise.resolve({coalesced: [], by_group: {}});
 
     renderProbe(['gone']);
 
@@ -113,10 +113,11 @@ describe('useConstraintsForGroups', () => {
   });
 
   it('reports the resolved answer once every request lands', async () => {
-    server.respond = async () => ({
-      coalesced: [entry('member_time_limit', 86400), entry('disallow_self_add_membership', true)],
-      by_group: {g1: [entry('disallow_self_add_membership', true)], g2: []},
-    });
+    server.respond = () =>
+      Promise.resolve({
+        coalesced: [entry('member_time_limit', 86400), entry('disallow_self_add_membership', true)],
+        by_group: {g1: [entry('disallow_self_add_membership', true)], g2: []},
+      });
 
     renderProbe(['g1', 'g2']);
 
@@ -128,7 +129,7 @@ describe('useConstraintsForGroups', () => {
   });
 
   it('makes no request at all when nothing is selected', async () => {
-    server.respond = async () => ({coalesced: [], by_group: {}});
+    server.respond = () => Promise.resolve({coalesced: [], by_group: {}});
 
     renderProbe([]);
 
@@ -146,16 +147,17 @@ describe('splitting a selection larger than the endpoint cap', () => {
     // the endpoint rejects over 200 ids with a 400. Splitting keeps the largest
     // selections answerable; an unsplit one fails, and a failed answer opens
     // every gate that reads it.
-    server.respond = async (ids) => ({
-      // Both batches report both keys, with the second carrying the shorter
-      // limit and the only restriction. Every entry therefore has to be
-      // folded rather than merely inserted, so a merge that kept the first
-      // batch's answer for either key would be visibly wrong.
-      coalesced: ids.includes('g000250')
-        ? [entry('member_time_limit', 3600), entry('disallow_self_add_membership', true)]
-        : [entry('member_time_limit', 86400), entry('disallow_self_add_membership', false)],
-      by_group: Object.fromEntries(ids.map((id) => [id, []])),
-    });
+    server.respond = (ids) =>
+      Promise.resolve({
+        // Both batches report both keys, with the second carrying the shorter
+        // limit and the only restriction. Every entry therefore has to be
+        // folded rather than merely inserted, so a merge that kept the first
+        // batch's answer for either key would be visibly wrong.
+        coalesced: ids.includes('g000250')
+          ? [entry('member_time_limit', 3600), entry('disallow_self_add_membership', true)]
+          : [entry('member_time_limit', 86400), entry('disallow_self_add_membership', false)],
+        by_group: Object.fromEntries(ids.map((id) => [id, []])),
+      });
 
     const ids = Array.from({length: 260}, (_, i) => `g${String(i).padStart(6, '0')}`);
     renderProbe(ids);
@@ -192,7 +194,7 @@ describe('splitting a selection larger than the endpoint cap', () => {
 
 describe('useConstraintsForTags', () => {
   it('asks in tag mode and has no per-group answer to give', async () => {
-    server.respond = async () => ({coalesced: [entry('owner_time_limit', 3600)], by_group: {}});
+    server.respond = () => Promise.resolve({coalesced: [entry('owner_time_limit', 3600)], by_group: {}});
 
     renderProbe(['t1'], true);
 

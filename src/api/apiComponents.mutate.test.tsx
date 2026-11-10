@@ -10,9 +10,8 @@ import type {GroupMember} from './apiSchemas';
 // Each request must still carry only its own body (BulkRenewal regression).
 
 function stubFetch() {
-  const spy = vi.fn(
-    async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      new Response('{}', {status: 200, headers: {'Content-Type': 'application/json'}}),
+  const spy = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+    Promise.resolve(new Response('{}', {status: 200, headers: {'Content-Type': 'application/json'}})),
   );
   vi.stubGlobal('fetch', spy);
   window.fetch = spy;
