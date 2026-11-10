@@ -197,20 +197,6 @@ AUDIT_EXEMPTIONS: dict[str, AuditExemption] = {
             "handler (TAG_MODIFY)."
         ),
     ),
-    "DeleteUser": AuditExemption(
-        reason=(
-            "Known gap: ends the user's memberships and ownerships with no audit log. Only the pending "
-            "requests it rejects are logged, through the Reject* operations. Logging it needs a new "
-            "EventType."
-        ),
-    ),
-    "UnmanageGroup": AuditExemption(
-        reason=(
-            "Known gap: ends the group's memberships and role mappings with only module-logger output. "
-            "Only the pending requests it rejects are logged, through the Reject* operations. Logging "
-            "it needs a new EventType."
-        ),
-    ),
 }
 
 
