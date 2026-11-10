@@ -392,7 +392,7 @@ async def put_app(
             )
             await ModifyGroupDetails(group=ag, name=new_group_name, description=new_description).execute()
 
-    await db.commit()
+    await db.commit()  # nosemgrep: router-direct-db-write
 
     await ModifyAppTags(
         app=app_obj,

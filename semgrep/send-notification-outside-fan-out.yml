@@ -1,0 +1,21 @@
+rules:
+  - id: send-notification-outside-fan-out
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Call `defer_notification` (api/operations/_fan_out.py) instead of `send_notification`.
+      Request-path notifications must run after the request commits: `defer_notification`
+      expunges the payload and hands the hook to the post-response drain, so it reads detached,
+      already-loaded state. Calling `send_notification` directly fires the hook mid-request,
+      against a session that may still roll back. The syncer's batch `access_expiring_*` hooks
+      are the one inline caller and are excluded from this rule.
+    paths:
+      include:
+        - /api/
+      exclude:
+        - /api/operations/_fan_out.py
+        - /api/plugins/
+        - /api/syncer.py
+    pattern-either:
+      - pattern: send_notification(...)
+      - pattern: $MODULE.send_notification(...)

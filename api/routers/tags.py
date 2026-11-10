@@ -180,7 +180,7 @@ async def put_tag(
     for key in ("name", "description", "constraints", "enabled", "propagate_to_roles"):
         if key in payload:
             setattr(tag, key, payload[key])
-    await db.commit()
+    await db.commit()  # nosemgrep: router-direct-db-write
 
     # Re-evaluate time-limit constraints for groups associated with this tag.
     # `ModifyGroupsTimeLimit` commits, expiring objects, so we re-load

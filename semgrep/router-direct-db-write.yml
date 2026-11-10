@@ -1,0 +1,35 @@
+rules:
+  - id: router-direct-db-write
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Move this write into an operation class in api/operations/ and call its `execute()` from
+      the router. Operations own every DB write so that validation, audit logging, plugin hooks,
+      and the post-commit fan-out happen the same way for every caller (HTTP, CLI, syncer, MCP).
+      Reads (`db.scalars`, `db.execute(select(...))`) are fine in a router.
+    paths:
+      include:
+        - /api/routers/
+    pattern-either:
+      - patterns:
+          - pattern: $DB.$METHOD(...)
+          - metavariable-regex:
+              metavariable: $DB
+              regex: ^(db|session|db\.session)$
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^(add|add_all|delete|merge|flush|commit|rollback)$
+      - patterns:
+          - pattern: $DB.execute($STMT, ...)
+          - metavariable-regex:
+              metavariable: $DB
+              regex: ^(db|session|db\.session)$
+          - metavariable-pattern:
+              metavariable: $STMT
+              pattern-either:
+                - pattern: insert(...)
+                - pattern: update(...)
+                - pattern: delete(...)
+                - pattern: $MODULE.insert(...)
+                - pattern: $MODULE.update(...)
+                - pattern: $MODULE.delete(...)

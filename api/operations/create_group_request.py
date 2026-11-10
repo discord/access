@@ -97,7 +97,8 @@ class CreateGroupRequest:
 
             if app is None:
                 return None
-            if not self.requested_group_name.startswith(f"App-{app.name}-"):
+            app_group_prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+            if not self.requested_group_name.startswith(app_group_prefix):
                 return None
 
         # Validate tags exist and load them

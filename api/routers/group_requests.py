@@ -317,7 +317,7 @@ async def put_group_request(
     if body.resolved_plugin_data is not None:
         gr.resolved_plugin_data = body.resolved_plugin_data
 
-    await db.commit()
+    await db.commit()  # nosemgrep: router-direct-db-write
 
     resolution_reason = body.reason or ""
     if body.approved:
