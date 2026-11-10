@@ -97,6 +97,21 @@ So a new migration must apply cleanly on both engines and ship a working `downgr
 Dialect-specific DDL (e.g. Postgres native enum types, which don't exist on SQLite) must guard
 on `op.get_bind().dialect.name`.
 
+On the Postgres leg, CI also renders each migration the PR adds or changes to SQL offline and
+lints it with [squawk](https://squawkhq.com) against `.squawk.toml`. Rules that only guard lock
+duration on large tables, or that restate conventions the models already set, are off, each with
+its reason in that file. What stays on catches DDL that fails against populated tables (which a
+from-empty `upgrade head` never shows) and changes that break the previous release during a
+rolling deploy. To run it locally:
+
+```bash
+uv venv /tmp/squawk && uv pip install --python /tmp/squawk --require-hashes --only-binary :all: --requirement .github/requirements/squawk.txt
+PATH="/tmp/squawk/bin:$PATH" uv run python .github/scripts/squawk_migrations.py --base origin/main
+```
+
+A warning that is understood and accepted is silenced from the migration itself with a
+`# squawk-ignore-file <rule>, ...` comment, so the justification sits beside the code.
+
 ## Okta sandbox
 
 For local dev against a real Okta instance, use an Okta preview/sandbox org (e.g. an

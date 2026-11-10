@@ -1,0 +1,12 @@
+# squawk, the Postgres migration linter, for .github/scripts/squawk_migrations.py.
+# The PyPI wheels bundle the prebuilt squawk binary. Install with hashes
+# enforced and wheels only, so nothing is built or fetched unverified:
+#
+#   uv pip install --require-hashes --only-binary :all: --requirement .github/requirements/squawk.txt
+squawk-cli==2.71.0 \
+    --hash=sha256:421aed4ea504ebfccff1c04872067adc36b0c4cd0962334f8aa08e842302d89b \
+    --hash=sha256:157d2377a53e16f401b662b9b8bab6e46a326b2774516a4c6957cc5f8ab6de21 \
+    --hash=sha256:50ec7db52787ffb18a92580322d5cc2276f212e173d1d227bd7a0cc87c30ce10 \
+    --hash=sha256:6ff6612561aedc071ef48c88805980afe15af004cce1fe33694b15c283d75910 \
+    --hash=sha256:2890feabc19cdcd815c54e1a9fa5ebb6f25e026d52c05d3c28f51ae32bd73282 \
+    --hash=sha256:0b61d1f6f687dbb7747323b610475c9a8b7a3200276bba50e72c4922df47ecd7
