@@ -363,6 +363,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     }
   };
 
+  const {setOpen} = props;
   React.useEffect(() => {
     if (submitting) {
       if (numUpdates == groupUpdatesCompleted + groupUpdatesErrored) {
@@ -372,12 +373,12 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
           setGroupUpdatesCompleted(0);
           setGroupUpdatesErrored(0);
         } else {
-          props.setOpen(false);
+          setOpen(false);
           navigate(0);
         }
       }
     }
-  }, [groupUpdatesCompleted, groupUpdatesErrored]);
+  }, [submitting, numUpdates, groupUpdatesCompleted, groupUpdatesErrored, setOpen, navigate]);
 
   const putGroupUsers = useRoleMembersByIdPut({
     onSettled: complete,
