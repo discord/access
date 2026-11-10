@@ -89,3 +89,18 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+  # The AI review gate's agent image: its base image and pinned agent CLIs.
+  - package-ecosystem: "docker"
+    directory: "/.github/ai-review/agent"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/.github/ai-review/agent"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      ai-review-agents:
+        patterns:
+          - "*"
