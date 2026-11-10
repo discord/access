@@ -28,7 +28,7 @@ import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 import {useUsers, useGroupMembersByIdPut, GroupMembersByIdPutError} from '../../api/apiComponents';
 import {GroupDetail, GroupMember, GroupMembersSummary, OktaUserDetail} from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin} from '../../authorization';
-import {displayUserName} from '../../helpers';
+import {displayUserName, requestErrorMessage} from '../../helpers';
 import {carriedConstraints, timeLimitLabel} from '../../constraints';
 import accessConfig from '../../config/accessConfig';
 
@@ -111,7 +111,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
   const complete = (completedUsersChange: GroupMembersSummary | undefined, error: GroupMembersByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(true);
       void navigate(0);

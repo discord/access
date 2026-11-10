@@ -50,7 +50,7 @@ import {
 import {AppDetail, GroupRequestDetail, ResolveGroupRequestBody, TagDetail, TagListItem} from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
-import {displayUserName} from '../../helpers';
+import {displayUserName, requestErrorMessage} from '../../helpers';
 import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
@@ -361,7 +361,7 @@ export default function ReadGroupRequest() {
   const complete = (completedRequest: GroupRequestDetail | undefined, error: GroupRequestByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       void navigate(0);
     }

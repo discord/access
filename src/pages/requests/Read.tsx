@@ -37,7 +37,7 @@ import dayjs, {Dayjs} from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
-import {groupBy, displayUserName} from '../../helpers';
+import {groupBy, displayUserName, requestErrorMessage} from '../../helpers';
 import {approvalUntilDefault, timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {useCurrentUser} from '../../authentication';
@@ -140,7 +140,7 @@ export default function ReadRequest() {
   ) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       void navigate(0);
     }

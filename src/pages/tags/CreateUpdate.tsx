@@ -43,6 +43,7 @@ import {DORMANT_UNTIL_ENABLED, TagSettings, tighteningEffects} from './tagChange
 import {OktaUserDetail, TagDetail} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
+import {requestErrorMessage} from '../../helpers';
 
 interface TagButtonProps {
   setOpen(open: boolean): void;
@@ -480,7 +481,7 @@ function TagDialog(props: TagDialogProps) {
   const complete = (completedTag: TagDetail | undefined, error: TagsCreateError | TagByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(false);
       if ((props.tag?.name ?? '') == (completedTag?.name ?? '')) {

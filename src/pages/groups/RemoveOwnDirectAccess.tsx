@@ -10,6 +10,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 
 import {GroupMembersByIdPutError, useGroupMembersByIdPut} from '../../api/apiComponents';
 import {GroupMember, GroupMembersSummary, GroupDetail} from '../../api/apiSchemas';
+import {requestErrorMessage} from '../../helpers';
 
 export interface RemoveOwnDirectAccessDialogParameters {
   userId: string;
@@ -30,7 +31,7 @@ export default function RemoveOwnDirectAccessDialog(props: RemoveOwnDirectAccess
   const complete = (completedUsersChange: GroupMembersSummary | undefined, error: GroupMembersByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(false);
       void navigate(0);

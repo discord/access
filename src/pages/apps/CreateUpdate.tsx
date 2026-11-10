@@ -29,6 +29,7 @@ import {
 import {isAccessAdmin, isAppOwnerGroupOwner, ACCESS_APP_RESERVED_NAME} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
+import {requestErrorMessage} from '../../helpers';
 
 interface AppButtonProps {
   setOpen(open: boolean): void;
@@ -78,7 +79,7 @@ function AppDialog(props: AppDialogProps) {
   const complete = (completedApp: AppDetail | undefined, error: AppsCreateError | AppByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(false);
       if ((props.app?.name ?? '') == (completedApp?.name ?? '')) {

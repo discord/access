@@ -39,6 +39,7 @@ import {canManageGroup, isAccessAdmin, isGroupOwner} from '../../authorization';
 import {carriedConstraints, timeLimitLabel} from '../../constraints';
 import {useCurrentUser} from '../../authentication';
 import accessConfig from '../../config/accessConfig';
+import {requestErrorMessage} from '../../helpers';
 
 dayjs.extend(IsSameOrBefore);
 
@@ -143,7 +144,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
 
   const complete = (completedUsersChange: RoleMembersSummary | undefined, error: RoleMembersByIdPutError | null) => {
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
       setRolesUpdatesErrored((prevValue) => prevValue + 1);
     } else {
       setRolesUpdatesCompleted((prevValue) => prevValue + 1);

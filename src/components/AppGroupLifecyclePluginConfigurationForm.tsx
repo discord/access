@@ -23,6 +23,7 @@ import {
   useAppGroupLifecyclePluginGroupConfigProps,
 } from '../api/apiComponents';
 import {PluginConfigProp, PluginInfo} from '../api/apiSchemas';
+import {formatPluginValue} from '../helpers';
 
 // Helper-text note appended to a locked (immutable, already-set) config field.
 const LOCKED_NOTE = 'Cannot be changed once set.';
@@ -96,7 +97,7 @@ function patternValidators(property: PluginConfigProp): Record<string, (value: u
     validators[`pattern_${i}`] = (value: unknown) => {
       if (value === undefined || value === null || value === '') return true;
       try {
-        return new RegExp(p.regex).test(String(value)) || (p.message ?? `Must match ${p.regex}`);
+        return new RegExp(p.regex).test(formatPluginValue(value)) || (p.message ?? `Must match ${p.regex}`);
       } catch {
         return true;
       }
