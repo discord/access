@@ -1,10 +1,12 @@
 import asyncio
+import logging
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import (
     joinedload,
 )
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import (
     AccessRequest,
@@ -19,6 +21,7 @@ from api.operations._fan_out import defer_or_drain_fan_out
 from api.operations.reject_access_request import RejectAccessRequest
 from api.operations.reject_group_request import RejectGroupRequest
 from api.operations.reject_role_request import RejectRoleRequest
+from api.schemas import AuditLogSchema, EventType
 from api.services import okta
 
 
@@ -34,15 +37,13 @@ class DeleteUser:
         user = (await db.session.scalars(select(OktaUser).where(OktaUser.id == self.user_id))).first()
         assert user is not None
 
-        current_user_id = getattr(
-            (
-                await db.session.scalars(
-                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
-                )
-            ).first(),
-            "id",
-            None,
-        )
+        current_user = (
+            await db.session.scalars(
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+            )
+        ).first()
+        current_user_id = getattr(current_user, "id", None)
+        current_user_email = getattr(current_user, "email", None)
 
         # Create a list of okta asyncio tasks to wait to completion on at the end of this function
         okta_tasks = []
@@ -91,6 +92,15 @@ class DeleteUser:
             for group_id in group_ownerships_to_remove_ids:
                 okta_tasks.append(asyncio.create_task(okta.remove_owner_from_group(group_id, user.id)))
 
+        # Snapshot what the update below ends as plain data for the audit log;
+        # the commit expires these rows, and reading them afterwards would
+        # trigger a lazy load.
+        audited_user = {"id": user.id, "email": user.email}
+        ended_access = [
+            {"user_id": m.user_id, "group_id": m.group_id, "is_owner": m.is_owner}
+            for m in (await db.session.scalars(group_access_query)).all()
+        ]
+
         await db.session.execute(
             update(OktaUserGroupMember)
             .where(
@@ -105,6 +115,22 @@ class DeleteUser:
         )
 
         await db.session.commit()
+
+        _ctx = get_request_context()
+        logging.getLogger("access.audit").info(
+            AuditLogSchema().dumps(
+                {
+                    "event_type": EventType.user_delete,
+                    "user_agent": _ctx.user_agent if _ctx else None,
+                    "ip": _ctx.ip if _ctx else None,
+                    "current_user_id": current_user_id,
+                    "current_user_email": current_user_email,
+                    "user": audited_user,
+                    "memberships_ended_user_id_group_id": [a for a in ended_access if not a["is_owner"]],
+                    "ownerships_ended_user_id_group_id": [a for a in ended_access if a["is_owner"]],
+                }
+            )
+        )
 
         obsolete_access_requests = (
             await db.session.scalars(
