@@ -116,7 +116,35 @@ line-length = 120
 [tool.ruff.lint]
 # ruff's default rule set, plus the rules that were its defaults before 0.16. The
 # defaults can change when ruff is upgraded; the extended rules stay checked.
-extend-select = ["E4", "E7", "E9", "F"]
+extend-select = [
+    "E4",
+    "E7",
+    "E9",
+    "F",
+    # Blocking calls inside `async def`; the backend and plugin interface are async end to end.
+    "ASYNC",
+    # flake8-bugbear: likely bugs such as `raise` without `from` inside `except`.
+    "B",
+    # Logging calls take `%s` arguments, not f-strings, so Sentry groups an error by its
+    # uninterpolated message template rather than minting an issue per interpolated value.
+    "G004",
+    # An `asyncio.create_task` result must be kept; the event loop holds only a weak
+    # reference, so an unreferenced fan-out task can be garbage-collected mid-flight.
+    "RUF006",
+    # flake8-bandit security checks.
+    "S",
+    # Banned imports; the list is set per directory (see `examples/plugins/ruff.toml`).
+    "TID251",
+]
+ignore = [
+    # `assert x is not None` narrows a just-loaded Optional row for the type checker.
+    # Access never runs under `python -O`, so these asserts are not stripped.
+    "S101",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test fixtures use fake secrets and non-cryptographic randomness.
+"tests/**" = ["S105", "S106", "S311"]
 
 # ----------------------------------------------------------------------
 # pytest — test scope and async config

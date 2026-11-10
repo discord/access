@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 import click
-from sqlalchemy import text
+from sqlalchemy import func, select, table, text
 
 
 @click.command("health")
@@ -42,9 +42,8 @@ def health_command() -> None:
             tables = (await db.session.execute(tables_query)).fetchall()
 
             table_sizes = {}
-            for table in tables:
-                table_name = table[0]
-                row_count_query = text(f"SELECT COUNT(*) FROM {table_name}")
+            for (table_name,) in tables:
+                row_count_query = select(func.count()).select_from(table(table_name))
                 row_count = (await db.session.execute(row_count_query)).scalar()
                 table_sizes[table_name] = row_count
 

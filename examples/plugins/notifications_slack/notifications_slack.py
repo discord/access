@@ -54,7 +54,7 @@ async def retry_operation[T](
                 return None
             else:
                 # Add jitter to avoid thundering herd
-                jitter = random.uniform(0, 0.1 * delay)
+                jitter = random.uniform(0, 0.1 * delay)  # noqa: S311 - retry jitter, not a security value
                 sleep_time = min(delay + jitter, max_delay)
                 logger.warning(
                     "Operation failed (attempt %s/%s): %s. Retrying in %.2fs", attempt, max_attempts, e, sleep_time
