@@ -1,11 +1,14 @@
 """FastAPI dependencies for resolving the authenticated user.
 
-`get_current_user_id` returns the OktaUser id of the caller. It supports:
+`get_current_user_id` returns the id of the caller. It supports:
 
   - Dev/test bypass: read `app.state.current_user_email` (or fall back to
     `settings.CURRENT_OKTA_USER_EMAIL`) and look up the user by email.
   - Cloudflare Access JWT: verify the JWT and resolve to a user by email
-    (human) or `common_name` (service token).
+    (human), or by `common_name` (service token) to the registered
+    `ServicePrincipal` id. A token whose subject was registered before but
+    belongs to no active service principal is refused; a never-registered
+    token's `common_name` is returned as-is.
   - OIDC session: read `request.session["userinfo"]["email"]`.
 
 Tests typically override these via `app.dependency_overrides`.
@@ -25,7 +28,7 @@ from starlette.requests import Request
 from api.auth.cloudflare import extract_token, verify_cloudflare_token
 from api.config import settings
 from api.database import DbSession
-from api.models import OktaUser
+from api.models import OktaUser, ServicePrincipal, ServicePrincipalProvider, ServicePrincipalSubject
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +42,30 @@ async def _lookup_user_by_email(db: AsyncSession, email: str) -> OktaUser:
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+
+async def _lookup_service_principal(
+    db: AsyncSession, provider: ServicePrincipalProvider, subject: str
+) -> ServicePrincipal | None:
+    return (
+        await db.scalars(
+            select(ServicePrincipal)
+            .where(ServicePrincipal.provider == provider)
+            .where(ServicePrincipal.subject == subject)
+            .where(ServicePrincipal.deleted_at.is_(None))
+        )
+    ).first()
+
+
+async def _subject_ever_registered(db: AsyncSession, provider: ServicePrincipalProvider, subject: str) -> bool:
+    return (
+        await db.scalars(
+            select(ServicePrincipalSubject.id)
+            .where(ServicePrincipalSubject.provider == provider)
+            .where(ServicePrincipalSubject.subject == subject)
+            .limit(1)
+        )
+    ).first() is not None
 
 
 def _dev_user_email(request: Request) -> str:
@@ -83,10 +110,21 @@ async def get_current_user_id(request: Request, db: DbSession) -> str:
                 set_user({"id": user.id})
             return user.id
         elif "common_name" in payload:
-            # Service token: pass `common_name` through as the current_user_id
-            # so downstream operations log it; permission checks that need a
-            # real OktaUser will fail naturally if no row matches.
             common_name = payload["common_name"]
+            service_principal = await _lookup_service_principal(db, ServicePrincipalProvider.CLOUDFLARE, common_name)
+            if service_principal is not None:
+                request.state.current_user_id = service_principal.id
+                if settings.FASTAPI_SENTRY_DSN:
+                    set_user({"id": service_principal.id})
+                return service_principal.id
+            # A token that was ever registered (its principal since deleted, or
+            # its subject rotated away) is refused rather than falling back to
+            # the pass-through below.
+            if await _subject_ever_registered(db, ServicePrincipalProvider.CLOUDFLARE, common_name):
+                raise HTTPException(status_code=403, detail="Service token is no longer registered")
+            # Unregistered service token: pass `common_name` through as the
+            # current_user_id so downstream operations log it; permission
+            # checks that need a real OktaUser fail if no row matches.
             request.state.current_user_id = common_name
             return common_name
         raise HTTPException(status_code=403, detail="Invalid Cloudflare authorization token")
