@@ -188,7 +188,7 @@ const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({
 
 function filterUntilLabels(timeLimit: number): [string, Array<Record<string, string>>] {
   const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-    .filter((key) => Number(key) <= timeLimit!)
+    .filter((key) => Number(key) <= timeLimit)
     .reduce(
       (obj, key) => {
         obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];

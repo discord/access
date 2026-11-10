@@ -375,7 +375,7 @@ export default function ReadGroup() {
                       icon={group.type === 'role_group' ? <RoleIcon /> : <GroupIcon />}
                       text={displayGroupType(group)}
                     />
-                    {group.type == 'app_group' && <AppLinkButton group={group as AppGroupDetail} />}
+                    {group.type == 'app_group' && <AppLinkButton group={group} />}
                     {!group.is_managed && <ExternallyManaged group={group} />}
                   </Stack>
                   <Stack

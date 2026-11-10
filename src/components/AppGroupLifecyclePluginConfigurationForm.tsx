@@ -325,10 +325,10 @@ export default function AppGroupLifecyclePluginConfigurationForm({
                   return (
                     <ConfigField
                       key={propertyId}
-                      property={property as PluginConfigProp}
+                      property={property}
                       value={currentConfig[propertyId]}
                       fieldName={fieldName}
-                      locked={isFieldLocked(property as PluginConfigProp, isExistingEntity, currentConfig[propertyId])}
+                      locked={isFieldLocked(property, isExistingEntity, currentConfig[propertyId])}
                     />
                   );
                 })}
