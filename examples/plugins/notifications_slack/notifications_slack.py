@@ -70,7 +70,7 @@ async def retry_operation[T](
 slack_token = os.environ["SLACK_BOT_TOKEN"]
 client = AsyncWebClient(token=slack_token)
 alerts_channel = os.environ.get("SLACK_ALERTS_CHANNEL")
-CLIENT_ORIGIN_URL = os.environ.get("CLIENT_ORIGIN_URL")  # e.g. "https://discord-access-instance.com"
+CLIENT_ORIGIN_URL = os.environ.get("CLIENT_ORIGIN_URL")  # e.g. "https://access.example.com"
 
 
 def get_base_url() -> str:
