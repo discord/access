@@ -81,11 +81,30 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Workflows pin each action to a commit SHA with a `# vX.Y.Z` comment;
+    # Dependabot bumps both together. The cooldown has the same purpose as uv's.
+    cooldown:
+      default-days: 7
+    # Majors are split out because they can change an action's inputs or
+    # defaults and deserve their own review; minor and patch bumps batch.
     groups:
-      github-action-group:
+      github-actions-major:
         patterns:
           - "*"
+        update-types:
+          - "major"
+      github-actions-minor:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+  # Covers the Dockerfile's base images. Dependabot's docker ecosystem reads
+  # only Dockerfiles and Kubernetes manifests, not `services:` or `container:`
+  # images in workflows, so those digests are bumped by hand.
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
