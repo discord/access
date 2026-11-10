@@ -26,7 +26,7 @@ const theme = createTheme(base, {
       info: base.palette.augmentColor({color: {main: '#cccccc'}, name: 'info'}),
     },
   },
-} as any);
+});
 
 // What the stand-in reader reports, so a test can walk the states a selection
 // change moves through: in flight, then resolved.

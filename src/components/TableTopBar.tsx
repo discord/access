@@ -4,7 +4,7 @@ import {Autocomplete, AutocompleteProps, Box, Grid, IconButton, Stack, TextField
 import * as React from 'react';
 import {useNavigate} from 'react-router-dom';
 
-export function renderUserOption(props: React.HTMLAttributes<HTMLLIElement>, option: any) {
+export function renderUserOption(props: React.HTMLAttributes<HTMLLIElement>, option: string) {
   const [displayName, email] = option.split(';');
   return (
     <li {...props} key={option}>
@@ -38,7 +38,7 @@ export function TableTopBarAutocomplete({
   defaultValue,
   filterOptions = (x) => x,
   ...restProps
-}: Omit<AutocompleteProps<any, any, any, any>, 'renderInput'>) {
+}: Omit<AutocompleteProps<string, false, false, true>, 'renderInput'>) {
   return (
     <Autocomplete
       key={defaultValue}

@@ -27,8 +27,6 @@ import {
   useGroupByIdPut,
   GroupsCreateError,
   GroupByIdPutError,
-  GroupsCreateVariables,
-  GroupByIdPutVariables,
   GroupsCreateRequestBody,
   GroupByIdPutRequestBody,
 } from '../../api/apiComponents';
@@ -48,7 +46,7 @@ import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupL
 
 interface GroupButtonProps {
   defaultGroupType: 'okta_group' | 'app_group' | 'role_group';
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   group?: GroupDetail;
 }
 
@@ -71,7 +69,7 @@ function GroupButton(props: GroupButtonProps) {
 interface GroupDialogProps {
   currentUser: OktaUserDetail;
   defaultGroupType: 'okta_group' | 'app_group' | 'role_group';
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   app?: AppDetail;
   group?: GroupDetail;
   app_owner_group?: boolean;
@@ -83,7 +81,7 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
   role_group: 'Role',
 } as const;
 
-const GROUP_TYPE_OPTIONS = Object.entries(GROUP_TYPE_ID_TO_LABELS).map(([id, label], index) => ({
+const GROUP_TYPE_OPTIONS = Object.entries(GROUP_TYPE_ID_TO_LABELS).map(([id, label]) => ({
   id: id,
   label: label,
 }));
@@ -127,12 +125,7 @@ function GroupDialog(props: GroupDialogProps) {
   const isAllowedToConfigureAppGroupLifecyclePlugin =
     isAccessAdmin(props.currentUser) || isAppOwnerGroupOwner(props.currentUser, selectedApp?.id ?? '');
 
-  const complete = (
-    completedGroup: GroupDetail | undefined,
-    error: GroupsCreateError | GroupByIdPutError | null,
-    variables: GroupsCreateVariables | GroupByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedGroup: GroupDetail | undefined, error: GroupsCreateError | GroupByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
       setRequestError(error.payload.toString());
@@ -194,13 +187,14 @@ function GroupDialog(props: GroupDialogProps) {
           group.name = ROLE_GROUP_PREFIX + group.name;
         }
         break;
-      case 'app_group':
+      case 'app_group': {
         const appGroup = group as AppGroupDetail;
         appGroup.app_id = appGroup.app?.id ?? '';
         if (appGroup.name != null) {
           appGroup.name = APP_GROUP_PREFIX + (appGroup.app?.name ?? '') + APP_NAME_APP_GROUP_SEPARATOR + appGroup.name;
         }
         break;
+      }
     }
     delete (group as AppGroupDetail).app;
 
@@ -412,8 +406,8 @@ function GroupDialog(props: GroupDialogProps) {
               selectedPluginId={appGroupLifecyclePluginId}
               appId={selectedApp?.id}
               currentConfig={
-                appGroupLifecyclePluginId && (props.group as any)?.plugin_data
-                  ? (props.group as any).plugin_data[appGroupLifecyclePluginId]?.configuration || {}
+                appGroupLifecyclePluginId && (props.group as AppGroupDetail | undefined)?.plugin_data
+                  ? (props.group as AppGroupDetail).plugin_data![appGroupLifecyclePluginId]?.configuration || {}
                   : {}
               }
               isExistingEntity={props.group != null}

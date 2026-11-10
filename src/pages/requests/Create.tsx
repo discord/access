@@ -31,18 +31,12 @@ import {
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 import {useForm} from 'react-hook-form';
 
-import {
-  useGroups,
-  useAccessRequestsCreate,
-  AccessRequestsCreateError,
-  AccessRequestsCreateVariables,
-} from '../../api/apiComponents';
+import {useGroups, useAccessRequestsCreate, AccessRequestsCreateError} from '../../api/apiComponents';
 import {
   GroupDetail,
   CreateAccessRequestBody,
   OktaUserDetail,
   OktaGroupDetail,
-  AppGroupDetail,
   AccessRequestDetail,
   RoleGroupDetail,
   RoleGroupMapDetail,
@@ -55,7 +49,7 @@ import accessConfig, {requireRequestReasons} from '../../config/accessConfig';
 dayjs.extend(IsSameOrBefore);
 
 interface CreateRequestButtonProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
@@ -82,10 +76,10 @@ function CreateRequestButton(props: CreateRequestButtonProps) {
 
 interface RecommendRolesContainerProps {
   currentUser: OktaUserDetail;
-  setOpen(open: boolean): any;
-  setRecommendRoles(open: boolean): any;
-  setGroup(group: GroupDetail): any;
-  setOwner(owner: boolean): any;
+  setOpen(open: boolean): void;
+  setRecommendRoles(open: boolean): void;
+  setGroup(group: GroupDetail): void;
+  setOwner(owner: boolean): void;
   group: GroupDetail;
   owner: boolean;
 }
@@ -95,8 +89,8 @@ function filterManagedRoleGroupMap(roleGroupMap: RoleGroupMapDetail): boolean {
 }
 
 function sortRoleGroupMap(aMap: RoleGroupMapDetail, bMap: RoleGroupMapDetail): number {
-  let aName = aMap.active_role_group?.name ?? '';
-  let bName = bMap.active_role_group?.name ?? '';
+  const aName = aMap.active_role_group?.name ?? '';
+  const bName = bMap.active_role_group?.name ?? '';
   return aName.localeCompare(bName);
 }
 
@@ -113,7 +107,7 @@ function RecommendRolesContainer(props: RecommendRolesContainerProps) {
   };
 
   return (
-    <FormContainer onSuccess={(formData) => props.setRecommendRoles(false)}>
+    <FormContainer onSuccess={() => props.setRecommendRoles(false)}>
       <DialogTitle>Can we recommend a Role to request instead?</DialogTitle>
       <DialogContent>
         <FormControl margin="normal" fullWidth>
@@ -167,7 +161,7 @@ function RecommendRolesContainer(props: RecommendRolesContainerProps) {
 }
 interface CreateRequestContainerProps {
   currentUser: OktaUserDetail;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
@@ -190,7 +184,7 @@ const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABE
 const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
   Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
 );
-const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
+const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id: id, label: label}));
 
 function filterUntilLabels(timeLimit: number): [string, Array<Record<string, string>>] {
   const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
@@ -203,12 +197,10 @@ function filterUntilLabels(timeLimit: number): [string, Array<Record<string, str
       {} as Record<string, string>,
     );
 
-  const filteredLabeles = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(
-    ([id, label], index) => ({
-      id: id,
-      label: label,
-    }),
-  );
+  const filteredLabeles = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label]) => ({
+    id: id,
+    label: label,
+  }));
 
   return [Object.keys(filteredUntil).at(-1)!, filteredLabeles];
 }
@@ -242,12 +234,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     },
   });
 
-  const complete = (
-    completedRequest: AccessRequestDetail | undefined,
-    error: AccessRequestsCreateError | null,
-    variables: AccessRequestsCreateVariables,
-    context: any,
-  ) => {
+  const complete = (completedRequest: AccessRequestDetail | undefined, error: AccessRequestsCreateError | null) => {
     setSubmitting(false);
     if (error != null) {
       setRequestError(error.payload.toString());
@@ -300,7 +287,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     // renders blank and a submit sends a length the backend then shortens
     // without saying so.
     formContext.setValue('until', filteredUntil);
-  }, [timeLimit, constraints.blocked]);
+  }, [timeLimit, constraints.blocked, formContext]);
 
   const submit = (requestForm: CreateRequestForm) => {
     setSubmitting(true);
@@ -376,7 +363,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               // disabling this would submit the group as `undefined`. readOnly fixes the value
               // without dropping it.
               readOnly: props.group != null,
-              renderOption: (props, option, state) => {
+              renderOption: (props, option) => {
                 return (
                   <li {...props}>
                     <Grid
@@ -495,7 +482,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
 
 interface CreateRequestDialogProps {
   currentUser: OktaUserDetail;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;

@@ -61,9 +61,7 @@ import {
 } from '../../components/pluginStatus';
 import {
   AppDetail,
-  AppGroupForAppDetail,
   GroupDetail,
-  GroupRefForMembership,
   OktaGroupTagMapDetail,
   OktaUserGroupMemberDetail,
   RoleGroupMapDetail,
@@ -82,28 +80,28 @@ import EffectiveConstraints from '../../components/EffectiveConstraints';
 import DebouncedSearchField from '../../components/DebouncedSearchField';
 
 function sortGroupMembers(
-  [aUserId, aUsers]: [string, Array<OktaUserGroupMemberDetail>],
-  [bUserId, bUsers]: [string, Array<OktaUserGroupMemberDetail>],
+  [, aUsers]: [string, Array<OktaUserGroupMemberDetail>],
+  [, bUsers]: [string, Array<OktaUserGroupMemberDetail>],
 ): number {
   // compare using the email of the user for the membership list
-  let aEmail = aUsers[0].active_user?.email ?? '';
-  let bEmail = bUsers[0].active_user?.email ?? '';
+  const aEmail = aUsers[0].active_user?.email ?? '';
+  const bEmail = bUsers[0].active_user?.email ?? '';
   return aEmail.localeCompare(bEmail);
 }
 
 function sortOktaUserGroupMembers(aMember: OktaUserGroupMemberDetail, bMember: OktaUserGroupMemberDetail): number {
   // compare using the name of the active role group, treating no active role group as the first element
-  let aName = aMember.active_role_group_mapping?.active_role_group?.name ?? '';
-  let bName = bMember.active_role_group_mapping?.active_role_group?.name ?? '';
+  const aName = aMember.active_role_group_mapping?.active_role_group?.name ?? '';
+  const bName = bMember.active_role_group_mapping?.active_role_group?.name ?? '';
   return aName.localeCompare(bName);
 }
 
 function sortRoleGroups(
-  [aGroupId, aGroups]: [string, Array<RoleGroupMapDetail>],
-  [bGroupId, bGroups]: [string, Array<RoleGroupMapDetail>],
+  [, aGroups]: [string, Array<RoleGroupMapDetail>],
+  [, bGroups]: [string, Array<RoleGroupMapDetail>],
 ): number {
-  let aName = aGroups[0].active_group?.name ?? '';
-  let bName = bGroups[0].active_group?.name ?? '';
+  const aName = aGroups[0].active_group?.name ?? '';
+  const bName = bGroups[0].active_group?.name ?? '';
   return aName.localeCompare(bName);
 }
 
@@ -155,7 +153,7 @@ export default function ReadGroup() {
 
   const app = appData ?? ({} as AppDetail);
 
-  const lifecyclePluginId = (app as any)?.app_group_lifecycle_plugin ?? '';
+  const lifecyclePluginId = app?.app_group_lifecycle_plugin ?? '';
   const {data: lifecycleStatusProperties} = useAppGroupLifecyclePluginGroupStatusProps(
     {pathParams: {pluginId: lifecyclePluginId}},
     {enabled: !!lifecyclePluginId},
@@ -163,7 +161,7 @@ export default function ReadGroup() {
 
   const reconcilePending = isPluginStatusPending(
     lifecycleStatusProperties,
-    (group as any)?.plugin_data?.[lifecyclePluginId]?.status,
+    (group as AppGroupDetail).plugin_data?.[lifecyclePluginId]?.status,
   );
 
   // Restart the window when the page moves to a different group.
@@ -279,12 +277,14 @@ export default function ReadGroup() {
     new Set<string>(),
   );
 
-  let allOwnerships: Set<OktaUserGroupMemberDetail> = new Set(groupOwnershipRows);
+  const allOwnerships: Set<OktaUserGroupMemberDetail> = new Set(groupOwnershipRows);
   appOwnershipsArray.forEach((user: OktaUserGroupMemberDetail) => {
-    directRoleOwnerships.has(user.active_user!.id) ? null : allOwnerships.add(user);
+    if (!directRoleOwnerships.has(user.active_user!.id)) {
+      allOwnerships.add(user);
+    }
   });
 
-  let ownerships = groupBy(Array.from(allOwnerships), (m: OktaUserGroupMemberDetail) => m.active_user?.id);
+  const ownerships = groupBy(Array.from(allOwnerships), (m: OktaUserGroupMemberDetail) => m.active_user?.id);
 
   const memberships = groupBy(groupMemberData?.items ?? [], (m: OktaUserGroupMemberDetail) => m.active_user?.id);
   const totalMemberRows = groupMemberData?.total ?? 0;
@@ -465,20 +465,16 @@ export default function ReadGroup() {
               <EffectiveConstraints constraints={group.effective_constraints ?? []} />
             </Grid>
           )}
-          {group.type === 'app_group' && (app as any)?.app_group_lifecycle_plugin && (
+          {group.type === 'app_group' && app?.app_group_lifecycle_plugin && (
             <Grid size={12}>
               <AppGroupLifecyclePluginData
                 entityType="group"
-                pluginId={(app as any).app_group_lifecycle_plugin}
+                pluginId={app.app_group_lifecycle_plugin}
                 currentConfig={
-                  (group as any)?.plugin_data
-                    ? (group as any).plugin_data[(app as any).app_group_lifecycle_plugin]?.configuration || {}
-                    : {}
+                  group?.plugin_data ? group.plugin_data[app.app_group_lifecycle_plugin]?.configuration || {} : {}
                 }
                 currentStatus={
-                  (group as any)?.plugin_data
-                    ? (group as any).plugin_data[(app as any).app_group_lifecycle_plugin]?.status || {}
-                    : {}
+                  group?.plugin_data ? group.plugin_data[app.app_group_lifecycle_plugin]?.status || {} : {}
                 }
               />
             </Grid>

@@ -25,12 +25,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import {AutocompleteElement, FormContainer, SelectElement, TextFieldElement} from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 
-import {
-  useRoles,
-  useRoleMembersByIdPut,
-  RoleMembersByIdPutError,
-  RoleMembersByIdPutVariables,
-} from '../../api/apiComponents';
+import {useRoles, useRoleMembersByIdPut, RoleMembersByIdPutError} from '../../api/apiComponents';
 import {
   GroupDetail,
   GroupRefForMembership,
@@ -49,7 +44,7 @@ dayjs.extend(IsSameOrBefore);
 
 interface AddRolesButtonProps {
   owner: boolean;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
 }
 
 function AddRolesButton(props: AddRolesButtonProps) {
@@ -64,7 +59,7 @@ interface AddRolesDialogProps {
   currentUser: OktaUserDetail;
   owner: boolean;
   group: GroupDetail;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
 }
 
 interface AddRolesForm {
@@ -84,7 +79,7 @@ const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABE
 const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
   Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
 );
-const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
+const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id: id, label: label}));
 
 function AddRolesDialog(props: AddRolesDialogProps) {
   const navigate = useNavigate();
@@ -94,7 +89,9 @@ function AddRolesDialog(props: AddRolesDialogProps) {
     currentUser.active_group_memberships
       ?.map((membership: OktaUserGroupMemberDetail) => membership.active_group)
       .reduce((out: string[], curr: GroupRefForMembership | null | undefined) => {
-        curr != null && curr.type == 'role_group' ? out.push(curr.id!) : null;
+        if (curr != null && curr.type == 'role_group') {
+          out.push(curr.id!);
+        }
         return out;
       }, new Array<string>()) ?? [];
 
@@ -138,18 +135,13 @@ function AddRolesDialog(props: AddRolesDialogProps) {
         ? accessConfig.DEFAULT_ACCESS_TIME
         : Object.keys(filteredUntil).at(-1)!;
 
-    labels = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label], index) => ({
+    labels = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label]) => ({
       id: id,
       label: label,
     }));
   }
 
-  const complete = (
-    completedUsersChange: RoleMembersSummary | undefined,
-    error: RoleMembersByIdPutError | null,
-    variables: RoleMembersByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedUsersChange: RoleMembersSummary | undefined, error: RoleMembersByIdPutError | null) => {
     if (error != null) {
       setRequestError(error.payload.toString());
       setRolesUpdatesErrored((prevValue) => prevValue + 1);
@@ -339,7 +331,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
                   }
                 },
                 inputValue: roleSearchInput,
-                renderOption: (props, option, state) => {
+                renderOption: (props, option) => {
                   const disabled = isOptionDisabled(option);
                   return (
                     <li

@@ -34,7 +34,7 @@ export function groupConfigHasFields(configProperties: Record<string, unknown> |
 }
 
 type PluginConfiguration = {
-  [propertyId: string]: any;
+  [propertyId: string]: unknown;
 };
 
 interface AppGroupLifecyclePluginConfigurationFormProps {
@@ -89,11 +89,11 @@ export function isFieldLocked(property: PluginConfigProp, isExistingEntity: bool
   return !!property.immutable && isExistingEntity && isSet;
 }
 
-function patternValidators(property: PluginConfigProp): Record<string, (value: any) => true | string> {
+function patternValidators(property: PluginConfigProp): Record<string, (value: unknown) => true | string> {
   const patterns = ((property.validation?.patterns ?? []) as Array<{regex: string; message?: string}>) || [];
-  const validators: Record<string, (value: any) => true | string> = {};
+  const validators: Record<string, (value: unknown) => true | string> = {};
   patterns.forEach((p, i) => {
-    validators[`pattern_${i}`] = (value: any) => {
+    validators[`pattern_${i}`] = (value: unknown) => {
       if (value === undefined || value === null || value === '') return true;
       try {
         return new RegExp(p.regex).test(String(value)) || (p.message ?? `Must match ${p.regex}`);
@@ -112,7 +112,7 @@ export function ConfigField({
   locked,
 }: {
   property: PluginConfigProp;
-  value: any;
+  value: unknown;
   fieldName: string;
   locked: boolean;
 }) {

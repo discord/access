@@ -51,7 +51,7 @@ export function displayUserName(user: OktaUserSummary | null | undefined) {
 }
 
 export function extractEmailFromDisplayName(displayName: string | null) {
-  if (!!displayName) {
+  if (displayName) {
     const emailMatch = displayName.match(/\(([^)]+)\)/);
     return emailMatch ? emailMatch[1].toLowerCase() : '';
   }
@@ -153,11 +153,11 @@ export function ownerCantAddSelfGroups(groups: GroupWithTags[], owner: boolean) 
 }
 
 export function sortGroupMembers(
-  [aUserId, aUsers]: [string, Array<OktaUserGroupMemberDetail>],
-  [bUserId, bUsers]: [string, Array<OktaUserGroupMemberDetail>],
+  [, aUsers]: [string, Array<OktaUserGroupMemberDetail>],
+  [, bUsers]: [string, Array<OktaUserGroupMemberDetail>],
 ): number {
-  let aEmail = aUsers[0].active_user?.email ?? '';
-  let bEmail = bUsers[0].active_user?.email ?? '';
+  const aEmail = aUsers[0].active_user?.email ?? '';
+  const bEmail = bUsers[0].active_user?.email ?? '';
   return aEmail.localeCompare(bEmail);
 }
 

@@ -1,5 +1,3 @@
-import {useTheme} from '@mui/material/styles';
-
 import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
 import FirstPageIcon from '@mui/icons-material/FirstPage';
@@ -15,7 +13,6 @@ interface TablePaginationActionsProps {
 }
 
 export default function TablePaginationActions(props: TablePaginationActionsProps) {
-  const theme = useTheme();
   const {count, page, rowsPerPage, onPageChange} = props;
 
   const handleFirstPageButtonClick = (event: React.MouseEvent<HTMLButtonElement>) => {

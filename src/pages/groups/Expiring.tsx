@@ -1,10 +1,6 @@
 import React from 'react';
 import {Link as RouterLink, useSearchParams} from 'react-router-dom';
 
-import Autocomplete from '@mui/material/Autocomplete';
-import Box from '@mui/material/Box';
-import Chip from '@mui/material/Chip';
-import Grid from '@mui/material/Grid';
 import Link from '@mui/material/Link';
 import Paper from '@mui/material/Paper';
 import Table from '@mui/material/Table';
@@ -20,7 +16,6 @@ import TextField from '@mui/material/TextField';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Tooltip from '@mui/material/Tooltip';
-import Typography from '@mui/material/Typography';
 
 import dayjs, {Dayjs} from 'dayjs';
 
@@ -145,7 +140,7 @@ export default function ExpiringGroups() {
     setPage(0);
   };
 
-  const handleSortChange = (property: OrderBy) => (event: React.MouseEvent<unknown>) => {
+  const handleSortChange = (property: OrderBy) => () => {
     const isAsc = orderBy === property && orderDirection === 'asc';
     setSearchParams((params) => {
       params.set('order_by', property);

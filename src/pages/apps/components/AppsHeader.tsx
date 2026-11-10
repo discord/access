@@ -1,4 +1,4 @@
-import {Grid, Paper, Typography, Box, Chip, Stack, Tooltip, Divider} from '@mui/material';
+import {Grid, Paper, Typography, Box, Chip, Stack, Divider} from '@mui/material';
 import ActionTooltip from '../../../components/ActionTooltip';
 import CreateUpdateApp from '../CreateUpdate';
 import DeleteApp from '../Delete';

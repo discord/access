@@ -82,43 +82,41 @@ export default function AccessHistoryTable({
               }}>
               <TableCell>{access.is_owner ? 'Owner' : 'Member'}</TableCell>
               <TableCell>
-                <AccessMethodChip roleGroupMapping={(access as any).role_group_mapping} />
+                <AccessMethodChip
+                  roleGroupMapping={'role_group_mapping' in access ? access.role_group_mapping : undefined}
+                />
               </TableCell>
               <TableCell>
-                <Started memberships={[access as any]} />
+                <Started memberships={[access]} />
               </TableCell>
               <TableCell>
-                <Ending memberships={[access as any]} />
+                <Ending memberships={[access]} />
               </TableCell>
               <TableCell>
                 {showEndedBy ? (
-                  (access as any).ended_actor ? (
+                  access.ended_actor ? (
                     <Link
-                      to={`/users/${(access as any).ended_actor?.email?.toLowerCase?.()}`}
+                      to={`/users/${access.ended_actor?.email?.toLowerCase?.()}`}
                       sx={{textDecoration: 'none', color: 'inherit'}}
                       component={RouterLink}>
-                      {displayUserName((access as any).ended_actor)}
+                      {displayUserName(access.ended_actor)}
                     </Link>
                   ) : (
                     'System'
                   )
-                ) : (access as any).created_actor ? (
+                ) : access.created_actor ? (
                   <Link
-                    to={`/users/${(access as any).created_actor?.email?.toLowerCase?.()}`}
+                    to={`/users/${access.created_actor?.email?.toLowerCase?.()}`}
                     sx={{textDecoration: 'none', color: 'inherit'}}
                     component={RouterLink}>
-                    {displayUserName((access as any).created_actor)}
+                    {displayUserName(access.created_actor)}
                   </Link>
                 ) : (
                   'System'
                 )}
               </TableCell>
               <TableCell>
-                {(access as any).created_reason ? (
-                  <InlineReason reason={(access as any).created_reason} />
-                ) : (
-                  <InlineReason />
-                )}
+                {access.created_reason ? <InlineReason reason={access.created_reason} /> : <InlineReason />}
               </TableCell>
             </TableRow>
           ))}

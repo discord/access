@@ -17,15 +17,7 @@ import TextField from '@mui/material/TextField';
 
 import {FormContainer, TextFieldElement} from 'react-hook-form-mui';
 
-import {
-  useAppsCreate,
-  useTags,
-  useAppByIdPut,
-  AppsCreateError,
-  AppByIdPutError,
-  AppsCreateVariables,
-  AppByIdPutVariables,
-} from '../../api/apiComponents';
+import {useAppsCreate, useTags, useAppByIdPut, AppsCreateError, AppByIdPutError} from '../../api/apiComponents';
 import {
   AppDetail,
   AppTagMapDetail,
@@ -39,7 +31,7 @@ import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 
 interface AppButtonProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   app?: AppDetail;
 }
 
@@ -61,7 +53,7 @@ function AppButton(props: AppButtonProps) {
 
 interface AppDialogProps {
   currentUser: OktaUserDetail;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   app?: AppDetail;
   access_app?: boolean;
 }
@@ -79,16 +71,11 @@ function AppDialog(props: AppDialogProps) {
   const [submitting, setSubmitting] = React.useState(false);
 
   const [selectedAppGroupLifecyclePluginId, setSelectedAppGroupLifecyclePluginId] = React.useState<string | null>(
-    (props.app as any)?.app_group_lifecycle_plugin || null,
+    props.app?.app_group_lifecycle_plugin || null,
   );
   const isAllowedToConfigureAppGroupLifecyclePlugin = isAccessAdmin(props.currentUser);
 
-  const complete = (
-    completedApp: AppDetail | undefined,
-    error: AppsCreateError | AppByIdPutError | null,
-    variables: AppsCreateVariables | AppByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedApp: AppDetail | undefined, error: AppsCreateError | AppByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
       setRequestError(error.payload.toString());
@@ -129,7 +116,7 @@ function AppDialog(props: AppDialogProps) {
     }
 
     if (isAllowedToConfigureAppGroupLifecyclePlugin) {
-      (app as any).app_group_lifecycle_plugin = selectedAppGroupLifecyclePluginId || null;
+      app.app_group_lifecycle_plugin = selectedAppGroupLifecyclePluginId || null;
     }
 
     if (props.app == null) {
@@ -234,8 +221,8 @@ function AppDialog(props: AppDialogProps) {
               entityType="app"
               selectedPluginId={selectedAppGroupLifecyclePluginId}
               currentConfig={
-                selectedAppGroupLifecyclePluginId && (props.app as any)?.plugin_data
-                  ? (props.app as any).plugin_data[selectedAppGroupLifecyclePluginId]?.configuration || {}
+                selectedAppGroupLifecyclePluginId && props.app?.plugin_data
+                  ? props.app.plugin_data[selectedAppGroupLifecyclePluginId]?.configuration || {}
                   : {}
               }
               onPluginChange={setSelectedAppGroupLifecyclePluginId}

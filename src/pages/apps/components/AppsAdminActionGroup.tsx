@@ -33,7 +33,7 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.m
     isExpandedRef.current = isExpanded;
 
     const handleToggleExpand = React.useCallback(() => {
-      if (!!onToggleExpandRef.current) {
+      if (onToggleExpandRef.current) {
         onToggleExpandRef.current(!isExpandedRef.current);
       }
     }, []);

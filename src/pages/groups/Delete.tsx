@@ -11,12 +11,12 @@ import DeleteIcon from '@mui/icons-material/DeleteForever';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import {useGroupByIdDelete, GroupByIdDeleteError, GroupByIdDeleteVariables} from '../../api/apiComponents';
+import {useGroupByIdDelete, GroupByIdDeleteError} from '../../api/apiComponents';
 import {GroupDetail, AppGroupDetail, DeleteMessage, OktaUserDetail} from '../../api/apiSchemas';
 import {canManageGroup} from '../../authorization';
 
 interface GroupDialogProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   group: GroupDetail;
 }
 
@@ -29,16 +29,10 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
 function GroupDialog(props: GroupDialogProps) {
   const navigate = useNavigate();
 
-  const defaultGroupType = props.group?.type;
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
-  const complete = (
-    deletedGroup: DeleteMessage | undefined,
-    error: GroupByIdDeleteError | null,
-    variables: GroupByIdDeleteVariables,
-    context: any,
-  ) => {
+  const complete = (deletedGroup: DeleteMessage | undefined, error: GroupByIdDeleteError | null) => {
     setSubmitting(false);
     if (error != null) {
       setRequestError(error.payload.toString());

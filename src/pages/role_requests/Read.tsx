@@ -31,7 +31,6 @@ import TimelineContent from '@mui/lab/TimelineContent';
 import CircularProgress from '@mui/material/CircularProgress';
 import TimelineOppositeContent, {timelineOppositeContentClasses} from '@mui/lab/TimelineOppositeContent';
 import TimelineDot from '@mui/lab/TimelineDot';
-import InfoOutlined from '@mui/icons-material/InfoOutlined';
 import {FormContainer, SelectElement, TextFieldElement, ToggleButtonGroupElement} from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 import {useForm} from 'react-hook-form';
@@ -49,23 +48,16 @@ import {canManageGroup, isAccessAdmin, ACCESS_APP_RESERVED_NAME} from '../../aut
 import {
   useRoleRequestById,
   useGroupById,
-  useAppById,
   useAppGroupsById,
   useGroupMemberDetailsById,
   useRoleRequestByIdPut,
   RoleRequestByIdPutError,
-  RoleRequestByIdPutVariables,
   useGroupsAndRoles,
 } from '../../api/apiComponents';
 import {
-  AppDetail,
   AppGroupDetail,
-  AppGroupForAppDetail,
-  GroupRefForMembership,
   OktaUserGroupMemberDetail,
-  OktaUserSummary,
   GroupDetail,
-  RoleGroupDetail,
   RoleRequestDetail,
   RoleRequestSummary,
   ResolveRoleRequestBody,
@@ -82,11 +74,11 @@ dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
 
 function sortGroupMembers(
-  [aUserId, aUsers]: [string, Array<OktaUserGroupMemberDetail>],
-  [bUserId, bUsers]: [string, Array<OktaUserGroupMemberDetail>],
+  [, aUsers]: [string, Array<OktaUserGroupMemberDetail>],
+  [, bUsers]: [string, Array<OktaUserGroupMemberDetail>],
 ): number {
-  let aEmail = aUsers[0].active_user?.email ?? '';
-  let bEmail = bUsers[0].active_user?.email ?? '';
+  const aEmail = aUsers[0].active_user?.email ?? '';
+  const bEmail = bUsers[0].active_user?.email ?? '';
   return aEmail.localeCompare(bEmail);
 }
 
@@ -95,12 +87,6 @@ interface ResolveRequestForm {
   customUntil?: string;
   reason?: string;
 }
-
-const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
-  okta_group: 'Group',
-  app_group: 'App Group',
-  role_group: 'Role',
-} as const;
 
 const UNTIL_ID_TO_LABELS: Record<string, string> = {
   '43200': '12 Hours',
@@ -120,7 +106,7 @@ const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = {
   '7776000': '90 Days',
 } as const;
 
-const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
+const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id: id, label: label}));
 
 // Which constraints apply to the requested group, resolved by the API rather
 // than re-derived here. A requested role's applicable constraints cannot be
@@ -195,12 +181,7 @@ export default function ReadRoleRequest() {
   const manager = canManageGroup(currentUser, roleRequest.requested_group as GroupDetail | undefined);
   const requestedGroupManager = manager && !blocked;
 
-  const complete = (
-    completedAccessRequest: RoleRequestSummary | undefined,
-    error: RoleRequestByIdPutError | null,
-    variables: RoleRequestByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedAccessRequest: RoleRequestSummary | undefined, error: RoleRequestByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
       setRequestError(error.payload.toString());
@@ -252,7 +233,7 @@ export default function ReadRoleRequest() {
 
     requestedUntilAdjusted = Object.keys(filteredUntil).at(-1);
 
-    labels = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label], index) => ({
+    labels = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label]) => ({
       id: id,
       label: label,
     }));
@@ -296,7 +277,7 @@ export default function ReadRoleRequest() {
       enabled: roleRequest.requested_group != null && (!requestedGroupManager || ownRequest),
     },
   );
-  let ownerships = groupBy(groupOwnerData?.items ?? [], (m: OktaUserGroupMemberDetail) => m.active_user?.id);
+  const ownerships = groupBy(groupOwnerData?.items ?? [], (m: OktaUserGroupMemberDetail) => m.active_user?.id);
   const ownerIds = Object.keys(ownerships);
 
   // If Access admin and all group owners are blocked, add a note
@@ -433,7 +414,7 @@ export default function ReadRoleRequest() {
                   width: 220,
                   height: 220,
                 }}
-                variant={'rounded' as any}>
+                variant="rounded">
                 {roleRequest.status == 'PENDING' ? (
                   <PendingIcon
                     sx={{

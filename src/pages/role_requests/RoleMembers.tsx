@@ -1,30 +1,21 @@
 import * as React from 'react';
-import {useNavigate} from 'react-router-dom';
 
-import Alert from '@mui/material/Alert';
-import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import CircularProgress from '@mui/material/CircularProgress';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import Divider from '@mui/material/Divider';
-import FormControl from '@mui/material/FormControl';
-import Grid from '@mui/material/Grid';
-import InputLabel from '@mui/material/InputLabel';
-import MenuItem from '@mui/material/MenuItem';
-import Select from '@mui/material/Select';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
 import {GridColDef} from '@mui/x-data-grid';
 
-import dayjs, {Dayjs} from 'dayjs';
+import dayjs from 'dayjs';
 
 import {displayUserName} from '../../helpers';
 
-import {OktaUserGroupMemberDetail, RoleGroupDetail} from '../../api/apiSchemas';
+import {OktaUserGroupMemberDetail} from '../../api/apiSchemas';
 import BulkRenewalDataGrid from '../../components/BulkRenewalDataGrid';
 
 interface UserData {
@@ -44,7 +35,7 @@ function createUserData(row: OktaUserGroupMemberDetail): UserData {
 }
 
 interface RoleMembersDialogProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   rows: OktaUserGroupMemberDetail[];
   roleName: string;
   groupName: string;
@@ -113,7 +104,7 @@ function RoleMembersDialog(props: RoleMembersDialogProps) {
 }
 
 interface BulkRenewalButtonProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
 }
 
 function RoleMembersButton(props: BulkRenewalButtonProps) {

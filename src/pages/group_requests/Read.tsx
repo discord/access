@@ -40,7 +40,6 @@ import RelativeTime from 'dayjs/plugin/relativeTime';
 
 import {
   GroupRequestByIdPutError,
-  GroupRequestByIdPutVariables,
   useAppById,
   tagByIdQuery,
   useApps,
@@ -48,15 +47,7 @@ import {
   useTags,
   useGroupRequestByIdPut,
 } from '../../api/apiComponents';
-import {
-  AppDetail,
-  AppGroupForAppDetail,
-  GroupRequestDetail,
-  OktaUserGroupMemberDetail,
-  ResolveGroupRequestBody,
-  TagDetail,
-  TagListItem,
-} from '../../api/apiSchemas';
+import {AppDetail, GroupRequestDetail, ResolveGroupRequestBody, TagDetail, TagListItem} from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import {displayUserName} from '../../helpers';
@@ -367,12 +358,7 @@ export default function ReadGroupRequest() {
   // Only an approved request has resolved tags to show.
   const resolvedTags = useTagsByIds(groupRequest.status === 'APPROVED' ? resolvedTagIds : []).tags;
 
-  const complete = (
-    completedRequest: GroupRequestDetail | undefined,
-    error: GroupRequestByIdPutError | null,
-    variables: GroupRequestByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedRequest: GroupRequestDetail | undefined, error: GroupRequestByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
       setRequestError(error.payload.toString());
@@ -534,7 +520,7 @@ export default function ReadGroupRequest() {
     };
 
     if (responseForm.resolved_group_type === 'app_group' && requestPluginId) {
-      resolveRequest.resolved_plugin_data = extractRequestedPluginData(responseForm as any);
+      resolveRequest.resolved_plugin_data = extractRequestedPluginData(responseForm);
     }
 
     switch (responseForm.resolved_ownership_ending_at) {
@@ -600,7 +586,7 @@ export default function ReadGroupRequest() {
                   width: 220,
                   height: 220,
                 }}
-                variant={'rounded' as any}>
+                variant="rounded">
                 {groupRequest.status == 'PENDING' ? (
                   <PendingIcon sx={{width: 220, height: 220}} />
                 ) : groupRequest.status == 'APPROVED' ? (
