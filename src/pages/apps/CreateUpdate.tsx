@@ -29,7 +29,7 @@ import {
 import {isAccessAdmin, isAppOwnerGroupOwner, ACCESS_APP_RESERVED_NAME} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
-import {requestErrorMessage} from '../../helpers';
+import {requestErrorMessage, pluginDataEntry} from '../../helpers';
 
 interface AppButtonProps {
   setOpen(open: boolean): void;
@@ -222,9 +222,7 @@ function AppDialog(props: AppDialogProps) {
               entityType="app"
               selectedPluginId={selectedAppGroupLifecyclePluginId}
               currentConfig={
-                selectedAppGroupLifecyclePluginId && props.app?.plugin_data
-                  ? props.app.plugin_data[selectedAppGroupLifecyclePluginId]?.configuration || {}
-                  : {}
+                pluginDataEntry(props.app?.plugin_data, selectedAppGroupLifecyclePluginId)?.configuration || {}
               }
               onPluginChange={setSelectedAppGroupLifecyclePluginId}
               isExistingEntity={props.app != null}

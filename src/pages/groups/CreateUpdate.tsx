@@ -43,7 +43,7 @@ import {
 import {canManageGroup, isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
-import {requestErrorMessage} from '../../helpers';
+import {requestErrorMessage, pluginDataEntry} from '../../helpers';
 
 interface GroupButtonProps {
   defaultGroupType: 'okta_group' | 'app_group' | 'role_group';
@@ -405,9 +405,8 @@ function GroupDialog(props: GroupDialogProps) {
               selectedPluginId={appGroupLifecyclePluginId}
               appId={selectedApp?.id}
               currentConfig={
-                appGroupLifecyclePluginId && (props.group as AppGroupDetail | undefined)?.plugin_data
-                  ? (props.group as AppGroupDetail).plugin_data![appGroupLifecyclePluginId]?.configuration || {}
-                  : {}
+                pluginDataEntry((props.group as AppGroupDetail | undefined)?.plugin_data, appGroupLifecyclePluginId)
+                  ?.configuration || {}
               }
               isExistingEntity={props.group != null}
             />

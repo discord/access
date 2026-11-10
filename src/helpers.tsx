@@ -33,6 +33,35 @@ export function requestErrorMessage(error: {payload: string | ProblemDetail}): s
 }
 
 /**
+ * The configuration and status an app-group-lifecycle plugin keeps for one
+ * app, group, or group request, stored under the plugin's id in `plugin_data`.
+ */
+export type PluginDataEntry = {
+  configuration?: Record<string, unknown>;
+  status?: Record<string, unknown>;
+};
+
+/**
+ * One plugin's entry in a `plugin_data` map.
+ *
+ * The generated client types `plugin_data` as an open map of `any`; this
+ * gives the entry the shape the backend writes.
+ *
+ * @param pluginData - an app's, group's, or group request's `plugin_data`.
+ * @param pluginId - the app-group-lifecycle plugin's id.
+ * @returns the plugin's entry, or `undefined` when there is no data or no plugin id.
+ */
+export function pluginDataEntry(
+  pluginData: Record<string, unknown> | null | undefined,
+  pluginId: string | null | undefined,
+): PluginDataEntry | undefined {
+  if (pluginData == null || !pluginId) {
+    return undefined;
+  }
+  return pluginData[pluginId] as PluginDataEntry | undefined;
+}
+
+/**
  * Display text for a value from an app-group-lifecycle plugin's configuration or status data.
  *
  * Plugins declare text, number, boolean, and date properties, so values are

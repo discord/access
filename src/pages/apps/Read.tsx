@@ -17,6 +17,7 @@ import {InfiniteScrollSentinel} from '../../components/InfiniteScrollSentinel';
 import {AppsAccordionListGroup, AppsAdminActionGroup, AppsHeader} from './components/';
 import ChangeTitle from '../../tab-title';
 import AppGroupLifecyclePluginData from '../../components/AppGroupLifecyclePluginData';
+import {pluginDataEntry} from '../../helpers';
 
 export default function ReadApp() {
   const currentUser = useCurrentUser();
@@ -80,10 +81,8 @@ export default function ReadApp() {
               <AppGroupLifecyclePluginData
                 entityType="app"
                 pluginId={app.app_group_lifecycle_plugin}
-                currentConfig={
-                  app?.plugin_data ? app.plugin_data[app.app_group_lifecycle_plugin]?.configuration || {} : {}
-                }
-                currentStatus={app?.plugin_data ? app.plugin_data[app.app_group_lifecycle_plugin]?.status || {} : {}}
+                currentConfig={pluginDataEntry(app?.plugin_data, app.app_group_lifecycle_plugin)?.configuration || {}}
+                currentStatus={pluginDataEntry(app?.plugin_data, app.app_group_lifecycle_plugin)?.status || {}}
               />
             </Grid>
           )}
