@@ -3,10 +3,11 @@ import {render, screen, waitFor, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 
+import {GroupRequestByIdPutVariables} from '../../api/apiComponents';
 import {AppDetail, GroupRequestDetail, OktaUserDetail} from '../../api/apiSchemas';
 import {ACCESS_APP_RESERVED_NAME} from '../../authorization';
 
-const resolveMutate = vi.fn();
+const resolveMutate = vi.fn<(variables: GroupRequestByIdPutVariables) => void>();
 
 const APP_NAME = 'HammerAndChiselZendeskSandbox';
 const APP_TAG = {id: 'sox-tag-00000000000', name: 'SOX'};
@@ -74,7 +75,7 @@ vi.mock('../../authentication', () => ({useCurrentUser: () => currentUser}));
 // restricts nothing unless a test sets an owner-side limit, and record the ids
 // it is asked about so the tests below can assert which tags it covers.
 let ownerTimeLimit: number | null = null;
-const constraintsAskedFor = vi.fn();
+const constraintsAskedFor = vi.fn<(ids: string[]) => void>();
 vi.mock('../../constraints', () => {
   const reader = () => ({
     timeLimit: (isOwner: boolean) => (isOwner ? ownerTimeLimit : null),

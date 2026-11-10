@@ -254,7 +254,7 @@ function useSplitQuery(ids: string[], mode: 'group_ids' | 'tag_ids'): EffectiveC
     const parts = results.map((r) => r.data!);
     return reader(
       mergeCoalesced(parts.map((p) => p.coalesced ?? [])),
-      Object.assign({}, ...parts.map((p) => p.by_group ?? {})),
+      Object.fromEntries(parts.flatMap((p) => Object.entries(p.by_group ?? {}))),
       false,
       null,
     );

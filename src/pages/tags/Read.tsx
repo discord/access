@@ -129,7 +129,7 @@ export default function ReadTag() {
   // only a flag can be switched off, and a falsy *number* is the tightest
   // possible limit rather than the absence of one.
   const constraintsInForce = Object.keys(tag.constraints ?? {})
-    .filter((key) => isConstraintInForce(tag.constraints![key]))
+    .filter((key) => isConstraintInForce(tag.constraints![key] as number | boolean))
     .sort(byConstraintOrder);
 
   const hasActions = tag != null && tag.deleted_at == null && isAccessAdmin(currentUser);
