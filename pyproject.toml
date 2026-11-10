@@ -67,6 +67,13 @@ test = [
     "polyfactory>=3.3.0,<4",
     "faker>=40.31.0,<41",
 ]
+# GitHub Actions workflow linting, kept in its own group so the workflow-lint
+# CI job can install it alone (`--only-group workflow-lint`).
+workflow-lint = [
+    # Exact pin: zizmor adds audits in minor releases, so a bump can surface
+    # new findings and belongs in its own reviewed change.
+    "zizmor==1.32.0",
+]
 dev = [
     # Lint / format
     "ruff>=0.15.21,<0.18",
@@ -76,6 +83,7 @@ dev = [
     "types-python-dateutil>=2.9.0.20260807,<3",
     "types-cachetools>=7.0.0.20260713,<8",
     { include-group = "test" },
+    { include-group = "workflow-lint" },
     # In-repo example plugin, installed editable (see [tool.uv.sources]) so
     # local dev via `make run-backend` exercises the app-group-lifecycle plugin
     # system. Dev-group only, so it is excluded from the production image

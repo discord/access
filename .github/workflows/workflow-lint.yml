@@ -1,0 +1,64 @@
+name: Workflow lint
+
+# Lints the GitHub Actions configuration itself. actionlint catches syntax,
+# expression, and (via the runner's preinstalled shellcheck) shell errors in
+# workflows. zizmor audits workflows and dependabot.yml for security issues:
+# actions not pinned to a commit SHA, unpinned images, template injection,
+# over-broad permissions, and the like. Its findings, and the reason for each
+# inline `zizmor: ignore`, are reviewed like any other code.
+#
+# Secret-free so it runs on forked PRs. The only credential is the job's own
+# read-only GITHUB_TOKEN, which zizmor uses for its online audits (for example,
+# confirming each pinned SHA belongs to the repository it claims to).
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  workflow-lint:
+    name: actionlint and zizmor
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          # Pin uv itself (not "latest") so a compromised uv release can't
+          # run in CI. Keep in sync with the uv version in the Dockerfile.
+          version: "0.11.10"
+          enable-cache: true
+          python-version: "3.13"
+
+      - name: Install actionlint
+        # A pinned release, checked against a SHA-256 recorded here rather than
+        # the release's own checksums file, so a replaced release asset fails
+        # the check instead of being trusted. To bump, update both values from
+        # the new release's actionlint_<version>_checksums.txt.
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl --fail --silent --show-error --location --output "$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  ${archive}" | sha256sum --check --strict
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP" actionlint
+
+      - name: Run actionlint
+        run: '"$RUNNER_TEMP/actionlint" -color'
+
+      - name: Run zizmor
+        # --only-group installs zizmor alone, hash-checked against uv.lock,
+        # instead of the whole dev environment.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run --locked --only-group workflow-lint zizmor .

@@ -49,6 +49,7 @@ help:
 	@echo "  make pytest-postgres    pytest tests/ against a disposable postgres:16 container"
 	@echo "  make ruff               ruff check + ruff format --check"
 	@echo "  make ty                 ty check"
+	@echo "  make zizmor             zizmor security audit of .github/ (workflows, dependabot.yml)"
 	@echo "  make test-backend       ruff + ty + pytest"
 	@echo "  make test-frontend      vitest (frontend unit tests, single run)"
 	@echo "  make test               test-backend + test-frontend (everything)"
@@ -266,6 +267,10 @@ pytest-postgres-down:
 .PHONY: ty
 ty: dev
 	uv run ty check .
+
+.PHONY: zizmor
+zizmor: dev
+	uv run zizmor .
 
 .PHONY: ruff
 ruff: dev
