@@ -32,7 +32,7 @@ function TagDialog(props: TagDialogProps) {
       setRequestError(error.payload.toString());
     } else {
       props.setOpen(false);
-      navigate('/tags/');
+      void navigate('/tags/');
     }
   };
 

@@ -40,7 +40,7 @@ export default function RemoveGroupsDialog(props: RemoveGroupsDialogProps) {
       setRequestError(error.payload.toString());
     } else {
       props.setOpen(false);
-      navigate(0);
+      void navigate(0);
     }
   };
 

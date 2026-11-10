@@ -92,7 +92,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
           setGroupUpdatesErrored(0);
         } else {
           setOpen(false);
-          navigate(0);
+          void navigate(0);
         }
       }
     }

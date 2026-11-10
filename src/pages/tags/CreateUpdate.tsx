@@ -484,9 +484,9 @@ function TagDialog(props: TagDialogProps) {
     } else {
       props.setOpen(false);
       if ((props.tag?.name ?? '') == (completedTag?.name ?? '')) {
-        navigate(0);
+        void navigate(0);
       } else {
-        navigate('/tags/' + encodeURIComponent(completedTag?.name ?? ''));
+        void navigate('/tags/' + encodeURIComponent(completedTag?.name ?? ''));
       }
     }
   };

@@ -33,7 +33,7 @@ export default function RemoveOwnDirectAccessDialog(props: RemoveOwnDirectAccess
       setRequestError(error.payload.toString());
     } else {
       props.setOpen(false);
-      navigate(0);
+      void navigate(0);
     }
   };
 

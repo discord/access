@@ -82,9 +82,9 @@ function AppDialog(props: AppDialogProps) {
     } else {
       props.setOpen(false);
       if ((props.app?.name ?? '') == (completedApp?.name ?? '')) {
-        navigate(0);
+        void navigate(0);
       } else {
-        navigate('/apps/' + encodeURIComponent(completedApp?.name ?? ''));
+        void navigate('/apps/' + encodeURIComponent(completedApp?.name ?? ''));
       }
     }
   };

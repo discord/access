@@ -178,7 +178,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       setRequestError(error.payload.toString());
     } else {
       props.setOpen(false);
-      navigate('/role-requests/' + encodeURIComponent(completedRequest?.id ?? ''));
+      void navigate('/role-requests/' + encodeURIComponent(completedRequest?.id ?? ''));
     }
   };
 

@@ -21,7 +21,7 @@ export default function AccessMethodChip({roleGroupMapping}: AccessMethodChipPro
       variant="outlined"
       color="primary"
       size="small"
-      onClick={() => navigate(`/roles/${roleGroupMapping.role_group?.name}`)}
+      onClick={() => void navigate(`/roles/${roleGroupMapping.role_group?.name}`)}
       sx={{cursor: 'pointer'}}
     />
   );

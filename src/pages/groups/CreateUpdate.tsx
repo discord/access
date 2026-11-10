@@ -130,11 +130,11 @@ function GroupDialog(props: GroupDialogProps) {
     } else {
       props.setOpen(false);
       if ((props.group?.name ?? '') == (completedGroup?.name ?? '')) {
-        navigate(0);
+        void navigate(0);
       } else if (completedGroup?.type == 'app_group' && props.app != null) {
-        navigate(0);
+        void navigate(0);
       } else {
-        navigate('/groups/' + encodeURIComponent(completedGroup?.name ?? ''));
+        void navigate('/groups/' + encodeURIComponent(completedGroup?.name ?? ''));
       }
     }
   };
