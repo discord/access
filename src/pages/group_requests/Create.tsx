@@ -67,7 +67,7 @@ function OwnershipLengthField({
   blocked: boolean;
   onChange: (value: string) => void;
 }) {
-  const {control, setValue} = useFormContext();
+  const {control, setValue} = useFormContext<CreateGroupRequestForm>();
   const selected = useWatch({control, name: 'ownershipUntil'});
 
   const [options, defaultId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
@@ -95,7 +95,7 @@ function OwnershipLengthField({
       label="Requested ownership length"
       name="ownershipUntil"
       options={options}
-      onChange={(value) => onChange(value)}
+      onChange={(value: string) => onChange(value)}
       required
     />
   );
@@ -366,7 +366,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
             label="Group Type"
             name="type"
             options={GROUP_TYPE_OPTIONS}
-            onChange={(value) => {
+            onChange={(value: 'okta_group' | 'app_group' | 'role_group') => {
               setGroupType(value);
             }}
             required
@@ -382,7 +382,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               // Show the app the form holds. rhf-mui otherwise displays the entry of `options`
               // matching the form value, and `options` is a search this field's input drives: an
               // in-flight search empties it, so the selection blanks and the input resets.
-              transform={{input: (app) => app ?? null}}
+              transform={{input: (app?: (typeof appSearchOptions)[number] | null) => app ?? null}}
               autocompleteProps={{
                 getOptionLabel: (option) => option.name,
                 isOptionEqualToValue: (option, value) => option.id === value?.id,
