@@ -18,7 +18,11 @@ function stubFetch() {
 }
 
 function calledUrl(spy: ReturnType<typeof stubFetch>): string {
-  return String(spy.mock.calls[0][0]);
+  const url = spy.mock.calls[0][0];
+  if (typeof url !== 'string') {
+    throw new Error('expected a string URL');
+  }
+  return url;
 }
 
 describe('apiFetch query parameters', () => {

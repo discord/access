@@ -42,6 +42,7 @@ import {
 } from '../../api/apiSchemas';
 import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
+import {requestErrorMessage} from '../../helpers';
 
 dayjs.extend(IsSameOrBefore);
 
@@ -204,7 +205,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const complete = (completedRequest: GroupRequestDetail | undefined, error: GroupRequestsCreateError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(false);
       void navigate('/group-requests/' + encodeURIComponent(completedRequest?.id ?? ''));

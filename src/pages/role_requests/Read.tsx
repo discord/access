@@ -40,7 +40,7 @@ import RelativeTime from 'dayjs/plugin/relativeTime';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
 import RoleMembers from './RoleMembers';
-import {groupBy, displayUserName, ownerCantAddSelf} from '../../helpers';
+import {groupBy, displayUserName, ownerCantAddSelf, requestErrorMessage} from '../../helpers';
 import {approvalUntilDefault, timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {useCurrentUser} from '../../authentication';
@@ -184,7 +184,7 @@ export default function ReadRoleRequest() {
   const complete = (completedAccessRequest: RoleRequestSummary | undefined, error: RoleRequestByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       void navigate(0);
     }

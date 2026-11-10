@@ -43,6 +43,7 @@ import {
 import {canManageGroup, isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
+import {requestErrorMessage} from '../../helpers';
 
 interface GroupButtonProps {
   defaultGroupType: 'okta_group' | 'app_group' | 'role_group';
@@ -126,7 +127,7 @@ function GroupDialog(props: GroupDialogProps) {
   const complete = (completedGroup: GroupDetail | undefined, error: GroupsCreateError | GroupByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(false);
       if ((props.group?.name ?? '') == (completedGroup?.name ?? '')) {

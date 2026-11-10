@@ -30,7 +30,7 @@ import {useTheme} from '@mui/material';
 
 import dayjs, {Dayjs} from 'dayjs';
 
-import {displayUserName} from '../../helpers';
+import {displayUserName, requestErrorMessage} from '../../helpers';
 import {timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
@@ -288,7 +288,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 
   const complete = (completedUsersChange: GroupMembersSummary | undefined, error: GroupMembersByIdPutError | null) => {
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
       setGroupUpdatesErrored((prevValue) => prevValue + 1);
     } else {
       setGroupUpdatesCompleted((prevValue) => prevValue + 1);

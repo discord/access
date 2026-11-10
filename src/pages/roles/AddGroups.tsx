@@ -39,7 +39,7 @@ import {
   OktaUserDetail,
 } from '../../api/apiSchemas';
 import {isAccessAdmin, isGroupOwner} from '../../authorization';
-import {minTagTimeGroups, requiredReasonGroups, ownerCantAddSelfGroups} from '../../helpers';
+import {minTagTimeGroups, requiredReasonGroups, ownerCantAddSelfGroups, requestErrorMessage} from '../../helpers';
 import {timeLimitLabel} from '../../constraints';
 import {useCurrentUser} from '../../authentication';
 import accessConfig from '../../config/accessConfig';
@@ -112,7 +112,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
   const complete = (completedUsersChange: RoleMembersSummary | undefined, error: RoleMembersByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(false);
       void navigate(0);

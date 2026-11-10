@@ -12,6 +12,7 @@ import Typography from '@mui/material/Typography';
 
 import {useAppGroupLifecyclePluginGroupConfigProps} from '../../api/apiComponents';
 import {pluginConfigRows} from './pluginConfig';
+import {formatPluginValue} from '../../helpers';
 
 interface PluginConfigDisplayProps {
   pluginId: string;
@@ -55,7 +56,7 @@ export default function PluginConfigDisplay({
             {changed ? (
               <>
                 <span style={{textDecoration: 'line-through'}}>
-                  {from === undefined || from === '' ? '—' : String(from)}
+                  {from === undefined || from === '' ? '—' : formatPluginValue(from)}
                 </span>
                 {' → '}
                 {String(value)}

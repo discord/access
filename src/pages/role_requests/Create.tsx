@@ -40,6 +40,7 @@ import {timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {requireRequestReasons} from '../../config/accessConfig';
 import {Tooltip} from '@mui/material';
+import {requestErrorMessage} from '../../helpers';
 
 dayjs.extend(IsSameOrBefore);
 
@@ -175,7 +176,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const complete = (completedRequest: RoleRequestSummary | undefined, error: RoleRequestsCreateError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(false);
       void navigate('/role-requests/' + encodeURIComponent(completedRequest?.id ?? ''));

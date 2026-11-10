@@ -45,6 +45,7 @@ import {canManageGroup, isAccessAdmin} from '../../authorization';
 import {carriedConstraints, timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import accessConfig, {requireRequestReasons} from '../../config/accessConfig';
+import {requestErrorMessage} from '../../helpers';
 
 dayjs.extend(IsSameOrBefore);
 
@@ -237,7 +238,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const complete = (completedRequest: AccessRequestDetail | undefined, error: AccessRequestsCreateError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(false);
       void navigate('/requests/' + encodeURIComponent(completedRequest?.id ?? ''));
