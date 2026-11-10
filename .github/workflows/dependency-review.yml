@@ -1,0 +1,45 @@
+# Blocks pull requests that add dependencies with known vulnerabilities or with
+# licenses incompatible with Apache-2.0. Policy lives in
+# .github/dependency-review-config.yml.
+#
+# Needs no secrets and only read access, so it runs the same on forked PRs. It
+# writes its report to the job summary rather than a PR comment, since a
+# forked PR's token cannot comment.
+name: Dependency review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-24.04
+    steps:
+      # Checked out only so the action can read the local config file.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: review
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          config-file: ./.github/dependency-review-config.yml
+      # The action only reports dependencies with no detected license (null or
+      # NOASSERTION); it does not fail on them. Software with no license grants
+      # no rights to use it, so fail here unless the package is vetted in
+      # allow-dependencies-licenses, which the action leaves out of this list.
+      # Runs even when the review step failed so these packages are still
+      # listed in the log.
+      - name: Fail on dependencies with no license
+        if: ${{ !cancelled() && steps.review.outputs.invalid-license-changes != '' }}
+        env:
+          INVALID_LICENSE_CHANGES: ${{ steps.review.outputs.invalid-license-changes }}
+        run: |
+          unlicensed=$(jq --raw-output '.unlicensed[] | "\(.manifest) » \(.name)@\(.version)"' <<< "$INVALID_LICENSE_CHANGES")
+          if [ -n "$unlicensed" ]; then
+            echo "::error::Dependencies with no detected license. Find a licensed alternative, or vet the package and add it to allow-dependencies-licenses in .github/dependency-review-config.yml:"
+            echo "$unlicensed"
+            exit 1
+          fi
+          echo "Every changed dependency has a detected license."
