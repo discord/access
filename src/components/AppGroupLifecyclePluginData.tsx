@@ -30,7 +30,7 @@ import {
 import {PluginConfigProp, PluginStatusProp, PluginInfo} from '../api/apiSchemas';
 
 type PluginData = {
-  [propertyId: string]: any;
+  [propertyId: string]: unknown;
 };
 
 interface AppGroupLifecyclePluginDataProps {
@@ -79,7 +79,7 @@ function PluginDataPropertiesTable({
                 switch (property.type) {
                   case 'date':
                     try {
-                      displayValue = new Date(value).toLocaleString();
+                      displayValue = new Date(value as string | number).toLocaleString();
                     } catch {
                       displayValue = String(value);
                     }

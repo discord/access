@@ -1,4 +1,4 @@
-declare const ACCESS_CONFIG: any;
+declare const ACCESS_CONFIG: unknown;
 declare const APP_NAME: string;
 declare const REQUIRE_DESCRIPTIONS: boolean;
 declare const REQUIRE_REQUEST_REASONS: boolean;

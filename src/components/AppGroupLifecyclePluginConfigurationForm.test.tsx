@@ -1,3 +1,4 @@
+import type React from 'react';
 import {describe, it, expect, vi} from 'vitest';
 
 // Mock MUI and React Hook Form modules so the test environment (jsdom / Node)
@@ -42,8 +43,18 @@ const prop = (over: Partial<PluginConfigProp>): PluginConfigProp =>
 
 // ConfigField only depends on the (mocked) form context, so invoke it as a plain
 // function and inspect the returned element tree — no DOM render needed.
-const renderField = (over: Partial<PluginConfigProp>): any =>
-  ConfigField({property: prop(over), value: '', fieldName: 'plugin_data.p.configuration.f', locked: false}) as any;
+// The slice of the rendered TextField's props these tests read.
+type RenderedField = React.ReactElement<{
+  slotProps: {input: {endAdornment?: React.ReactElement<{children: React.ReactNode}>}};
+}>;
+
+const renderField = (over: Partial<PluginConfigProp>): RenderedField =>
+  ConfigField({
+    property: prop(over),
+    value: '',
+    fieldName: 'plugin_data.p.configuration.f',
+    locked: false,
+  }) as RenderedField;
 
 describe('isFieldLocked', () => {
   it('locks a set immutable field when editing an existing entity', () => {
@@ -77,7 +88,7 @@ describe('ConfigField suffix', () => {
     const adornment = renderField({type: 'text', suffix: '@example.com'}).props.slotProps.input.endAdornment;
     expect(adornment).toBeTruthy();
     // The adornment wraps the suffix text as its children.
-    expect(adornment.props.children).toBe('@example.com');
+    expect(adornment?.props.children).toBe('@example.com');
   });
 
   it('omits the end adornment when no suffix is set', () => {

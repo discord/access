@@ -13,7 +13,7 @@ const NAME_VALIDATION_PATTERN = 'NAME_VALIDATION_PATTERN';
 const NAME_VALIDATION_ERROR = 'NAME_VALIDATION_ERROR';
 
 class UndefinedConfigError extends Error {
-  constructor(key, obj) {
+  constructor(key) {
     const message = `'${key}' is not a defined config value in AccessConfig`;
     super(message);
   }
@@ -36,7 +36,7 @@ function getConfig(obj, key) {
   if (key in obj) {
     return obj[key];
   } else {
-    throw new UndefinedConfigError(String(key), obj);
+    throw new UndefinedConfigError(String(key));
   }
 }
 
@@ -47,7 +47,7 @@ function validateConfig(accessConfig) {
 
   if (DEFAULT_ACCESS_TIME in accessConfig) {
     const defaultAccessTime = parseInt(getConfig(accessConfig, DEFAULT_ACCESS_TIME), 10);
-    if (isNaN(defaultAccessTime) || !getConfig(accessConfig, ACCESS_TIME_LABELS).hasOwnProperty(defaultAccessTime)) {
+    if (isNaN(defaultAccessTime) || !Object.hasOwn(getConfig(accessConfig, ACCESS_TIME_LABELS), defaultAccessTime)) {
       throw new AccessConfigValidationError(`${DEFAULT_ACCESS_TIME} must be a valid key in ${ACCESS_TIME_LABELS}`);
     }
   }

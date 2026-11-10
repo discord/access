@@ -34,7 +34,7 @@ import {displayUserName} from '../../helpers';
 import {timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
-import {useGroupMembersByIdPut, GroupMembersByIdPutError, GroupMembersByIdPutVariables} from '../../api/apiComponents';
+import {useGroupMembersByIdPut, GroupMembersByIdPutError} from '../../api/apiComponents';
 import {GroupMember, GroupMembersSummary, OktaUserGroupMemberDetail} from '../../api/apiSchemas';
 import BulkRenewalDataGrid from '../../components/BulkRenewalDataGrid';
 import accessConfig from '../../config/accessConfig';
@@ -91,10 +91,10 @@ const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABE
 const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
   Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
 );
-const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
+const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id: id, label: label}));
 
 interface BulkRenewalDialogProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   rows: OktaUserGroupMemberDetail[];
   select?: number;
 }
@@ -286,12 +286,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeLimit, constraintsBlocked]);
 
-  const complete = (
-    completedUsersChange: GroupMembersSummary | undefined,
-    error: GroupMembersByIdPutError | null,
-    variables: GroupMembersByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedUsersChange: GroupMembersSummary | undefined, error: GroupMembersByIdPutError | null) => {
     if (error != null) {
       setRequestError(error.payload.toString());
       setGroupUpdatesErrored((prevValue) => prevValue + 1);
@@ -337,7 +332,9 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     // creates map { group ids : {'owner' : [user ids], 'member' : [user ids]} }
     const grouped = selectedYes.reduce(
       (groups: Record<string, Record<string, string[]>>, item: OktaUserGroupMemberDetail) => {
-        (groups[item.group?.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.user?.id!);
+        (groups[item.group?.id as string] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(
+          item.user?.id as string,
+        );
         return groups;
       },
       {} as Record<string, Record<string, string[]>>,
@@ -349,7 +346,9 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     const doNotRenew = selectedNo.reduce(
       (groups: Record<string, Record<string, number[]>>, item: OktaUserGroupMemberDetail) => {
         if (!item.should_expire && dayjs(item.ended_at) >= dayjs()) {
-          (groups[item.group?.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.id);
+          (groups[item.group?.id as string] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(
+            item.id,
+          );
         }
         return groups;
       },
@@ -506,7 +505,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 }
 
 interface BulkRenewalButtonProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   bulk: boolean;
   rereview?: boolean;
 }

@@ -1,4 +1,4 @@
-import React, {useMemo} from 'react';
+import React from 'react';
 
 import {Link as RouterLink, useParams, useSearchParams, useNavigate} from 'react-router-dom';
 import Link from '@mui/material/Link';
@@ -14,12 +14,7 @@ import TableRow from '@mui/material/TableRow';
 import TableFooter from '@mui/material/TableFooter';
 import TablePagination from '@mui/material/TablePagination';
 import TableSortLabel from '@mui/material/TableSortLabel';
-import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
-import Grid from '@mui/material/Grid';
-import Box from '@mui/material/Box';
-import TextField from '@mui/material/TextField';
-import Autocomplete from '@mui/material/Autocomplete';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import ToggleButton from '@mui/material/ToggleButton';
 
@@ -78,11 +73,7 @@ export default function AuditGroup() {
     pathParams: {groupId: id ?? ''},
   });
 
-  const {
-    data,
-    error,
-    isLoading: userAuditIsLoading,
-  } = useUsersAndGroups({
+  const {data, isLoading: userAuditIsLoading} = useUsersAndGroups({
     queryParams: Object.assign(
       {group_id: id ?? '', page: page + 1, size: rowsPerPage},
       orderBy == null ? null : {order_by: orderBy},
@@ -115,7 +106,7 @@ export default function AuditGroup() {
 
   const searchRows = searchData?.items ?? [];
 
-  const handleSortChange = (property: OrderBy) => (event: React.MouseEvent<unknown>) => {
+  const handleSortChange = (property: OrderBy) => () => {
     const isAsc = orderBy === property && orderDirection === 'asc';
     setSearchParams((params) => {
       params.set('order_by', property);

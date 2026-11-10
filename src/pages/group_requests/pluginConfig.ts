@@ -15,16 +15,18 @@ export function pluginIdForApp(app: AppLike): string | null {
  * registers (field names like `plugin_data.<pluginId>.configuration.<prop>`) out of
  * react-hook-form values, defaulting to {} when no plugin section was rendered.
  */
-export function extractRequestedPluginData(formValues: {plugin_data?: unknown}): Record<string, any> {
-  const data = formValues?.plugin_data;
-  return data && typeof data === 'object' ? (data as Record<string, any>) : {};
+export function extractRequestedPluginData(formValues: object): Record<string, unknown> {
+  const data = 'plugin_data' in formValues ? formValues.plugin_data : undefined;
+  return data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
 }
 
 /**
  * Config entries worth displaying: drops null/undefined/empty-string values but
  * keeps falsy-but-meaningful values like `false` and `0`.
  */
-export function visiblePluginConfigEntries(configuration: Record<string, any> | null | undefined): [string, any][] {
+export function visiblePluginConfigEntries(
+  configuration: Record<string, unknown> | null | undefined,
+): [string, unknown][] {
   return Object.entries(configuration ?? {}).filter(
     ([, value]) => value !== null && value !== undefined && value !== '',
   );
@@ -32,11 +34,11 @@ export function visiblePluginConfigEntries(configuration: Record<string, any> | 
 
 export interface PluginConfigRow {
   key: string;
-  value: any;
+  value: unknown;
   /** True when a comparison config was supplied and its value for this key differs. */
   changed: boolean;
   /** The comparison ("from") value, when a comparison config was supplied. */
-  from: any;
+  from: unknown;
 }
 
 /**
@@ -45,8 +47,8 @@ export interface PluginConfigRow {
  * old → new. `changed` is only ever true when `previousConfiguration` is given.
  */
 export function pluginConfigRows(
-  configuration: Record<string, any> | null | undefined,
-  previousConfiguration?: Record<string, any> | null,
+  configuration: Record<string, unknown> | null | undefined,
+  previousConfiguration?: Record<string, unknown> | null,
 ): PluginConfigRow[] {
   const hasPrevious = previousConfiguration != null;
   return visiblePluginConfigEntries(configuration).map(([key, value]) => {

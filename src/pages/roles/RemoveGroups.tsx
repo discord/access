@@ -9,7 +9,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import {useRoleMembersByIdPut, RoleMembersByIdPutError, RoleMembersByIdPutVariables} from '../../api/apiComponents';
+import {useRoleMembersByIdPut, RoleMembersByIdPutError} from '../../api/apiComponents';
 import {GroupDetail, RoleGroupDetail, RoleMember, RoleMembersSummary} from '../../api/apiSchemas';
 
 export interface RemoveGroupsDialogParameters {
@@ -19,7 +19,7 @@ export interface RemoveGroupsDialogParameters {
 }
 
 interface RemoveGroupsDialogProps extends RemoveGroupsDialogParameters {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
 }
 
 const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
@@ -34,12 +34,7 @@ export default function RemoveGroupsDialog(props: RemoveGroupsDialogProps) {
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
-  const complete = (
-    completedUsersChange: RoleMembersSummary | undefined,
-    error: RoleMembersByIdPutError | null,
-    variables: RoleMembersByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedUsersChange: RoleMembersSummary | undefined, error: RoleMembersByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
       setRequestError(error.payload.toString());

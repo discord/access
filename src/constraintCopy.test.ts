@@ -6,7 +6,6 @@ import {
   DISALLOW_SELF_ADD_MEMBERSHIP,
   MEMBER_TIME_LIMIT,
   OWNER_TIME_LIMIT,
-  REQUIRE_MEMBER_REASON,
   byConstraintOrder,
   constraintDetail,
   constraintLabel,

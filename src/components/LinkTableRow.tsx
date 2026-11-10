@@ -1,6 +1,6 @@
 import React from 'react';
 import {Link, TableRow} from '@mui/material';
-import {Link as RouterLink, useNavigate} from 'react-router-dom';
+import {Link as RouterLink} from 'react-router-dom';
 
 interface LinkTableRowProps {
   to: string;
