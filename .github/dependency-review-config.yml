@@ -43,9 +43,10 @@ allow-licenses:
   - Unlicense
   - Zlib
 
-# Packages vetted by hand whose detected license would otherwise fail the
-# allow-list: LGPL packages, and packages whose dependency-graph license is a
-# scanner artifact or a non-SPDX reference. Versionless so routine bumps pass;
+# Packages vetted by hand that would otherwise fail the license check: LGPL
+# packages, packages whose dependency-graph license is a scanner artifact or a
+# non-SPDX reference, and packages with no detected license (which the
+# workflow rejects separately). Versionless so routine bumps pass;
 # re-vet if a package changes its license. Each entry states why it is allowed.
 allow-dependencies-licenses:
   # LGPL-3.0-or-later. Transitive runtime dependency of the Okta SDK, installed
