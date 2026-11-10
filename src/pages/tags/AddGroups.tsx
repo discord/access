@@ -81,6 +81,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
     }
   };
 
+  const {setOpen} = props;
   React.useEffect(() => {
     if (submitting) {
       if (numUpdates == groupUpdatesCompleted + groupUpdatesErrored) {
@@ -90,12 +91,12 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
           setGroupUpdatesCompleted(0);
           setGroupUpdatesErrored(0);
         } else {
-          props.setOpen(false);
+          setOpen(false);
           navigate(0);
         }
       }
     }
-  }, [groupUpdatesCompleted, groupUpdatesErrored]);
+  }, [submitting, numUpdates, groupUpdatesCompleted, groupUpdatesErrored, setOpen, navigate]);
 
   const updateGroup = useGroupByIdPut({
     onSettled: complete,
@@ -216,7 +217,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => props.setOpen(false)}>Cancel</Button>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting || groups.length === 0}>
             {submitting ? <CircularProgress size={24} /> : 'Add'}
           </Button>
         </DialogActions>
