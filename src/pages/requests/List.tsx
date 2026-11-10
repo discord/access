@@ -64,14 +64,15 @@ export default function ListRequests() {
   }, [searchParams]);
 
   const {data} = useAccessRequests({
-    queryParams: Object.assign(
-      {page: page + 1, size: rowsPerPage},
-      searchQuery == null ? null : {q: searchQuery},
-      requesterUserId == null ? null : {requester_user_id: requesterUserId},
-      assigneeUserId == null ? null : {assignee_user_id: assigneeUserId},
-      resolverUserId == null ? null : {resolver_user_id: resolverUserId},
-      statusFilter === 'ALL' ? null : {status: statusFilter},
-    ),
+    queryParams: {
+      page: page + 1,
+      size: rowsPerPage,
+      ...(searchQuery == null ? null : {q: searchQuery}),
+      ...(requesterUserId == null ? null : {requester_user_id: requesterUserId}),
+      ...(assigneeUserId == null ? null : {assignee_user_id: assigneeUserId}),
+      ...(resolverUserId == null ? null : {resolver_user_id: resolverUserId}),
+      ...(statusFilter === 'ALL' ? null : {status: statusFilter}),
+    },
   });
 
   const {data: searchData} = useAccessRequests({
