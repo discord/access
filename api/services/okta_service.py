@@ -422,10 +422,10 @@ class OktaService:
             # Fetch Existing Group Data
             existing_group_data, _, get_error = await client.get_group(groupId)
             if get_error is not None:
-                logger.error(f"Failed to fetch existing group {groupId} before update: {get_error}")
+                logger.error("Failed to fetch existing group %s before update: %s", groupId, get_error)
                 raise OktaResponseError(f"Failed to fetch existing group {groupId} before update: {get_error}")
             if existing_group_data is None:
-                logger.error(f"Group {groupId} not found in Okta before update.")
+                logger.error("Group %s not found in Okta before update.", groupId)
                 raise OktaResponseError(f"Group {groupId} not found in Okta before update.")
 
             # Extract Existing Profile. ``Group.profile`` is an anyOf union
@@ -459,11 +459,11 @@ class OktaService:
 
     async def add_user_to_group(self, groupId: str, userId: str) -> None:
         if groupId is None or groupId == "":
-            logger.warning(f"cannot add user to groupId of {groupId}")
+            logger.warning("cannot add user to groupId of %s", groupId)
             return
 
         if userId is None or userId == "":
-            logger.warning(f"cannot add user with userId of {userId}")
+            logger.warning("cannot add user with userId of %s", userId)
             return
 
         try:
@@ -473,15 +473,15 @@ class OktaService:
             if error is not None:
                 raise OktaResponseError(error)
         except OktaTransientError:
-            logger.warning(f"Transient Okta error adding user {userId} to group {groupId}")
+            logger.warning("Transient Okta error adding user %s to group %s", userId, groupId)
 
     async def remove_user_from_group(self, groupId: str, userId: str) -> None:
         if groupId is None or groupId == "":
-            logger.warning(f"cannot remove user from groupId of {groupId}")
+            logger.warning("cannot remove user from groupId of %s", groupId)
             return
 
         if userId is None or userId == "":
-            logger.warning(f"cannot remove user with userId of {userId}")
+            logger.warning("cannot remove user with userId of %s", userId)
             return
 
         try:
@@ -491,7 +491,7 @@ class OktaService:
             if error is not None:
                 raise OktaResponseError(error)
         except OktaTransientError:
-            logger.warning(f"Transient Okta error removing user {userId} from group {groupId}")
+            logger.warning("Transient Okta error removing user %s from group %s", userId, groupId)
 
     # TODO: Implement fetching group membership count for fast syncing
     # GET https://{yourOktaDomain}.com/api/v1/groups/<group_id>?expand=app,stats
@@ -550,10 +550,10 @@ class OktaService:
     # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/Group/#tag/Group/operation/assignGroupOwner
     async def add_owner_to_group(self, groupId: str, userId: str) -> None:
         if groupId is None or groupId == "":
-            logger.warning(f"cannot add owner to groupId of {groupId}")
+            logger.warning("cannot add owner to groupId of %s", groupId)
             return
         if userId is None or userId == "":
-            logger.warning(f"cannot add owner to userId of {userId}")
+            logger.warning("cannot add owner to userId of %s", userId)
             return
         if not self.use_group_owners_api:
             return
@@ -568,17 +568,17 @@ class OktaService:
             if error is not None and "already assigned to this group" not in str(error):
                 raise OktaResponseError(error)
         except OktaTransientError:
-            logger.warning(f"Transient Okta error adding owner {userId} to group {groupId}")
+            logger.warning("Transient Okta error adding owner %s to group %s", userId, groupId)
 
         return
 
     # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/Group/#tag/Group/operation/deleteGroupOwner
     async def remove_owner_from_group(self, groupId: str, userId: str) -> None:
         if groupId is None or groupId == "":
-            logger.warning(f"cannot to remove owner from groupId of {groupId}")
+            logger.warning("cannot to remove owner from groupId of %s", groupId)
             return
         if userId is None or userId == "":
-            logger.warning(f"cannot remove owner from userId of {userId}")
+            logger.warning("cannot remove owner from userId of %s", userId)
             return
         if not self.use_group_owners_api:
             return
@@ -591,14 +591,14 @@ class OktaService:
             if error is not None:
                 raise OktaResponseError(error)
         except OktaTransientError:
-            logger.warning(f"Transient Okta error removing owner {userId} from group {groupId}")
+            logger.warning("Transient Okta error removing owner %s from group %s", userId, groupId)
 
         return
 
     # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/Group/#tag/Group/operation/listGroupOwners
     async def list_owners_for_group(self, groupId: str) -> list[User]:
         if groupId is None or groupId == "":
-            logger.warning(f"cannot to list owners for groupId of {groupId}")
+            logger.warning("cannot to list owners for groupId of %s", groupId)
             return []
         if not self.use_group_owners_api:
             return []

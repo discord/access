@@ -117,7 +117,7 @@ def get_metrics_reporter_hook() -> pluggy.HookRelay:
     pm.add_hookspecs(MetricsReporterPluginSpec)
 
     count = pm.load_setuptools_entrypoints(metrics_reporter_plugin_name)
-    logger.debug(f"Count of loaded metrics reporter plugins: {count}")
+    logger.debug("Count of loaded metrics reporter plugins: %s", count)
     verify_async_impls(pm, _ASYNC_HOOKS)
     _cached_metrics_reporter_hook = pm.hook
 

@@ -243,9 +243,11 @@ class ApproveGroupRequest:
             plugin_id = resolved_app.app_group_lifecycle_plugin if resolved_app is not None else None
             if plugin_id is None:
                 logger.warning(
-                    f"Group request {group_request.id} carried plugin_data, "
-                    f"but app {resolved_app_id} has no app_group_lifecycle_plugin; "
-                    "dropping the supplied config."
+                    "Group request %s carried plugin_data, "
+                    "but app %s has no app_group_lifecycle_plugin; "
+                    "dropping the supplied config.",
+                    group_request.id,
+                    resolved_app_id,
                 )
             else:
                 from api.plugins.app_group_lifecycle import (

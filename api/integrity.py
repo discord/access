@@ -70,9 +70,11 @@ async def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
         missing_group_users_for_role = set(active_role_group_members_ids) - set(active_group_users_for_role_ids)
         if len(missing_group_users_for_role) > 0:
             logger.info(
-                f"Role {active_role_group_map.role_group_id} is missing group "
-                f"{'ownerships' if active_role_group_map.is_owner else 'memberships'} in group "
-                f"{active_role_group_map.group_id} for users {missing_group_users_for_role}"
+                "Role %s is missing group %s in group %s for users %s",
+                active_role_group_map.role_group_id,
+                "ownerships" if active_role_group_map.is_owner else "memberships",
+                active_role_group_map.group_id,
+                missing_group_users_for_role,
             )
             if not dry_run:
                 for member in list(missing_group_users_for_role):
@@ -131,9 +133,11 @@ async def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
         extra_group_users_for_role = set(active_group_users_for_role_ids) - set(active_role_group_members_ids)
         if len(extra_group_users_for_role) > 0:
             logger.info(
-                f"Role {active_role_group_map.role_group_id} has extra "
-                f"{'ownerships' if active_role_group_map.is_owner else 'memberships'} in group "
-                f"{active_role_group_map.group_id} for users {extra_group_users_for_role}"
+                "Role %s has extra %s in group %s for users %s",
+                active_role_group_map.role_group_id,
+                "ownerships" if active_role_group_map.is_owner else "memberships",
+                active_role_group_map.group_id,
+                extra_group_users_for_role,
             )
             if not dry_run:
                 # End all extra OktaUserGroupMembers the users not members of the role group

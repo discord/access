@@ -630,7 +630,7 @@ class AppGroupLifecycleContext:
                     )
                 ).first()
                 if target is None:
-                    logger.info(f"{context}: skipping durable status re-apply, {entity_type} {entity_id} is gone")
+                    logger.info("%s: skipping durable status re-apply, %s %s is gone", context, entity_type, entity_id)
                     continue
                 data = self._data(target)
                 data.status.update(properties)
@@ -638,11 +638,11 @@ class AppGroupLifecycleContext:
                 self._session.add(target)
             await self._session.commit()
         except Exception:
-            logging.getLogger("api").exception(f"{context}: failed to re-apply durable plugin status")
+            logging.getLogger("api").exception("%s: failed to re-apply durable plugin status", context)
             try:
                 await self._session.rollback()
             except Exception:
-                logging.getLogger("api").exception(f"{context}: rollback after failed status re-apply also failed")
+                logging.getLogger("api").exception("%s: rollback after failed status re-apply also failed", context)
 
     # ---- Group mutation ----
 
@@ -756,7 +756,7 @@ class AppGroupLifecycleContext:
         # Okta allows at most one mapping per app, source, and target.
         mapping = next(iter(mappings), None)
         if not mapping:
-            logger.debug(f"No mapping found for group {group.name}.")
+            logger.debug("No mapping found for group %s.", group.name)
             return None
 
         mapping_id = mapping.get("id")
@@ -797,8 +797,11 @@ class AppGroupLifecycleContext:
             # This layer logs it only because it is the one that has the profile, which is what a
             # maintainer needs when the attribute is missing for an unexpected reason.
             logger.debug(
-                f"Target group {target_group_id} mapped to {group.name} has no "
-                f"'{target_group_external_id_field}'. Profile:\n{profile}"
+                "Target group %s mapped to %s has no '%s'. Profile:\n%s",
+                target_group_id,
+                group.name,
+                target_group_external_id_field,
+                profile,
             )
             target_group_name = getattr(actual_instance, "name", None) if actual_instance is not None else None
             raise UnresolvableOktaTargetError(
@@ -1203,7 +1206,7 @@ def get_app_group_lifecycle_hook() -> pluggy.HookRelay:
     pm.add_hookspecs(AppGroupLifecyclePluginSpec)
 
     count = pm.load_setuptools_entrypoints(app_group_lifecycle_plugin_name)
-    logger.info(f"Loaded {count} app group lifecycle plugin(s)")
+    logger.info("Loaded %s app group lifecycle plugin(s)", count)
     verify_async_impls(pm, tuple(AppGroupLifecycleHook))
 
     _cached_app_group_lifecycle_hook = pm.hook
@@ -1255,7 +1258,7 @@ def get_app_group_lifecycle_plugins() -> list[AppGroupLifecyclePluginMetadata]:
         seen_descriptions.add(plugin.description)
 
     _cached_plugin_registry = plugins
-    logger.info(f"Registered {len(plugins)} app group lifecycle plugin(s): {[plugin.id for plugin in plugins]}")
+    logger.info("Registered %s app group lifecycle plugin(s): %s", len(plugins), [plugin.id for plugin in plugins])
 
     return _cached_plugin_registry
 
@@ -1333,7 +1336,7 @@ async def invoke_app_group_lifecycle_hook(
     try:
         savepoint = await session.begin_nested()
     except Exception as e:
-        logging.getLogger("api").exception(f"Failed to open savepoint before {context}")
+        logging.getLogger("api").exception("Failed to open savepoint before %s", context)
         return [e]
     # run_hooks_to_completion uses asyncio.wait (not gather): a cancelled request
     # won't tear down an in-flight hook, and one plugin failing won't cancel the
@@ -1363,7 +1366,7 @@ async def invoke_app_group_lifecycle_hook(
             await savepoint.commit()
         await session.commit()
     except Exception as e:
-        logging.getLogger("api").exception(f"Failed to commit after {context}")
+        logging.getLogger("api").exception("Failed to commit after %s", context)
         await session.rollback()
         await ctx._reapply_durable_status(hook_method, context=context)
         return [e]
