@@ -50,7 +50,7 @@ import {
 import {AppDetail, GroupRequestDetail, ResolveGroupRequestBody, TagDetail, TagListItem} from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
-import {displayUserName} from '../../helpers';
+import {displayUserName, requestErrorMessage, pluginDataEntry} from '../../helpers';
 import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
@@ -91,7 +91,7 @@ interface OwnershipEndingFieldProps {
 }
 
 function OwnershipEndingField({ownershipTimeLimit, constraintsBlocked, setOwnershipUntil}: OwnershipEndingFieldProps) {
-  const {control, setValue} = useFormContext();
+  const {control, setValue} = useFormContext<ResolveRequestForm>();
 
   const [availableUntilOptions, defaultUntilId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
     // While the tag-mode answer is in flight the limit reads as null. Holding
@@ -134,7 +134,7 @@ function OwnershipEndingField({ownershipTimeLimit, constraintsBlocked, setOwners
             label="Ownership Ending At"
             onChange={(e) => {
               field.onChange(e);
-              setOwnershipUntil(e.target.value as string);
+              setOwnershipUntil(e.target.value);
             }}>
             {availableUntilOptions.map(({id, label}) => (
               <MenuItem key={id} value={id}>
@@ -361,9 +361,9 @@ export default function ReadGroupRequest() {
   const complete = (completedRequest: GroupRequestDetail | undefined, error: GroupRequestByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
-      navigate(0);
+      void navigate(0);
     }
   };
 
@@ -774,7 +774,9 @@ export default function ReadGroupRequest() {
                           <PluginConfigDisplay
                             label="Plugin Configuration"
                             pluginId={requestPluginId}
-                            configuration={groupRequest.requested_plugin_data?.[requestPluginId]?.configuration ?? {}}
+                            configuration={
+                              pluginDataEntry(groupRequest.requested_plugin_data, requestPluginId)?.configuration ?? {}
+                            }
                           />
                         </Grid>
                       )}
@@ -852,7 +854,7 @@ export default function ReadGroupRequest() {
                                         label="Type"
                                         name="resolved_group_type"
                                         options={GROUP_TYPE_OPTIONS}
-                                        onChange={(value) => {
+                                        onChange={(value: string) => {
                                           setGroupType(value);
                                           setAppName('');
                                           setResolvedAppId(null);
@@ -880,7 +882,7 @@ export default function ReadGroupRequest() {
                                           // `options` matching the form value, and `options` is a search this field's
                                           // input drives: the requested app can fall past the first page and render
                                           // blank, and an in-flight search empties it, resetting the input mid-typing.
-                                          transform={{input: (app) => app ?? null}}
+                                          transform={{input: (app?: AppDetail | null) => app ?? null}}
                                           autocompleteProps={{
                                             getOptionLabel: (option: AppDetail) => option.name,
                                             isOptionEqualToValue: (option: AppDetail, value: AppDetail) =>
@@ -1033,7 +1035,8 @@ export default function ReadGroupRequest() {
                                     entityType="group"
                                     selectedPluginId={requestPluginId}
                                     currentConfig={
-                                      groupRequest.requested_plugin_data?.[requestPluginId]?.configuration ?? {}
+                                      pluginDataEntry(groupRequest.requested_plugin_data, requestPluginId)
+                                        ?.configuration ?? {}
                                     }
                                   />
                                 )}
@@ -1202,12 +1205,12 @@ export default function ReadGroupRequest() {
                             label="Plugin Configuration"
                             pluginId={requestPluginId}
                             configuration={
-                              groupRequest.resolved_plugin_data?.[requestPluginId]?.configuration ??
-                              groupRequest.requested_plugin_data?.[requestPluginId]?.configuration ??
+                              pluginDataEntry(groupRequest.resolved_plugin_data, requestPluginId)?.configuration ??
+                              pluginDataEntry(groupRequest.requested_plugin_data, requestPluginId)?.configuration ??
                               {}
                             }
                             previousConfiguration={
-                              groupRequest.requested_plugin_data?.[requestPluginId]?.configuration ?? {}
+                              pluginDataEntry(groupRequest.requested_plugin_data, requestPluginId)?.configuration ?? {}
                             }
                           />
                         </Box>

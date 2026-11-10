@@ -53,7 +53,7 @@ export default function ListUsers() {
 
   // If there's only one search result, just redirect to that user's page
   if (searchQuery != null && totalRows == 1) {
-    navigate('/users/' + rows[0].email.toLowerCase(), {
+    void navigate('/users/' + rows[0].email.toLowerCase(), {
       replace: true,
     });
   }

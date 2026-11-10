@@ -82,19 +82,20 @@ export default function ExpiringRoless() {
     isError,
     isLoading: expiringGroupsIsLoading,
   } = useGroupsAndRoles({
-    queryParams: Object.assign(
-      {page: page + 1, size: rowsPerPage},
-      orderBy == null ? null : {order_by: orderBy},
-      orderDirection == null ? null : {order_desc: orderDirection == 'desc' ? 'true' : 'false'},
-      searchQuery == null ? null : {q: searchQuery},
-      ownerId == null ? null : {owner_id: ownerId},
-      filterNeedsReview == null ? null : {needs_review: filterNeedsReview},
-      roleOwnerId == null ? null : {role_owner_id: roleOwnerId},
-      filterActive == null ? null : {active: filterActive},
-      {app_owner: filterAppOwnership},
-      startDate == null ? null : {start_date: startDate.unix()},
-      endDate == null ? null : {end_date: endDate.unix()},
-    ),
+    queryParams: {
+      page: page + 1,
+      size: rowsPerPage,
+      ...(orderBy == null ? null : {order_by: orderBy}),
+      ...(orderDirection == null ? null : {order_desc: orderDirection == 'desc'}),
+      ...(searchQuery == null ? null : {q: searchQuery}),
+      ...(ownerId == null ? null : {owner_id: ownerId}),
+      ...(filterNeedsReview == null ? null : {needs_review: filterNeedsReview}),
+      ...(roleOwnerId == null ? null : {role_owner_id: roleOwnerId}),
+      ...(filterActive == null ? null : {active: filterActive}),
+      app_owner: filterAppOwnership,
+      ...(startDate == null ? null : {start_date: startDate.unix()}),
+      ...(endDate == null ? null : {end_date: endDate.unix()}),
+    },
   });
 
   const {data: searchData} = useGroups({
@@ -365,7 +366,7 @@ export default function ExpiringRoless() {
                 </TableCell>
                 <TableCell>{row.is_owner ? 'Owner' : 'Member'}</TableCell>
                 <TableCell>
-                  <Started memberships={[row] as unknown as Array<RoleGroupMapDetail>} />
+                  <Started memberships={[row]} />
                 </TableCell>
                 <TableCell>
                   {(row.created_actor?.deleted_at ?? null) != null ? (
@@ -385,7 +386,7 @@ export default function ExpiringRoless() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <Ending memberships={[row] as unknown as Array<RoleGroupMapDetail>} />
+                  <Ending memberships={[row]} />
                 </TableCell>
                 <TableCell>{row.should_expire && 'Reviewed, not renewed'}</TableCell>
                 {ownerId == '@me' || canManageGroup(currentUser, row.group as GroupDetail | undefined) ? (

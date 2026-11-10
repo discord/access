@@ -17,6 +17,7 @@ import {InfiniteScrollSentinel} from '../../components/InfiniteScrollSentinel';
 import {AppsAccordionListGroup, AppsAdminActionGroup, AppsHeader} from './components/';
 import ChangeTitle from '../../tab-title';
 import AppGroupLifecyclePluginData from '../../components/AppGroupLifecyclePluginData';
+import {pluginDataEntry} from '../../helpers';
 
 export default function ReadApp() {
   const currentUser = useCurrentUser();
@@ -80,10 +81,8 @@ export default function ReadApp() {
               <AppGroupLifecyclePluginData
                 entityType="app"
                 pluginId={app.app_group_lifecycle_plugin}
-                currentConfig={
-                  app?.plugin_data ? app.plugin_data[app.app_group_lifecycle_plugin]?.configuration || {} : {}
-                }
-                currentStatus={app?.plugin_data ? app.plugin_data[app.app_group_lifecycle_plugin]?.status || {} : {}}
+                currentConfig={pluginDataEntry(app?.plugin_data, app.app_group_lifecycle_plugin)?.configuration || {}}
+                currentStatus={pluginDataEntry(app?.plugin_data, app.app_group_lifecycle_plugin)?.status || {}}
               />
             </Grid>
           )}
@@ -117,7 +116,7 @@ export default function ReadApp() {
           {/* Load the next page of app groups when this scrolls into view. */}
           <Grid sx={{py: 0}} size={12}>
             <InfiniteScrollSentinel
-              onVisible={() => nonOwnerGroupsQuery.fetchNextPage()}
+              onVisible={() => void nonOwnerGroupsQuery.fetchNextPage()}
               disabled={!nonOwnerGroupsQuery.hasNextPage || nonOwnerGroupsQuery.isFetchingNextPage}
             />
           </Grid>

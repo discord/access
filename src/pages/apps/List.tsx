@@ -59,7 +59,7 @@ export default function ListApps() {
 
   // If there's only one search result, just redirect to that app's page
   if (searchQuery != null && totalRows == 1) {
-    navigate('/apps/' + rows[0].name, {
+    void navigate('/apps/' + rows[0].name, {
       replace: true,
     });
   }
@@ -109,7 +109,7 @@ export default function ListApps() {
       <ChangeTitle title="Apps" />
       <TableContainer component={Paper}>
         <TableTopBar title="Applications">
-          <Button variant="contained" onClick={() => navigate('/tags/')} endIcon={<TagIcon />}>
+          <Button variant="contained" onClick={() => void navigate('/tags/')} endIcon={<TagIcon />}>
             Tags
           </Button>
           <CreateUpdateApp currentUser={currentUser}></CreateUpdateApp>

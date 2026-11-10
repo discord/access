@@ -64,14 +64,15 @@ export default function ListGroupRequests() {
   }, [searchParams]);
 
   const {data} = useGroupRequests({
-    queryParams: Object.assign(
-      {page: page + 1, size: rowsPerPage},
-      searchQuery == null ? null : {q: searchQuery},
-      requesterUserId == null ? null : {requester_user_id: requesterUserId},
-      assigneeUserId == null ? null : {assignee_user_id: assigneeUserId},
-      resolverUserId == null ? null : {resolver_user_id: resolverUserId},
-      statusFilter === 'ALL' ? null : {status: statusFilter},
-    ),
+    queryParams: {
+      page: page + 1,
+      size: rowsPerPage,
+      ...(searchQuery == null ? null : {q: searchQuery}),
+      ...(requesterUserId == null ? null : {requester_user_id: requesterUserId}),
+      ...(assigneeUserId == null ? null : {assignee_user_id: assigneeUserId}),
+      ...(resolverUserId == null ? null : {resolver_user_id: resolverUserId}),
+      ...(statusFilter === 'ALL' ? null : {status: statusFilter}),
+    },
   });
 
   const {data: searchData} = useGroupRequests({
@@ -83,7 +84,7 @@ export default function ListGroupRequests() {
 
   // If there's only one search result, just redirect to that request page
   if (searchQuery != null && totalRows == 1) {
-    navigate('/group-requests/' + rows[0].id, {
+    void navigate('/group-requests/' + rows[0].id, {
       replace: true,
     });
   }
@@ -130,7 +131,7 @@ export default function ListGroupRequests() {
   };
 
   const handleStatusFilter = (event: SelectChangeEvent<StatusFilterValue>) => {
-    const newValue = event.target.value as StatusFilterValue;
+    const newValue = event.target.value;
     if (newValue === 'ALL') {
       setSearchParams((params) => {
         params.delete('status');

@@ -14,6 +14,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import {useAppByIdDelete, AppByIdDeleteError} from '../../api/apiComponents';
 import {AppDetail, DeleteMessage, OktaUserDetail} from '../../api/apiSchemas';
 import {isAccessAdmin, isAppOwnerGroupOwner, ACCESS_APP_RESERVED_NAME} from '../../authorization';
+import {requestErrorMessage} from '../../helpers';
 
 interface AppDialogProps {
   setOpen(open: boolean): void;
@@ -29,10 +30,10 @@ function AppDialog(props: AppDialogProps) {
   const complete = (deletedApp: DeleteMessage | undefined, error: AppByIdDeleteError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(false);
-      navigate('/apps/');
+      void navigate('/apps/');
     }
   };
 

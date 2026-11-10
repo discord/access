@@ -28,6 +28,7 @@ import {
   useAppGroupLifecyclePluginGroupStatusProps,
 } from '../api/apiComponents';
 import {PluginConfigProp, PluginStatusProp, PluginInfo} from '../api/apiSchemas';
+import {formatPluginValue} from '../helpers';
 
 type PluginData = {
   [propertyId: string]: unknown;
@@ -81,14 +82,14 @@ function PluginDataPropertiesTable({
                     try {
                       displayValue = new Date(value as string | number).toLocaleString();
                     } catch {
-                      displayValue = String(value);
+                      displayValue = formatPluginValue(value);
                     }
                     break;
                   case 'boolean':
                     displayValue = value ? 'Yes' : 'No';
                     break;
                   default:
-                    displayValue = String(value);
+                    displayValue = formatPluginValue(value);
                 }
               }
 

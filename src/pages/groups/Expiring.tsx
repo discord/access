@@ -86,20 +86,21 @@ export default function ExpiringGroups() {
     isError,
     isLoading: expiringGroupsIsLoading,
   } = useUsersAndGroups({
-    queryParams: Object.assign(
-      {page: page + 1, size: rowsPerPage},
-      orderBy == null ? null : {order_by: orderBy},
-      orderDirection == null ? null : {order_desc: orderDirection == 'desc' ? 'true' : 'false'},
-      searchQuery == null ? null : {q: searchQuery},
-      userId == null ? null : {user_id: userId},
-      ownerId == null ? null : {owner_id: ownerId},
-      filterNeedsReview == null ? null : {needs_review: filterNeedsReview},
-      filterActive == null ? null : {active: filterActive},
-      startDate == null ? null : {start_date: startDate.unix()},
-      endDate == null ? null : {end_date: endDate.unix()},
-      {direct: true},
-      {deleted: false},
-    ),
+    queryParams: {
+      page: page + 1,
+      size: rowsPerPage,
+      ...(orderBy == null ? null : {order_by: orderBy}),
+      ...(orderDirection == null ? null : {order_desc: orderDirection == 'desc'}),
+      ...(searchQuery == null ? null : {q: searchQuery}),
+      ...(userId == null ? null : {user_id: userId}),
+      ...(ownerId == null ? null : {owner_id: ownerId}),
+      ...(filterNeedsReview == null ? null : {needs_review: filterNeedsReview}),
+      ...(filterActive == null ? null : {active: filterActive}),
+      ...(startDate == null ? null : {start_date: startDate.unix()}),
+      ...(endDate == null ? null : {end_date: endDate.unix()}),
+      direct: true,
+      deleted: false,
+    },
   });
 
   const {data: searchData} = useUsers({
@@ -357,7 +358,7 @@ export default function ExpiringGroups() {
                 </TableCell>
                 <TableCell>{row.is_owner ? 'Owner' : 'Member'}</TableCell>
                 <TableCell>
-                  <Started memberships={[row] as unknown as Array<OktaUserGroupMemberDetail>} />
+                  <Started memberships={[row]} />
                 </TableCell>
                 <TableCell>
                   {(row.created_actor?.deleted_at ?? null) != null ? (
@@ -377,7 +378,7 @@ export default function ExpiringGroups() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <Ending memberships={[row] as unknown as Array<OktaUserGroupMemberDetail>} />
+                  <Ending memberships={[row]} />
                 </TableCell>
                 <TableCell>{row.should_expire && 'Reviewed, not renewed'}</TableCell>
                 {userId == '@me' || currentUser.id == row.user?.id ? (

@@ -74,14 +74,16 @@ export default function AuditUser() {
   });
 
   const {data, isLoading: userAuditIsLoading} = useUsersAndGroups({
-    queryParams: Object.assign(
-      {user_id: id ?? '', page: page + 1, size: rowsPerPage},
-      orderBy == null ? null : {order_by: orderBy},
-      orderDirection == null ? null : {order_desc: orderDirection == 'desc' ? 'true' : 'false'},
-      searchQuery == null ? null : {q: searchQuery},
-      filterActive == null ? null : {active: filterActive},
-      filterOwner == null ? null : {owner: filterOwner},
-    ),
+    queryParams: {
+      user_id: id ?? '',
+      page: page + 1,
+      size: rowsPerPage,
+      ...(orderBy == null ? null : {order_by: orderBy}),
+      ...(orderDirection == null ? null : {order_desc: orderDirection == 'desc'}),
+      ...(searchQuery == null ? null : {q: searchQuery}),
+      ...(filterActive == null ? null : {active: filterActive}),
+      ...(filterOwner == null ? null : {owner: filterOwner}),
+    },
   });
 
   const {data: searchData} = useGroups({
@@ -287,7 +289,7 @@ export default function AuditUser() {
                     <Chip
                       label={row.role_group_mapping?.role_group?.name}
                       color="primary"
-                      onClick={() => navigate(`/roles/${row.role_group_mapping?.role_group?.name}`)}
+                      onClick={() => void navigate(`/roles/${row.role_group_mapping?.role_group?.name}`)}
                     />
                   )}
                 </TableCell>

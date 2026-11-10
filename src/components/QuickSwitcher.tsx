@@ -198,7 +198,7 @@ export default function QuickSwitcher({open, onClose}: QuickSwitcherProps) {
   const goTo = React.useCallback(
     (result: SwitcherResult) => {
       onClose();
-      navigate(result.to);
+      void navigate(result.to);
     },
     [navigate, onClose],
   );

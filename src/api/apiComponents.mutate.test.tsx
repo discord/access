@@ -10,12 +10,11 @@ import type {GroupMember} from './apiSchemas';
 // Each request must still carry only its own body (BulkRenewal regression).
 
 function stubFetch() {
-  const spy = vi.fn(
-    async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      new Response('{}', {status: 200, headers: {'Content-Type': 'application/json'}}),
+  const spy = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+    Promise.resolve(new Response('{}', {status: 200, headers: {'Content-Type': 'application/json'}})),
   );
   vi.stubGlobal('fetch', spy);
-  window.fetch = spy as unknown as typeof window.fetch;
+  window.fetch = spy;
   return spy;
 }
 
@@ -52,10 +51,13 @@ describe('generated mutation hooks', () => {
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
 
     const sent = Object.fromEntries(
-      spy.mock.calls.map(([url, init]) => [
-        String(url).split('/').at(-2),
-        JSON.parse(String(init?.body)).members_to_add,
-      ]),
+      spy.mock.calls.map(([url, init]) => {
+        if (typeof url !== 'string' || typeof init?.body !== 'string') {
+          throw new Error('expected a string URL and a JSON body');
+        }
+        const body = JSON.parse(init.body) as {members_to_add: string[]};
+        return [url.split('/').at(-2) ?? '', body.members_to_add];
+      }),
     );
     expect(sent).toEqual({g1: ['a', 'b', 'c'], g2: ['a']});
     expect(second.members_to_add).toEqual(['a']);

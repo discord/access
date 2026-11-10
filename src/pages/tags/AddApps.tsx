@@ -25,6 +25,7 @@ import {FormContainer, AutocompleteElement} from 'react-hook-form-mui';
 import {useApps, useAppByIdPut, AppByIdPutError} from '../../api/apiComponents';
 import {AppDetail, OktaUserDetail, TagDetail, UpdateAppBody} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
+import {requestErrorMessage} from '../../helpers';
 
 interface AddAppsButtonProps {
   setOpen(open: boolean): void;
@@ -67,7 +68,7 @@ function AddAppsDialog(props: AddAppsDialogProps) {
 
   const complete = (completedApp: AppDetail | undefined, error: AppByIdPutError | null) => {
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
       setAppUpdatesErrored((prevValue) => prevValue + 1);
     } else {
       setAppUpdatesCompleted((prevValue) => prevValue + 1);
@@ -84,7 +85,7 @@ function AddAppsDialog(props: AddAppsDialogProps) {
           setAppUpdatesErrored(0);
         } else {
           props.setOpen(false);
-          navigate(0);
+          void navigate(0);
         }
       }
     }

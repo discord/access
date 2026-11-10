@@ -14,6 +14,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import {useTagByIdDelete, TagByIdDeleteError} from '../../api/apiComponents';
 import {TagDetail, DeleteMessage, OktaUserDetail} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
+import {requestErrorMessage} from '../../helpers';
 
 interface TagDialogProps {
   setOpen(open: boolean): void;
@@ -29,10 +30,10 @@ function TagDialog(props: TagDialogProps) {
   const complete = (deletedTag: DeleteMessage | undefined, error: TagByIdDeleteError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(false);
-      navigate('/tags/');
+      void navigate('/tags/');
     }
   };
 

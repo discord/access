@@ -72,14 +72,16 @@ export default function AuditRole() {
   });
 
   const {data, isLoading: userAuditIsLoading} = useGroupsAndRoles({
-    queryParams: Object.assign(
-      {role_id: id ?? '', page: page + 1, size: rowsPerPage},
-      orderBy == null ? null : {order_by: orderBy},
-      orderDirection == null ? null : {order_desc: orderDirection == 'desc' ? 'true' : 'false'},
-      searchQuery == null ? null : {q: searchQuery},
-      filterActive == null ? null : {active: filterActive},
-      filterOwner == null ? null : {owner: filterOwner},
-    ),
+    queryParams: {
+      role_id: id ?? '',
+      page: page + 1,
+      size: rowsPerPage,
+      ...(orderBy == null ? null : {order_by: orderBy}),
+      ...(orderDirection == null ? null : {order_desc: orderDirection == 'desc'}),
+      ...(searchQuery == null ? null : {q: searchQuery}),
+      ...(filterActive == null ? null : {active: filterActive}),
+      ...(filterOwner == null ? null : {owner: filterOwner}),
+    },
   });
 
   const {data: searchData} = useGroups({

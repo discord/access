@@ -59,7 +59,7 @@ export default function ListGroups() {
 
   // If there's only one search result, just redirect to that group's page
   if (searchQuery != null && totalRows == 1) {
-    navigate('/groups/' + rows[0].name, {
+    void navigate('/groups/' + rows[0].name, {
       replace: true,
     });
   }
@@ -109,7 +109,7 @@ export default function ListGroups() {
       <ChangeTitle title="Groups" />
       <TableContainer component={Paper}>
         <TableTopBar title="Groups">
-          <Button variant="contained" onClick={() => navigate('/tags/')} endIcon={<TagIcon />}>
+          <Button variant="contained" onClick={() => void navigate('/tags/')} endIcon={<TagIcon />}>
             Tags
           </Button>
           <CreateUpdateGroup currentUser={currentUser}></CreateUpdateGroup>

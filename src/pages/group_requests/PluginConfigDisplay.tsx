@@ -11,8 +11,8 @@ import * as React from 'react';
 import Typography from '@mui/material/Typography';
 
 import {useAppGroupLifecyclePluginGroupConfigProps} from '../../api/apiComponents';
-import {PluginConfigProp} from '../../api/apiSchemas';
 import {pluginConfigRows} from './pluginConfig';
+import {formatPluginValue} from '../../helpers';
 
 interface PluginConfigDisplayProps {
   pluginId: string;
@@ -49,14 +49,14 @@ export default function PluginConfigDisplay({
         </Typography>
       )}
       {rows.map(({key, value, changed, from}) => {
-        const prop = configProps?.[key] as PluginConfigProp | undefined;
+        const prop = configProps?.[key];
         return (
           <Typography variant="body2" key={key} sx={{pl: label ? 2 : 0}}>
             <b>{prop?.display_name ?? key}:</b>{' '}
             {changed ? (
               <>
                 <span style={{textDecoration: 'line-through'}}>
-                  {from === undefined || from === '' ? '—' : String(from)}
+                  {from === undefined || from === '' ? '—' : formatPluginValue(from)}
                 </span>
                 {' → '}
                 {String(value)}

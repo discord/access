@@ -28,7 +28,7 @@ import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 import {useUsers, useGroupMembersByIdPut, GroupMembersByIdPutError} from '../../api/apiComponents';
 import {GroupDetail, GroupMember, GroupMembersSummary, OktaUserDetail} from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin} from '../../authorization';
-import {displayUserName} from '../../helpers';
+import {displayUserName, requestErrorMessage} from '../../helpers';
 import {carriedConstraints, timeLimitLabel} from '../../constraints';
 import accessConfig from '../../config/accessConfig';
 
@@ -85,10 +85,10 @@ function AddUsersDialog(props: AddUsersDialogProps) {
   const selfAddDisallowed = constraints.isSelfAddDisallowed(props.owner);
 
   let labels = null;
-  let timeLimitUntil = null;
+  let timeLimitUntil: string | null = null;
   if (!(timeLimit == null)) {
     const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-      .filter((key) => Number(key) <= timeLimit!)
+      .filter((key) => Number(key) <= timeLimit)
       .reduce(
         (obj, key) => {
           obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
@@ -111,10 +111,10 @@ function AddUsersDialog(props: AddUsersDialogProps) {
   const complete = (completedUsersChange: GroupMembersSummary | undefined, error: GroupMembersByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(true);
-      navigate(0);
+      void navigate(0);
     }
   };
 
@@ -213,7 +213,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
               label="For how long?"
               name="until"
               options={labels ?? UNTIL_OPTIONS}
-              onChange={(value) => setUntil(value)}
+              onChange={(value: string) => setUntil(value)}
               required
             />
           </FormControl>

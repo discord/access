@@ -39,6 +39,7 @@ import {canManageGroup, isAccessAdmin, isGroupOwner} from '../../authorization';
 import {carriedConstraints, timeLimitLabel} from '../../constraints';
 import {useCurrentUser} from '../../authentication';
 import accessConfig from '../../config/accessConfig';
+import {requestErrorMessage} from '../../helpers';
 
 dayjs.extend(IsSameOrBefore);
 
@@ -90,7 +91,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
       ?.map((membership: OktaUserGroupMemberDetail) => membership.active_group)
       .reduce((out: string[], curr: GroupRefForMembership | null | undefined) => {
         if (curr != null && curr.type == 'role_group') {
-          out.push(curr.id!);
+          out.push(curr.id);
         }
         return out;
       }, new Array<string>()) ?? [];
@@ -115,13 +116,13 @@ function AddRolesDialog(props: AddRolesDialogProps) {
   const reason = constraints.isReasonRequired(props.owner);
 
   // current user is a group owner and disallow owner add tag constraint active for type of dialog open (owner/member)
-  const disallowOwnerAdd = isGroupOwner(currentUser, props.group.id!) && constraints.isSelfAddDisallowed(props.owner);
+  const disallowOwnerAdd = isGroupOwner(currentUser, props.group.id) && constraints.isSelfAddDisallowed(props.owner);
 
   let labels = null;
-  let timeLimitUntil = null;
+  let timeLimitUntil: string | null = null;
   if (!(timeLimit == null)) {
     const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-      .filter((key) => Number(key) <= timeLimit!)
+      .filter((key) => Number(key) <= timeLimit)
       .reduce(
         (obj, key) => {
           obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
@@ -143,7 +144,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
 
   const complete = (completedUsersChange: RoleMembersSummary | undefined, error: RoleMembersByIdPutError | null) => {
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
       setRolesUpdatesErrored((prevValue) => prevValue + 1);
     } else {
       setRolesUpdatesCompleted((prevValue) => prevValue + 1);
@@ -159,7 +160,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
           setRolesUpdatesErrored(0);
         } else {
           props.setOpen(false);
-          navigate(0);
+          void navigate(0);
         }
       }
     }
@@ -229,7 +230,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
     }
 
     if (disallowOwnerAdd && !isAccessAdmin(currentUser)) {
-      return currentUserRoleMembershipIds.includes(option.id!);
+      return currentUserRoleMembershipIds.includes(option.id);
     }
 
     return false;
@@ -276,7 +277,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
               label="For how long?"
               name="until"
               options={labels ?? UNTIL_OPTIONS}
-              onChange={(value) => setUntil(value)}
+              onChange={(value: string) => setUntil(value)}
               required
             />
           </FormControl>
@@ -357,7 +358,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
                             {disabled &&
                             disallowOwnerAdd &&
                             !isAccessAdmin(currentUser) &&
-                            currentUserRoleMembershipIds.includes(option.id!)
+                            currentUserRoleMembershipIds.includes(option.id)
                               ? ' (Cannot add due to tag constraint)'
                               : disabled && roles.map((group) => group.id).includes(option.id)
                                 ? ' (Already selected)'

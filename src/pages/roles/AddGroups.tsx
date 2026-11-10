@@ -39,7 +39,7 @@ import {
   OktaUserDetail,
 } from '../../api/apiSchemas';
 import {isAccessAdmin, isGroupOwner} from '../../authorization';
-import {minTagTimeGroups, requiredReasonGroups, ownerCantAddSelfGroups} from '../../helpers';
+import {minTagTimeGroups, requiredReasonGroups, ownerCantAddSelfGroups, requestErrorMessage} from '../../helpers';
 import {timeLimitLabel} from '../../constraints';
 import {useCurrentUser} from '../../authentication';
 import accessConfig from '../../config/accessConfig';
@@ -97,7 +97,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
           (ownership: OktaUserGroupMemberDetail) =>
             ownership.active_group != null && ownership.active_group.type !== 'role_group',
         )
-        .map((ownership: OktaUserGroupMemberDetail) => ownership.active_group!.id!)
+        .map((ownership: OktaUserGroupMemberDetail) => ownership.active_group!.id)
     : null;
 
   const [until, setUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
@@ -112,10 +112,10 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
   const complete = (completedUsersChange: RoleMembersSummary | undefined, error: RoleMembersByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(false);
-      navigate(0);
+      void navigate(0);
     }
   };
 
@@ -153,7 +153,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
     setTimeLimit(time);
     if (!(time == null)) {
       const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-        .filter((key) => Number(key) <= time!)
+        .filter((key) => Number(key) <= time)
         .reduce(
           (obj, key) => {
             obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
@@ -307,7 +307,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
                       // so the role can't be added to them — true even for admins.
                       option.is_managed == true &&
                       // Non-admins may only add the role to non-role groups they own; admins (null) to any.
-                      (userOwnedNonRoleGroupIds == null || userOwnedNonRoleGroupIds.includes(option.id!)) &&
+                      (userOwnedNonRoleGroupIds == null || userOwnedNonRoleGroupIds.includes(option.id)) &&
                       // Don't offer groups already staged for addition.
                       !groups.map((group) => group.id).includes(option.id) &&
                       // Enforce the self-add tag constraint: a non-admin who is a member of the role

@@ -59,7 +59,7 @@ export default function ListRoles() {
 
   // If there's only one search result, just redirect to that role's page
   if (searchQuery != null && totalRows == 1) {
-    navigate('/roles/' + rows[0].name, {
+    void navigate('/roles/' + rows[0].name, {
       replace: true,
     });
   }
@@ -109,7 +109,7 @@ export default function ListRoles() {
       <ChangeTitle title="Roles" />
       <TableContainer component={Paper}>
         <TableTopBar title="Roles">
-          <Button variant="contained" onClick={() => navigate('/tags/')} endIcon={<SellIcon />}>
+          <Button variant="contained" onClick={() => void navigate('/tags/')} endIcon={<SellIcon />}>
             Tags
           </Button>
           <CreateUpdateGroup defaultGroupType="role_group" currentUser={currentUser}></CreateUpdateGroup>

@@ -33,13 +33,12 @@ vi.mock('../api/apiComponents', () => ({
 import {ConfigField, groupConfigHasFields, isFieldLocked} from './AppGroupLifecyclePluginConfigurationForm';
 import {PluginConfigProp} from '../api/apiSchemas';
 
-const prop = (over: Partial<PluginConfigProp>): PluginConfigProp =>
-  ({
-    display_name: 'X',
-    type: 'text',
-    required: false,
-    ...over,
-  }) as PluginConfigProp;
+const prop = (over: Partial<PluginConfigProp>): PluginConfigProp => ({
+  display_name: 'X',
+  type: 'text',
+  required: false,
+  ...over,
+});
 
 // ConfigField only depends on the (mocked) form context, so invoke it as a plain
 // function and inspect the returned element tree — no DOM render needed.

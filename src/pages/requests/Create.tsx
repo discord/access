@@ -45,6 +45,7 @@ import {canManageGroup, isAccessAdmin} from '../../authorization';
 import {carriedConstraints, timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import accessConfig, {requireRequestReasons} from '../../config/accessConfig';
+import {requestErrorMessage} from '../../helpers';
 
 dayjs.extend(IsSameOrBefore);
 
@@ -188,7 +189,7 @@ const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({
 
 function filterUntilLabels(timeLimit: number): [string, Array<Record<string, string>>] {
   const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-    .filter((key) => Number(key) <= timeLimit!)
+    .filter((key) => Number(key) <= timeLimit)
     .reduce(
       (obj, key) => {
         obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
@@ -237,10 +238,10 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const complete = (completedRequest: AccessRequestDetail | undefined, error: AccessRequestsCreateError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(false);
-      navigate('/requests/' + encodeURIComponent(completedRequest?.id ?? ''));
+      void navigate('/requests/' + encodeURIComponent(completedRequest?.id ?? ''));
     }
   };
 
@@ -396,7 +397,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
                 label="For how long?"
                 name="until"
                 options={labels ?? UNTIL_OPTIONS}
-                onChange={(value) => setUntil(value)}
+                onChange={(value: string) => setUntil(value)}
                 required
               />
             </Grid>

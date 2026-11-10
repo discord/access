@@ -40,7 +40,7 @@ import RelativeTime from 'dayjs/plugin/relativeTime';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
 import RoleMembers from './RoleMembers';
-import {groupBy, displayUserName, ownerCantAddSelf} from '../../helpers';
+import {groupBy, displayUserName, ownerCantAddSelf, requestErrorMessage} from '../../helpers';
 import {approvalUntilDefault, timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {useCurrentUser} from '../../authentication';
@@ -184,9 +184,9 @@ export default function ReadRoleRequest() {
   const complete = (completedAccessRequest: RoleRequestSummary | undefined, error: RoleRequestByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
-      navigate(0);
+      void navigate(0);
     }
   };
 
@@ -222,7 +222,7 @@ export default function ReadRoleRequest() {
   let requestedUntilAdjusted: string | undefined = undefined;
   if (!(timeLimit == null)) {
     const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-      .filter((key) => Number(key) <= timeLimit!)
+      .filter((key) => Number(key) <= timeLimit)
       .reduce(
         (obj, key) => {
           obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
@@ -771,7 +771,7 @@ export default function ReadRoleRequest() {
                                         label="For how long?"
                                         name="until"
                                         options={labels ?? UNTIL_OPTIONS}
-                                        onChange={(value) => setUntil(value)}
+                                        onChange={(value: string) => setUntil(value)}
                                         required
                                       />
                                     </Grid>
