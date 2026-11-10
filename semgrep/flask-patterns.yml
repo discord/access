@@ -1,0 +1,20 @@
+rules:
+  - id: flask-patterns
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Access is a FastAPI app; Flask idioms don't apply. Raise `HTTPException` in a router (or an
+      `AccessException` subclass in an operation) instead of `abort()`, inject per-request state
+      with FastAPI `Depends` instead of `flask.g`, and use a dependency or middleware in
+      api/middleware.py instead of `before_request`.
+    paths:
+      include:
+        - /api/
+    pattern-either:
+      - pattern: import flask
+      - pattern: import flask.$SUBMODULE
+      - pattern: from flask import $NAME
+      - pattern: abort(...)
+      - pattern: $MODULE.abort(...)
+      - pattern: flask.g
+      - pattern: $APP.before_request

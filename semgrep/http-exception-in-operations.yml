@@ -1,0 +1,16 @@
+rules:
+  - id: http-exception-in-operations
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Raise an `AccessException` subclass (`InvalidRequestError` for 400, `ConflictError` for
+      409, `ResourceGoneError` for 410, and so on) instead of `HTTPException` in an operation.
+      Operations also run outside HTTP requests (CLI, syncer, MCP), and the exception handlers
+      in api/exception_handlers.py map `AccessException` subclasses to the RFC 9457
+      problem-detail envelope.
+    paths:
+      include:
+        - /api/operations/
+    pattern-either:
+      - pattern: raise HTTPException(...)
+      - pattern: raise $MODULE.HTTPException(...)

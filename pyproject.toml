@@ -112,6 +112,8 @@ config = ["*.json"]
 # ----------------------------------------------------------------------
 [tool.ruff]
 line-length = 120
+# Semgrep rule fixtures: deliberately non-conforming snippets with undefined names.
+extend-exclude = ["semgrep"]
 
 [tool.ruff.lint]
 # ruff's default rule set, plus the rules that were its defaults before 0.16. The
@@ -145,6 +147,10 @@ filterwarnings = [
 # ----------------------------------------------------------------------
 [tool.ty.environment]
 python-version = "3.13"
+
+[tool.ty.src]
+# Semgrep rule fixtures: deliberately non-conforming snippets with undefined names.
+exclude = ["semgrep"]
 
 [tool.ty.rules]
 # Several runtime deps ship without type information, so ty can't resolve
