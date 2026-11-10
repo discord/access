@@ -1,5 +1,5 @@
 import logging
-import random
+import secrets
 import string
 from datetime import datetime
 
@@ -249,4 +249,4 @@ class CreateGroupRequest:
 
     def __generate_id(self) -> str:
         """Generate a random 20 character ID like Okta IDs"""
-        return "".join(random.choices(string.ascii_letters + string.digits, k=20))
+        return "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(20))

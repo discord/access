@@ -1,0 +1,7 @@
+# Mechanical, behavior-preserving commits for `git blame` to skip. GitHub's blame view
+# reads this file automatically; locally, run
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# List full SHAs as they appear on `main`, each with its commit subject.
+
+# Convert f-string logging calls to %-style arguments
+1bef885823e94aa9bb577ca85a2f1140540a28ab
