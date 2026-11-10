@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
 
-from api.auth.dependencies import require_authenticated
+from api.auth.dependencies import get_current_user_id, require_authenticated
 from api.config import settings
 
 _REAL_DSN = "https://abc@o12345.ingest.sentry.io/777"
@@ -24,12 +24,15 @@ _ENVELOPE = f'{{"event_id":"abc","dsn":"{_PLACEHOLDER_DSN}"}}\n{{{{"type":"event
 @pytest.fixture
 def production_env(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     """Bypass the dev/test auth shortcut so the 'production' branch of
-    `bugs.post_sentry` runs. `require_authenticated` is overridden to no-op
-    because the real path would try to verify a Cloudflare/OIDC token."""
+    `bugs.post_sentry` runs. `require_authenticated` and `get_current_user_id`
+    are overridden because the real path would try to verify a Cloudflare/OIDC
+    token."""
     monkeypatch.setattr(settings, "ENV", "production")
     app.dependency_overrides[require_authenticated] = lambda: None
+    app.dependency_overrides[get_current_user_id] = lambda: "sentry-test-user"
     yield
     app.dependency_overrides.pop(require_authenticated, None)
+    app.dependency_overrides.pop(get_current_user_id, None)
 
 
 @pytest.fixture
@@ -87,4 +90,23 @@ async def test_sentry_skips_when_dsn_unset(
 
     rep = await client.post("/api/bugs/sentry", content=_ENVELOPE)
     assert rep.status_code == 200
+    spy.assert_not_called()
+
+
+async def test_sentry_requires_authentication(
+    client: AsyncClient, app: FastAPI, monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture
+) -> None:
+    """The tunnel resolves `CurrentUserId` itself, so it rejects a caller even
+    when the app-wide `require_authenticated` gate is bypassed."""
+    monkeypatch.setattr(settings, "ENV", "production")
+    monkeypatch.setattr(settings, "REACT_SENTRY_DSN", _REAL_DSN)
+    monkeypatch.setattr(settings, "CLOUDFLARE_TEAM_DOMAIN", None)
+    monkeypatch.setattr(settings, "OIDC_CLIENT_SECRETS", None)
+    app.dependency_overrides[require_authenticated] = lambda: None
+    spy = mocker.patch("api.routers.bugs.httpx.AsyncClient")
+    try:
+        rep = await client.post("/api/bugs/sentry", content=_ENVELOPE)
+    finally:
+        app.dependency_overrides.pop(require_authenticated, None)
+    assert rep.status_code == 403
     spy.assert_not_called()
