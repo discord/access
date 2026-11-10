@@ -1,0 +1,107 @@
+# Operator-specific strings that must not appear upstream; read by
+# check_operator_strings.py.
+#
+# This file is public. Patterns name only strings that already appear in this
+# repository, or generic shapes; never add an internal hostname or any other
+# value that is not already public.
+#
+# Paths are fnmatch globs against repo-relative paths, where `*` also matches
+# `/`. An [[allow]] entry's `match` regex must cover the whole matched span on
+# the line, so it excuses exactly the mention it names.
+
+# --- Patterns ---------------------------------------------------------------
+
+[[pattern]]
+id = "operator-name"
+regex = '(?<![a-z])discord(app)?(?![a-z])'
+ignore_case = true
+description = "Names the project's sponsoring operator; upstream code must serve every operator"
+
+[[pattern]]
+id = "release-pipeline"
+regex = 'discord-access-prd|DISCORD_CI_ALERTS_WEBHOOK'
+description = "Names a value from the sponsoring operator's release pipeline"
+
+[[pattern]]
+id = "artifact-registry"
+regex = '\b[a-z0-9-]+-docker\.pkg\.dev\b'
+description = "Names a specific Google Artifact Registry host"
+
+[[pattern]]
+id = "gcp-service-account"
+regex = '@[a-z0-9-]+\.iam\.gserviceaccount\.com\b'
+description = "Names a specific GCP service account"
+
+[[pattern]]
+id = "workload-identity-provider"
+regex = 'projects/\d+/locations/global/workloadIdentityPools/'
+description = "Names a specific GCP workload identity provider"
+
+# --- Excluded paths ---------------------------------------------------------
+
+[[exclude]]
+path = ".github/workflows/docker-image.yml"
+reason = "The sanctioned carve-out: it pushes the sponsoring operator's release image (see .claude/CLAUDE.md)"
+
+[[exclude]]
+path = "scripts/operator_strings.toml"
+reason = "Defines the patterns"
+
+[[exclude]]
+path = "scripts/test_check_operator_strings.py"
+reason = "Test fixtures exercise the patterns"
+
+# --- Allowlist --------------------------------------------------------------
+
+[[allow]]
+paths = ["*"]
+patterns = ["operator-name"]
+match = 'discord/access\b'
+reason = "The repository's own GitHub slug, used in links and issue references"
+
+[[allow]]
+paths = [".claude/CLAUDE.md"]
+patterns = ["operator-name", "release-pipeline", "artifact-registry"]
+reason = "The contributor guide documents the docker-image.yml carve-out, which requires naming its values"
+
+[[allow]]
+paths = ["README.md"]
+patterns = ["operator-name"]
+match = 'Copyright \(C\) \d{4} Discord Inc\.'
+reason = "The project's copyright notice"
+
+[[allow]]
+paths = ["examples/plugins/*/pyproject.toml"]
+patterns = ["operator-name"]
+match = 'authors = \[\{ name = "Discord" \}\]'
+reason = "Package authorship, which follows the copyright holder"
+
+[[allow]]
+paths = ["README.md"]
+patterns = ["operator-name"]
+match = '<a href="https://discord\.gg/access-enjoyers"><img src="https://discordapp\.com/api/guilds/\d+/widget\.png\?style=banner2" alt="Join our Discord!"></a>'
+reason = "README link to the project's public community server"
+
+[[allow]]
+paths = ["README.md", "docker-compose.yml"]
+patterns = ["operator-name"]
+match = '(docker compose exec |container_name: |^  )discord-access\b'
+reason = "The local docker-compose service name; renaming it would break existing contributors' commands"
+
+[[allow]]
+paths = ["README.md", "examples/plugins/*/README.md"]
+patterns = ["operator-name"]
+match = '(Email, SMS, Discord, Slack|a Discord message|Discord API, GitHub API)'
+reason = "Discord named as one messaging platform a plugin could integrate with, alongside others"
+
+[[allow]]
+paths = ["src/App.tsx"]
+patterns = ["operator-name"]
+match = 'See https://discord\.com/branding'
+reason = "The default theme's palette comes from these public brand guidelines"
+
+[[allow]]
+paths = ["api/config.py", "tests/*"]
+patterns = ["operator-name"]
+match = 'wumpus@discord\.com'
+reason = "The default user that development-mode auth and the test fixtures act as"

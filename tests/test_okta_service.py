@@ -39,24 +39,24 @@ def _user_schema(base_properties: dict[str, Any], custom_properties: dict[str, A
     return schema
 
 
-def _okta_group(allow_discord_access: Any = "unset") -> OktaGroupType:
+def _okta_group(allow_access_management: Any = "unset") -> OktaGroupType:
     """Build a real Okta Group whose profile optionally carries the custom
-    ``allow_discord_access`` attribute (which lives in the profile's
+    ``allow_access_management`` attribute (which lives in the profile's
     additional_properties)."""
     profile: dict[str, Any] = {"name": "n", "description": "d"}
-    if allow_discord_access != "unset":
-        profile["allow_discord_access"] = allow_discord_access
+    if allow_access_management != "unset":
+        profile["allow_access_management"] = allow_access_management
     group = OktaGroupType.from_dict({"id": "123456789", "type": "OKTA_GROUP", "profile": profile})
     assert group is not None
     return group
 
 
-def test_is_managed_group_with_allow_discord_access_false() -> None:
-    """Test that is_managed_group returns False when allow_discord_access is False."""
-    with patch("api.config.OKTA_GROUP_PROFILE_CUSTOM_ATTR", "allow_discord_access"):
+def test_is_managed_group_with_allow_access_management_false() -> None:
+    """Test that is_managed_group returns False when allow_access_management is False."""
+    with patch("api.config.OKTA_GROUP_PROFILE_CUSTOM_ATTR", "allow_access_management"):
         from api.config import OKTA_GROUP_PROFILE_CUSTOM_ATTR
 
-        group = _okta_group(allow_discord_access=False)
+        group = _okta_group(allow_access_management=False)
         group_ids_with_group_rules: dict[str, list[OktaGroupRuleType]] = {}  # Empty dictionary for group rules
 
         # Call the function and assert the expected result
@@ -64,12 +64,12 @@ def test_is_managed_group_with_allow_discord_access_false() -> None:
         assert result is False
 
 
-def test_is_managed_group_with_allow_discord_access_true() -> None:
-    """Test that is_managed_group returns True when allow_discord_access is True."""
-    with patch("api.config.OKTA_GROUP_PROFILE_CUSTOM_ATTR", "allow_discord_access"):
+def test_is_managed_group_with_allow_access_management_true() -> None:
+    """Test that is_managed_group returns True when allow_access_management is True."""
+    with patch("api.config.OKTA_GROUP_PROFILE_CUSTOM_ATTR", "allow_access_management"):
         from api.config import OKTA_GROUP_PROFILE_CUSTOM_ATTR
 
-        group = _okta_group(allow_discord_access=True)
+        group = _okta_group(allow_access_management=True)
         group_ids_with_group_rules: dict[str, list[OktaGroupRuleType]] = {}  # Empty dictionary for group rules
 
         # Call the function and assert the expected result
@@ -77,12 +77,12 @@ def test_is_managed_group_with_allow_discord_access_true() -> None:
         assert result is True
 
 
-def test_is_managed_group_with_allow_discord_access_undefined() -> None:
+def test_is_managed_group_with_allow_access_management_undefined() -> None:
     """Test that is_managed_group returns True when the custom attribute is undefined."""
     with patch("api.config.OKTA_GROUP_PROFILE_CUSTOM_ATTR", None):
         from api.config import OKTA_GROUP_PROFILE_CUSTOM_ATTR
 
-        group = _okta_group(allow_discord_access=False)
+        group = _okta_group(allow_access_management=False)
         group_ids_with_group_rules: dict[str, list[OktaGroupRuleType]] = {}  # Empty dictionary for group rules
 
         # Call the function and assert the expected result
@@ -97,12 +97,12 @@ async def test_update_group_preserves_custom_attributes() -> None:
     group_id = "test-group-id"
 
     # An existing group whose profile carries a custom attribute
-    # (``allow_discord_access`` lives in the profile's additional_properties).
+    # (``allow_access_management`` lives in the profile's additional_properties).
     existing_group = OktaGroupType.from_dict(
         {
             "id": group_id,
             "type": "OKTA_GROUP",
-            "profile": {"name": "Old Name", "description": "Old Description", "allow_discord_access": True},
+            "profile": {"name": "Old Name", "description": "Old Description", "allow_access_management": True},
         }
     )
 
@@ -137,7 +137,7 @@ async def test_update_group_preserves_custom_attributes() -> None:
     assert isinstance(updated_payload, AddGroupRequest)
     assert updated_payload.profile.name == "New Name"
     assert updated_payload.profile.description == "New Description"
-    assert updated_payload.profile.to_dict()["allow_discord_access"] is True
+    assert updated_payload.profile.to_dict()["allow_access_management"] is True
 
 
 def test_user_schema_parses_okta_string_unique_enum() -> None:
