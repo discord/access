@@ -252,7 +252,7 @@ function GroupDialog(props: GroupDialogProps) {
               label="Type"
               name="type"
               options={GROUP_TYPE_OPTIONS}
-              onChange={(value) => setGroupType(value)}
+              onChange={(value: 'okta_group' | 'app_group' | 'role_group') => setGroupType(value)}
               // `readOnly`, not `disabled`: react-hook-form omits a disabled field from the
               // submitted data, and rhf-mui forwards `SelectElement`'s `disabled` into
               // `useController`. The API discriminates the group body on `type`, so dropping it
@@ -279,7 +279,7 @@ function GroupDialog(props: GroupDialogProps) {
                 // page of results matches nothing and the field renders blank, and a search in
                 // flight has no options at all, so the value reads as empty, the input resets,
                 // and the reset starts another search -- a loop that outran the backend.
-                transform={{input: (app) => app ?? null}}
+                transform={{input: (app?: (typeof appSearchOptions)[number] | null) => app ?? null}}
                 autocompleteProps={{
                   // `readOnly`, not `disabled`: react-hook-form clears a disabled field's value, and
                   // rhf-mui forwards `autocompleteProps.disabled` into `useController`, so disabling

@@ -135,7 +135,7 @@ export function ConfigField({
             defaultValue={value ?? property.default_value ?? false}
             render={({field}) => (
               <FormControlLabel
-                control={<Checkbox {...field} checked={field.value} disabled={locked} />}
+                control={<Checkbox {...field} checked={Boolean(field.value)} disabled={locked} />}
                 label={property.display_name}
               />
             )}

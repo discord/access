@@ -91,7 +91,7 @@ interface OwnershipEndingFieldProps {
 }
 
 function OwnershipEndingField({ownershipTimeLimit, constraintsBlocked, setOwnershipUntil}: OwnershipEndingFieldProps) {
-  const {control, setValue} = useFormContext();
+  const {control, setValue} = useFormContext<ResolveRequestForm>();
 
   const [availableUntilOptions, defaultUntilId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
     // While the tag-mode answer is in flight the limit reads as null. Holding
@@ -134,7 +134,7 @@ function OwnershipEndingField({ownershipTimeLimit, constraintsBlocked, setOwners
             label="Ownership Ending At"
             onChange={(e) => {
               field.onChange(e);
-              setOwnershipUntil(e.target.value as string);
+              setOwnershipUntil(e.target.value);
             }}>
             {availableUntilOptions.map(({id, label}) => (
               <MenuItem key={id} value={id}>
@@ -854,7 +854,7 @@ export default function ReadGroupRequest() {
                                         label="Type"
                                         name="resolved_group_type"
                                         options={GROUP_TYPE_OPTIONS}
-                                        onChange={(value) => {
+                                        onChange={(value: string) => {
                                           setGroupType(value);
                                           setAppName('');
                                           setResolvedAppId(null);
@@ -882,7 +882,7 @@ export default function ReadGroupRequest() {
                                           // `options` matching the form value, and `options` is a search this field's
                                           // input drives: the requested app can fall past the first page and render
                                           // blank, and an in-flight search empties it, resetting the input mid-typing.
-                                          transform={{input: (app) => app ?? null}}
+                                          transform={{input: (app?: AppDetail | null) => app ?? null}}
                                           autocompleteProps={{
                                             getOptionLabel: (option: AppDetail) => option.name,
                                             isOptionEqualToValue: (option: AppDetail, value: AppDetail) =>

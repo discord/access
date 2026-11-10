@@ -771,7 +771,7 @@ export default function ReadRoleRequest() {
                                         label="For how long?"
                                         name="until"
                                         options={labels ?? UNTIL_OPTIONS}
-                                        onChange={(value) => setUntil(value)}
+                                        onChange={(value: string) => setUntil(value)}
                                         required
                                       />
                                     </Grid>
