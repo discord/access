@@ -140,7 +140,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   });
 
   // Custom cell renderer for the ToggleButtonGroup
-  const renderToggleButtons = (params: GridRenderCellParams) => {
+  const renderToggleButtons = (params: GridRenderCellParams<Data>) => {
     const handleToggleChange = (event: React.MouseEvent<HTMLElement>, newValue: string | null) => {
       const rowId = params.row.id;
       const currentValue = toggleStates[rowId] || '';

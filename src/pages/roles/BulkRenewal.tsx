@@ -190,7 +190,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   }, [props.rows, rowDisallowsSelfAdd]);
 
   // Custom cell renderer for the ToggleButtonGroup
-  const renderToggleButtons = (params: GridRenderCellParams) => {
+  const renderToggleButtons = (params: GridRenderCellParams<Data>) => {
     const handleToggleChange = (event: React.MouseEvent<HTMLElement>, newValue: string | null) => {
       const rowId = params.row.id;
       const currentValue = toggleStates[rowId] || '';
@@ -221,12 +221,15 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     const currentValue = toggleStates[params.row.id] || '';
 
     // Determine if toggle should be disabled based on your conditional
+    const {roleName, groupName, memberOrOwner} = params.row;
     const isToggleEnabled = isAccessAdmin(currentUser)
       ? true
       : !(
-          role_memberships.has(params.row.roleName) &&
-          ((groups_cant_add_self_owner.has(params.row.groupName) && params.row.memberOrOwner == 'Owner') ||
-            (groups_cant_add_self_member.has(params.row.groupName) && params.row.memberOrOwner == 'Member'))
+          roleName != null &&
+          role_memberships.has(roleName) &&
+          groupName != null &&
+          ((groups_cant_add_self_owner.has(groupName) && memberOrOwner == 'Owner') ||
+            (groups_cant_add_self_member.has(groupName) && memberOrOwner == 'Member'))
         );
 
     return (
