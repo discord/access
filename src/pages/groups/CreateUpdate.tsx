@@ -116,11 +116,9 @@ function GroupDialog(props: GroupDialogProps) {
   // does not, so its detail is fetched for the plugin id.
   const pickedAppId = selectedApp != null && selectedApp.id !== initialApp?.id ? selectedApp.id : null;
   const {data: pickedAppDetail} = useAppById({pathParams: {appId: pickedAppId ?? ''}}, {enabled: pickedAppId != null});
+  const appWithPluginId: AppDetail | AppIdRef | null | undefined = pickedAppId != null ? pickedAppDetail : selectedApp;
   const appGroupLifecyclePluginId =
-    groupType === 'app_group'
-      ? ((pickedAppId != null ? pickedAppDetail : (selectedApp as AppDetail | AppIdRef | null))
-          ?.app_group_lifecycle_plugin ?? null)
-      : null;
+    groupType === 'app_group' ? (appWithPluginId?.app_group_lifecycle_plugin ?? null) : null;
 
   const isAllowedToConfigureAppGroupLifecyclePlugin =
     isAccessAdmin(props.currentUser) || isAppOwnerGroupOwner(props.currentUser, selectedApp?.id ?? '');

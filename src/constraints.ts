@@ -249,7 +249,7 @@ function useSplitQuery(ids: string[], mode: 'group_ids' | 'tag_ids'): EffectiveC
   return React.useMemo(() => {
     if (batches.length === 0) return reader([], {}, false, null);
     const pending = results.some((r) => r.data === undefined && r.error == null);
-    const error = (results.find((r) => r.error != null)?.error as Error | undefined) ?? null;
+    const error = results.find((r) => r.error != null)?.error ?? null;
     if (pending || error != null) return reader(undefined, {}, pending, error);
     const parts = results.map((r) => r.data!);
     return reader(

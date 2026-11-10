@@ -130,7 +130,7 @@ export default function ListGroupRequests() {
   };
 
   const handleStatusFilter = (event: SelectChangeEvent<StatusFilterValue>) => {
-    const newValue = event.target.value as StatusFilterValue;
+    const newValue = event.target.value;
     if (newValue === 'ALL') {
       setSearchParams((params) => {
         params.delete('status');

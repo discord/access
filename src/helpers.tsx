@@ -99,7 +99,7 @@ function checkBooleanTag(tags: TagSummary[] | undefined, targetTag: string) {
 
   return tags.reduce((out: boolean, curr: TagSummary) => {
     if (curr.enabled && curr.constraints && Object.keys(curr.constraints).includes(targetTag)) {
-      return out || curr.constraints![targetTag];
+      return out || curr.constraints[targetTag];
     } else return out;
   }, false);
 }

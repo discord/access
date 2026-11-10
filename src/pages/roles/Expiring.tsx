@@ -365,7 +365,7 @@ export default function ExpiringRoless() {
                 </TableCell>
                 <TableCell>{row.is_owner ? 'Owner' : 'Member'}</TableCell>
                 <TableCell>
-                  <Started memberships={[row] as unknown as Array<RoleGroupMapDetail>} />
+                  <Started memberships={[row]} />
                 </TableCell>
                 <TableCell>
                   {(row.created_actor?.deleted_at ?? null) != null ? (
@@ -385,7 +385,7 @@ export default function ExpiringRoless() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <Ending memberships={[row] as unknown as Array<RoleGroupMapDetail>} />
+                  <Ending memberships={[row]} />
                 </TableCell>
                 <TableCell>{row.should_expire && 'Reviewed, not renewed'}</TableCell>
                 {ownerId == '@me' || canManageGroup(currentUser, row.group as GroupDetail | undefined) ? (

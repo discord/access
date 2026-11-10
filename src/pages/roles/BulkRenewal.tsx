@@ -64,7 +64,7 @@ interface Data {
 function createData(row: RoleGroupMapDetail, selected: number | undefined, renewValue: 'yes' | 'no' | '' = ''): Data {
   const highlight = row.id == selected ? 'Selected-' : '';
   return {
-    id: row.id!,
+    id: row.id,
     groupName: row.group?.name,
     roleName: row.role_group?.name,
     groupType: row.group?.type == 'okta_group' ? 'Group' : row.group?.type == 'app_group' ? 'App Group' : 'Role Group',
@@ -124,9 +124,9 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     const initialStates: Record<number, 'yes' | 'no' | ''> = {};
     props.rows.forEach((row) => {
       if (row.should_expire) {
-        initialStates[row.id!] = 'no';
+        initialStates[row.id] = 'no';
       } else {
-        initialStates[row.id!] = '';
+        initialStates[row.id] = '';
       }
     });
     return initialStates;
@@ -153,7 +153,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     () =>
       currentUser.active_group_memberships?.reduce((out: Set<string>, curr: OktaUserGroupMemberDetail) => {
         if (curr.active_group?.type == 'role_group') {
-          out.add(curr.active_group!.name!);
+          out.add(curr.active_group.name);
         }
         return out;
       }, new Set<string>()) ?? new Set<string>(),
@@ -278,7 +278,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   // on: a group's owner limit governs only the rows being renewed as
   // ownerships, and its member limit only the rest.
   const renewalMemberships = React.useMemo(
-    () => [...selectedYes, ...selectedNo].filter((m) => toggleStates[m.id!] === 'yes'),
+    () => [...selectedYes, ...selectedNo].filter((m) => toggleStates[m.id] === 'yes'),
     [selectedYes, selectedNo, toggleStates],
   );
   const ownerGroupIds = React.useMemo(
@@ -439,8 +439,8 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     // creates map  { role ids : {'owner' : [group ids], 'member' : [group ids]} }
     const grouped = selectedYes.reduce(
       (groups, item) => {
-        (groups[item.role_group!.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(
-          item.group!.id!,
+        (groups[item.role_group!.id] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(
+          item.group!.id,
         );
         return groups;
       },
@@ -453,7 +453,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     const doNotRenew = selectedNo.reduce(
       (groups, item) => {
         if (!item.should_expire && dayjs(item.ended_at) >= dayjs()) {
-          (groups[item.role_group!.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.id!);
+          (groups[item.role_group!.id] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.id);
         }
         return groups;
       },
@@ -497,7 +497,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   };
 
   // Generate rows with current toggle states
-  const dataRows = props.rows.map((row) => createData(row, props.select, toggleStates[row.id!] || ''));
+  const dataRows = props.rows.map((row) => createData(row, props.select, toggleStates[row.id] || ''));
 
   return (
     <Dialog open fullWidth maxWidth="xl" onClose={() => props.setOpen(false)}>

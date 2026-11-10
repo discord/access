@@ -357,7 +357,7 @@ export default function ExpiringGroups() {
                 </TableCell>
                 <TableCell>{row.is_owner ? 'Owner' : 'Member'}</TableCell>
                 <TableCell>
-                  <Started memberships={[row] as unknown as Array<OktaUserGroupMemberDetail>} />
+                  <Started memberships={[row]} />
                 </TableCell>
                 <TableCell>
                   {(row.created_actor?.deleted_at ?? null) != null ? (
@@ -377,7 +377,7 @@ export default function ExpiringGroups() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <Ending memberships={[row] as unknown as Array<OktaUserGroupMemberDetail>} />
+                  <Ending memberships={[row]} />
                 </TableCell>
                 <TableCell>{row.should_expire && 'Reviewed, not renewed'}</TableCell>
                 {userId == '@me' || currentUser.id == row.user?.id ? (

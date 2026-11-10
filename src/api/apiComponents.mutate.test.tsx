@@ -15,7 +15,7 @@ function stubFetch() {
       new Response('{}', {status: 200, headers: {'Content-Type': 'application/json'}}),
   );
   vi.stubGlobal('fetch', spy);
-  window.fetch = spy as unknown as typeof window.fetch;
+  window.fetch = spy;
   return spy;
 }
 

@@ -23,7 +23,7 @@ export function useInfiniteAppGroups(appId: string, owner: boolean, q = '', enab
       fetchAppGroupsById(
         deepMerge(fetcherOptions, {
           pathParams: {appId},
-          queryParams: Object.assign({owner, page: pageParam as number}, q ? {q} : null),
+          queryParams: Object.assign({owner, page: pageParam}, q ? {q} : null),
         }),
         signal,
       ),
