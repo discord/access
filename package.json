@@ -14,7 +14,7 @@
     "@mui/x-data-grid": "^9.16.0",
     "@mui/x-date-pickers": "^9.16.0",
     "@sentry/react": "^11.9.0",
-    "@tanstack/react-query": "^5.105.0",
+    "@tanstack/react-query": "^5.107.1",
     "confetti-cannon": "^2.3.2",
     "dayjs": "^1.11.23",
     "env-cmd": "^11.0.0",
@@ -75,7 +75,7 @@
     "jsdom": "^30.1.3",
     "lint-staged": "^17.6.0",
     "prettier": "^3.9.10",
-    "semver": "^7.8.5",
+    "semver": "^7.8.6",
     "typescript": "~6.0.3",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
