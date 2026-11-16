@@ -1003,6 +1003,138 @@ export const useSentryBug = (
   });
 };
 
+export type EffectiveConstraintsQueryParams = {
+  /**
+   * @maxItems 200
+   */
+  group_ids?: string[];
+  /**
+   * @maxItems 200
+   */
+  tag_ids?: string[];
+};
+
+export type EffectiveConstraintsError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type EffectiveConstraintsVariables = {
+  queryParams?: EffectiveConstraintsQueryParams;
+} & ApiContext['fetcherOptions'];
+
+/**
+ * Report the constraints in force over a set of groups, or over a set of tags.
+ *
+ * Group mode answers "what binds the things I have selected?", returning both
+ * the roll-up across the whole selection and a per-group breakdown. Tag mode
+ * answers "what would these tags impose?" for a group that does not exist yet
+ * -- a group request being approved -- and so has no per-group breakdown.
+ *
+ * Name exactly one of `group_ids` or `tag_ids`; naming both or neither is a
+ * 400. Ids naming a deleted or nonexistent record are dropped, so an entirely
+ * stale selection yields an empty answer rather than an error.
+ */
+export const fetchEffectiveConstraints = (variables: EffectiveConstraintsVariables, signal?: AbortSignal) =>
+  apiFetch<
+    Schemas.EffectiveConstraintsResponse,
+    EffectiveConstraintsError,
+    undefined,
+    {},
+    EffectiveConstraintsQueryParams,
+    {}
+  >({url: '/api/constraints/effective', method: 'get', ...variables, signal});
+
+/**
+ * Report the constraints in force over a set of groups, or over a set of tags.
+ *
+ * Group mode answers "what binds the things I have selected?", returning both
+ * the roll-up across the whole selection and a per-group breakdown. Tag mode
+ * answers "what would these tags impose?" for a group that does not exist yet
+ * -- a group request being approved -- and so has no per-group breakdown.
+ *
+ * Name exactly one of `group_ids` or `tag_ids`; naming both or neither is a
+ * 400. Ids naming a deleted or nonexistent record are dropped, so an entirely
+ * stale selection yields an empty answer rather than an error.
+ */
+export function effectiveConstraintsQuery(variables: EffectiveConstraintsVariables): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.EffectiveConstraintsResponse>;
+};
+
+export function effectiveConstraintsQuery(variables: EffectiveConstraintsVariables | reactQuery.SkipToken): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.EffectiveConstraintsResponse>) | reactQuery.SkipToken;
+};
+
+export function effectiveConstraintsQuery(variables: EffectiveConstraintsVariables | reactQuery.SkipToken) {
+  return {
+    queryKey: queryKeyFn({
+      path: '/api/constraints/effective',
+      operationId: 'effectiveConstraints',
+      variables,
+    }),
+    queryFn:
+      variables === reactQuery.skipToken
+        ? reactQuery.skipToken
+        : ({signal}: QueryFnOptions) => fetchEffectiveConstraints(variables, signal),
+  };
+}
+
+/**
+ * Report the constraints in force over a set of groups, or over a set of tags.
+ *
+ * Group mode answers "what binds the things I have selected?", returning both
+ * the roll-up across the whole selection and a per-group breakdown. Tag mode
+ * answers "what would these tags impose?" for a group that does not exist yet
+ * -- a group request being approved -- and so has no per-group breakdown.
+ *
+ * Name exactly one of `group_ids` or `tag_ids`; naming both or neither is a
+ * 400. Ids naming a deleted or nonexistent record are dropped, so an entirely
+ * stale selection yields an empty answer rather than an error.
+ */
+export const useSuspenseEffectiveConstraints = <TData = Schemas.EffectiveConstraintsResponse>(
+  variables: EffectiveConstraintsVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.EffectiveConstraintsResponse, EffectiveConstraintsError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useSuspenseQuery<Schemas.EffectiveConstraintsResponse, EffectiveConstraintsError, TData>({
+    ...effectiveConstraintsQuery(deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+/**
+ * Report the constraints in force over a set of groups, or over a set of tags.
+ *
+ * Group mode answers "what binds the things I have selected?", returning both
+ * the roll-up across the whole selection and a per-group breakdown. Tag mode
+ * answers "what would these tags impose?" for a group that does not exist yet
+ * -- a group request being approved -- and so has no per-group breakdown.
+ *
+ * Name exactly one of `group_ids` or `tag_ids`; naming both or neither is a
+ * 400. Ids naming a deleted or nonexistent record are dropped, so an entirely
+ * stale selection yields an empty answer rather than an error.
+ */
+export const useEffectiveConstraints = <TData = Schemas.EffectiveConstraintsResponse>(
+  variables: EffectiveConstraintsVariables | reactQuery.SkipToken,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.EffectiveConstraintsResponse, EffectiveConstraintsError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.EffectiveConstraintsResponse, EffectiveConstraintsError, TData>({
+    ...effectiveConstraintsQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
 export type GroupRequestsQueryParams = {
   q?: string | null;
   status?: string | null;
@@ -3587,6 +3719,11 @@ export type QueryOperation =
       path: '/api/audit/groups';
       operationId: 'groupsAndRoles';
       variables: GroupsAndRolesVariables | reactQuery.SkipToken;
+    }
+  | {
+      path: '/api/constraints/effective';
+      operationId: 'effectiveConstraints';
+      variables: EffectiveConstraintsVariables | reactQuery.SkipToken;
     }
   | {
       path: '/api/group-requests';

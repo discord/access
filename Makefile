@@ -36,6 +36,7 @@ help:
 	@echo "  make sync               access sync"
 	@echo "  make notify             access notify"
 	@echo "  make sync-app-groups    access sync-app-groups (loads .env)"
+	@echo "  make shell              access shell (REPL, loads .env)"
 	@echo ""
 	@echo "Docker:"
 	@echo "  make build              docker build"
@@ -83,9 +84,13 @@ dev:
 # Install any plugins named in PLUGINS into the venv after `uv sync` (which
 # would otherwise prune them). Editable, so local edits to the plugin are picked
 # up on reload. A plugin's requirements.txt is installed first when present.
+# Installs are constrained to uv.lock (as in the Dockerfile), so a plugin that
+# conflicts with a locked version fails here rather than replacing it.
 .PHONY: install-plugins
 install-plugins: dev
-	@for p in $(PLUGINS); do \
+	@uv export --frozen --no-hashes --no-emit-project --no-emit-local --no-header -q -o .venv/constraints.txt
+	@export UV_CONSTRAINT=.venv/constraints.txt; \
+	for p in $(PLUGINS); do \
 		if [ ! -d "examples/plugins/$$p" ]; then \
 			echo "No such example plugin: examples/plugins/$$p"; exit 1; \
 		fi; \
@@ -123,16 +128,24 @@ run-backend: .env install-plugins db-migrate
 # Database / migrations
 # ----------------------------------------------------------------------
 
+# Holds the sqlite file LOCAL_DB_URI points at. sqlite does not create a
+# missing parent directory -- it fails with a bare "unable to open database
+# file" -- so every target that opens the local DB takes this as an order-only
+# prerequisite: the directory must exist, but writes into it must not mark
+# those targets out of date.
+instance:
+	@mkdir -p $@
+
 .PHONY: db-migrate
-db-migrate: dev
+db-migrate: dev | instance
 	DATABASE_URI=$(LOCAL_DB_URI) uv run alembic upgrade head
 
 .PHONY: db-downgrade
-db-downgrade: dev
+db-downgrade: dev | instance
 	DATABASE_URI=$(LOCAL_DB_URI) uv run alembic downgrade -1
 
 .PHONY: db-current
-db-current: dev
+db-current: dev | instance
 	DATABASE_URI=$(LOCAL_DB_URI) uv run alembic current
 
 .PHONY: db-history
@@ -140,7 +153,7 @@ db-history: dev
 	uv run alembic history
 
 .PHONY: db-revision
-db-revision: dev
+db-revision: dev | instance
 	@if [ -z "$(msg)" ]; then echo "usage: make db-revision msg=\"<message>\""; exit 1; fi
 	DATABASE_URI=$(LOCAL_DB_URI) uv run alembic revision --autogenerate -m "$(msg)"
 
@@ -154,12 +167,17 @@ db-init: db-migrate
 # ----------------------------------------------------------------------
 
 .PHONY: sync
-sync: install-plugins
+sync: install-plugins | instance
 	DATABASE_URI=$(LOCAL_DB_URI) uv run access sync
 
 .PHONY: notify
-notify: install-plugins
+notify: install-plugins | instance
 	DATABASE_URI=$(LOCAL_DB_URI) uv run access notify
+
+.PHONY: shell
+shell: .env install-plugins | instance
+	set -a && . ./.env && set +a && \
+	DATABASE_URI=$(LOCAL_DB_URI) uv run access shell
 
 # Unlike `sync`/`notify`, this loads the full .env so the app-group lifecycle
 # plugins get the credentials they need (e.g. Google/Okta). `access` has no
@@ -169,7 +187,7 @@ notify: install-plugins
 # at the same migrated instance/access.db the dev server uses, rather than
 # whatever DATABASE_URI .env happens to set.
 .PHONY: sync-app-groups
-sync-app-groups: .env install-plugins
+sync-app-groups: .env install-plugins | instance
 	set -a && . ./.env && set +a && \
 	DATABASE_URI=$(LOCAL_DB_URI) uv run access sync-app-groups
 

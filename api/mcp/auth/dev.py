@@ -15,7 +15,6 @@ providers (Cloudflare, OIDC) take over without competition.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from sqlalchemy import func, select
 from starlette.types import Scope
@@ -28,7 +27,7 @@ from api.models import OktaUser
 logger = logging.getLogger(__name__)
 
 
-async def resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
+async def resolve_identity(scope: Scope) -> MCPIdentity | None:
     if settings.ENV not in ("development", "test"):
         return None
 

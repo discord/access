@@ -1,28 +1,30 @@
-from datetime import datetime, timedelta, timezone
-from typing import Any, cast, Protocol
+from datetime import UTC, datetime, timedelta
+from typing import Any, Protocol, cast
 
+import pytest
 from faker import Faker
+from fastapi import FastAPI
 from httpx import AsyncClient
 from okta.models import Group
 from pytest_mock import MockerFixture
-from fastapi import FastAPI
-
 from sqlalchemy import func, or_, select
+
 from api.config import settings
+from api.exceptions import ConflictError
 from api.extensions import Db
 from api.models import (
     AccessRequestStatus,
     AppGroup,
     GroupRequest,
     OktaGroup,
+    OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
-    OktaGroupTagMap,
     Tag,
 )
-from api.operations import CreateGroupRequest, ApproveGroupRequest, RejectGroupRequest
-from api.plugins import get_notification_hook
+from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
+from api.plugins import ConditionalAccessResponse, get_notification_hook
 from api.services import okta
 from tests.factories import (
     AppFactory,
@@ -151,7 +153,7 @@ async def test_create_group_request_with_ownership_ending_at(
     await db.session.commit()
 
     # Request ownership for 60 days
-    requested_ending_at = datetime.now(timezone.utc) + timedelta(days=60)
+    requested_ending_at = datetime.now(UTC) + timedelta(days=60)
 
     group_request = await CreateGroupRequest(
         requester_user=user,
@@ -171,7 +173,7 @@ async def test_create_group_request_with_ownership_ending_at(
     # Should be close to the requested time (within a few seconds), make both timezone-aware
     stored_time = group_request.requested_ownership_ending_at
     if stored_time.tzinfo is None:
-        stored_time = stored_time.replace(tzinfo=timezone.utc)
+        stored_time = stored_time.replace(tzinfo=UTC)
     assert abs((stored_time - requested_ending_at).total_seconds()) < 5
 
 
@@ -211,10 +213,10 @@ async def test_create_group_request_tag_limits_ownership_time(
     await db.session.refresh(group_request)
     stored_time = group_request.requested_ownership_ending_at
     if stored_time.tzinfo is None:
-        stored_time = stored_time.replace(tzinfo=timezone.utc)
+        stored_time = stored_time.replace(tzinfo=UTC)
 
     # Should be set to approximately 90 days from now
-    expected_ending = datetime.now(timezone.utc) + timedelta(days=90)
+    expected_ending = datetime.now(UTC) + timedelta(days=90)
     time_diff = abs((stored_time - expected_ending).total_seconds())
     assert time_diff < 5  # Within 5 seconds of expected
 
@@ -238,7 +240,7 @@ async def test_create_group_request_tag_reduces_requested_ownership_time(
     await db.session.commit()
 
     # Request ownership for 90 days (should be reduced to 30 days)
-    requested_ending_at = datetime.now(timezone.utc) + timedelta(days=90)
+    requested_ending_at = datetime.now(UTC) + timedelta(days=90)
 
     group_request = await CreateGroupRequest(
         requester_user=user,
@@ -257,10 +259,10 @@ async def test_create_group_request_tag_reduces_requested_ownership_time(
     await db.session.refresh(group_request)
     stored_time = group_request.requested_ownership_ending_at
     if stored_time.tzinfo is None:
-        stored_time = stored_time.replace(tzinfo=timezone.utc)
+        stored_time = stored_time.replace(tzinfo=UTC)
 
     # Should be set to approximately 30 days from now (not 90)
-    expected_ending = datetime.now(timezone.utc) + timedelta(days=30)
+    expected_ending = datetime.now(UTC) + timedelta(days=30)
     time_diff = abs((stored_time - expected_ending).total_seconds())
     assert time_diff < 5  # Within 5 seconds of expected
 
@@ -351,7 +353,7 @@ async def test_approve_group_request_sets_owner_with_ending_time(
     mocker.patch.object(okta, "add_owner_to_group")
 
     # Request ownership for 60 days
-    requested_ending_at = datetime.now(timezone.utc) + timedelta(days=60)
+    requested_ending_at = datetime.now(UTC) + timedelta(days=60)
 
     group_request = await CreateGroupRequest(
         requester_user=user,
@@ -389,7 +391,7 @@ async def test_approve_group_request_sets_owner_with_ending_time(
     # Make both timezone-aware
     stored_time = ownerships[0].ended_at
     if stored_time.tzinfo is None:
-        stored_time = stored_time.replace(tzinfo=timezone.utc)
+        stored_time = stored_time.replace(tzinfo=UTC)
 
     # Should be close to the requested time
     time_diff = abs((stored_time - requested_ending_at).total_seconds())
@@ -443,7 +445,7 @@ async def test_approve_group_request_tag_limits_owner_ending_time(
     assert group_request is not None
 
     # Approver sets resolved ownership ending time to 90 days (should be reduced to 30 by tag)
-    requested_90_days = datetime.now(timezone.utc) + timedelta(days=90)
+    requested_90_days = datetime.now(UTC) + timedelta(days=90)
     group_request.resolved_ownership_ending_at = requested_90_days
     await db.session.commit()
 
@@ -472,10 +474,10 @@ async def test_approve_group_request_tag_limits_owner_ending_time(
     # Make both timezone-aware
     stored_time = ownerships[0].ended_at
     if stored_time.tzinfo is None:
-        stored_time = stored_time.replace(tzinfo=timezone.utc)
+        stored_time = stored_time.replace(tzinfo=UTC)
 
     # Should be approximately 30 days from now (not 90)
-    expected_ending = datetime.now(timezone.utc) + timedelta(days=30)
+    expected_ending = datetime.now(UTC) + timedelta(days=30)
     time_diff = abs((stored_time - expected_ending).total_seconds())
     assert time_diff < 5  # Within 5 seconds of expected
 
@@ -486,7 +488,7 @@ async def test_approve_group_request_tag_limits_owner_ending_time(
     await db.session.refresh(group_request)
     resolved_time = group_request.resolved_ownership_ending_at
     if resolved_time.tzinfo is None:
-        resolved_time = resolved_time.replace(tzinfo=timezone.utc)
+        resolved_time = resolved_time.replace(tzinfo=UTC)
     assert resolved_time < requested_90_days
 
 
@@ -814,6 +816,110 @@ async def test_app_owner_can_reject_request(
     await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.REJECTED
     assert group_request.resolver_user_id == app_owner.id
+
+
+async def _create_app_group_request_with_owner(
+    *, db: Db, requester: OktaUser, owner_ended_at: datetime
+) -> tuple[OktaUser, GroupRequest]:
+    app_owner = await OktaUserFactory.create_async()
+    app_obj = await AppFactory.create_async()
+    db.session.add(requester)
+    await db.session.commit()
+    owner_group = await AppGroupFactory.create_async(
+        name=f"App-{app_obj.name}-Owners",
+        app_id=app_obj.id,
+        is_owner=True,
+    )
+    await OktaUserGroupMemberFactory.create_async(
+        user_id=app_owner.id,
+        group_id=owner_group.id,
+        is_owner=True,
+        ended_at=owner_ended_at,
+    )
+    group_request = await CreateGroupRequest(
+        requester_user=requester,
+        requested_group_name=f"App-{app_obj.name}-NewGroup",
+        requested_group_description="New app group",
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        request_reason="Need app group",
+    ).execute()
+    assert group_request is not None
+    return app_owner, group_request
+
+
+async def test_time_limited_app_owner_can_approve_request_via_http(
+    client: AsyncClient,
+    db: Db,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+    mock_user: Any,
+    url_for: Any,
+) -> None:
+    mocker.patch.object(
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
+    )
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
+
+    app_owner, group_request = await _create_app_group_request_with_owner(
+        db=db,
+        requester=user,
+        owner_ended_at=datetime.now(UTC) + timedelta(days=30),
+    )
+
+    mock_user(app_owner.id)
+    resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
+    response = await client.put(resolve_url, json=ResolveGroupRequestBodyFactory.json(approved=True))
+
+    assert response.status_code == 200
+    assert response.json()["status"] == AccessRequestStatus.APPROVED
+
+
+async def test_time_limited_app_owner_can_reject_request_via_http(
+    client: AsyncClient,
+    db: Db,
+    user: OktaUser,
+    mock_user: Any,
+    url_for: Any,
+) -> None:
+    app_owner, group_request = await _create_app_group_request_with_owner(
+        db=db,
+        requester=user,
+        owner_ended_at=datetime.now(UTC) + timedelta(days=30),
+    )
+
+    mock_user(app_owner.id)
+    resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
+    response = await client.put(resolve_url, json=ResolveGroupRequestBodyFactory.json(approved=False))
+
+    assert response.status_code == 200
+    assert response.json()["status"] == AccessRequestStatus.REJECTED
+
+
+async def test_expired_app_owner_cannot_approve_request_via_http(
+    client: AsyncClient,
+    db: Db,
+    user: OktaUser,
+    mock_user: Any,
+    url_for: Any,
+) -> None:
+    app_owner, group_request = await _create_app_group_request_with_owner(
+        db=db,
+        requester=user,
+        owner_ended_at=datetime.now(UTC) - timedelta(days=1),
+    )
+
+    mock_user(app_owner.id)
+    resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
+    response = await client.put(resolve_url, json=ResolveGroupRequestBodyFactory.json(approved=True))
+
+    assert response.status_code == 403
+    await db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.PENDING
 
 
 async def test_wrong_app_owner_cannot_approve_request(
@@ -1271,6 +1377,324 @@ async def test_app_owner_auto_approves_own_app_group_request(
     assert ownerships[0].created_reason == f"Group request approved: {group_request.request_reason}"
 
 
+@pytest.mark.parametrize(
+    ("group_type", "group_name", "group_class"),
+    [("okta_group", "Plugin Approved Group", OktaGroup), ("role_group", "Role-Plugin-Approved", RoleGroup)],
+)
+async def test_conditional_access_plugin_approves_group_request(
+    app: FastAPI,
+    db: Db,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+    group_type: str,
+    group_name: str,
+    group_class: type[OktaGroup],
+) -> None:
+    db.session.add(user)
+    await db.session.commit()
+
+    mocker.patch.object(
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
+    )
+    mocker.patch.object(okta, "add_owner_to_group")
+    notification_hook = get_notification_hook()
+    created_spy = mocker.patch.object(notification_hook, "access_group_request_created")
+    completed_spy = mocker.patch.object(notification_hook, "access_group_request_completed")
+    conditional_access_spy = mocker.patch(
+        "api.operations.create_group_request.evaluate_conditional_access",
+        return_value=[ConditionalAccessResponse(approved=True, reason="Auto-Approved")],
+    )
+
+    group_request = await CreateGroupRequest(
+        requester_user=user,
+        requested_group_name=group_name,
+        requested_group_description="Plugin approved",
+        requested_group_type=group_type,
+        request_reason="Need this group",
+    ).execute()
+
+    assert group_request is not None
+    assert conditional_access_spy.call_count == 1
+    await db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.APPROVED
+    assert group_request.resolved_at is not None
+    assert group_request.resolver_user_id is None
+    assert group_request.resolution_reason == "Auto-Approved"
+    assert group_request.approved_group_id is not None
+    assert created_spy.call_count == 0
+    assert completed_spy.call_count == 0
+
+    created_group = await db.session.get(OktaGroup, group_request.approved_group_id)
+    assert type(created_group) is group_class
+    assert created_group.name == group_name
+
+    ownerships = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == created_group.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+            .where(OktaUserGroupMember.is_owner.is_(True))
+        )
+    ).all()
+    assert len(ownerships) == 1
+
+
+@pytest.mark.parametrize(
+    ("requested_days", "plugin_days", "expected_days"),
+    [(None, 7, 7), (3, 7, 3), (7, 3, 3)],
+)
+async def test_conditional_access_plugin_ending_at_caps_ownership(
+    app: FastAPI,
+    db: Db,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+    requested_days: int | None,
+    plugin_days: int,
+    expected_days: int,
+) -> None:
+    db.session.add(user)
+    await db.session.commit()
+
+    mocker.patch.object(
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
+    )
+    mocker.patch.object(okta, "add_owner_to_group")
+    now = datetime.now(UTC)
+    mocker.patch(
+        "api.operations.create_group_request.evaluate_conditional_access",
+        return_value=[
+            ConditionalAccessResponse(
+                approved=True, reason="Auto-Approved", ending_at=now + timedelta(days=plugin_days)
+            )
+        ],
+    )
+
+    group_request = await CreateGroupRequest(
+        requester_user=user,
+        requested_group_name="Plugin Capped Group",
+        requested_group_description="Plugin approved",
+        requested_group_type="okta_group",
+        requested_ownership_ending_at=now + timedelta(days=requested_days) if requested_days is not None else None,
+        request_reason="Need this group",
+    ).execute()
+
+    assert group_request is not None
+    await db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.APPROVED
+
+    ownership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == group_request.approved_group_id)
+            .where(OktaUserGroupMember.user_id == user.id)
+            .where(OktaUserGroupMember.is_owner.is_(True))
+        )
+    ).one()
+    assert ownership.ended_at is not None
+    stored_time = ownership.ended_at.replace(tzinfo=UTC)
+    assert abs((stored_time - (now + timedelta(days=expected_days))).total_seconds()) < 5
+
+
+async def test_conditional_access_plugin_past_ending_at_routes_to_reviewers(
+    app: FastAPI,
+    db: Db,
+    mocker: MockerFixture,
+    user: OktaUser,
+) -> None:
+    db.session.add(user)
+    await db.session.commit()
+
+    create_group_spy = mocker.patch.object(okta, "create_group")
+    notification_hook = get_notification_hook()
+    created_spy = mocker.patch.object(notification_hook, "access_group_request_created")
+    mocker.patch(
+        "api.operations.create_group_request.evaluate_conditional_access",
+        return_value=[
+            ConditionalAccessResponse(
+                approved=True, reason="Auto-Approved", ending_at=datetime.now(UTC) - timedelta(days=1)
+            )
+        ],
+    )
+
+    group_request = await CreateGroupRequest(
+        requester_user=user,
+        requested_group_name="Plugin Expired Group",
+        requested_group_description="Plugin approved into a closed window",
+        requested_group_type="okta_group",
+        request_reason="Need this group",
+    ).execute()
+
+    assert group_request is not None
+    await db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.PENDING
+    assert create_group_spy.call_count == 0
+    assert created_spy.call_count == 1
+
+
+async def test_conditional_access_plugin_approval_of_taken_name_routes_to_reviewers(
+    app: FastAPI,
+    db: Db,
+    mocker: MockerFixture,
+    user: OktaUser,
+) -> None:
+    db.session.add(user)
+    await db.session.commit()
+
+    create_group_spy = mocker.patch.object(okta, "create_group")
+    notification_hook = get_notification_hook()
+    created_spy = mocker.patch.object(notification_hook, "access_group_request_created")
+
+    # The name is free when the request is filed and taken by the time the
+    # plugin approves it.
+    async def approve_after_name_is_taken(*args: Any, **kwargs: Any) -> list[ConditionalAccessResponse]:
+        await OktaGroupFactory.create_async(name="Already Taken")
+        return [ConditionalAccessResponse(approved=True, reason="Auto-Approved")]
+
+    mocker.patch(
+        "api.operations.create_group_request.evaluate_conditional_access",
+        side_effect=approve_after_name_is_taken,
+    )
+
+    group_request = await CreateGroupRequest(
+        requester_user=user,
+        requested_group_name="Already Taken",
+        requested_group_description="Collides with a live group",
+        requested_group_type="okta_group",
+        request_reason="Need this group",
+    ).execute()
+
+    assert group_request is not None
+    await db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.PENDING
+    assert group_request.approved_group_id is None
+    assert create_group_spy.call_count == 0
+    assert created_spy.call_count == 1
+
+
+@pytest.mark.parametrize("requested_name", ["Already Taken", "already taken"])
+async def test_create_group_request_with_taken_name_raises_conflict(
+    app: FastAPI, db: Db, user: OktaUser, requested_name: str
+) -> None:
+    db.session.add(user)
+    await OktaGroupFactory.create_async(name="Already Taken")
+    await db.session.commit()
+
+    with pytest.raises(ConflictError, match="already exists"):
+        await CreateGroupRequest(
+            requester_user=user,
+            requested_group_name=requested_name,
+            requested_group_type="okta_group",
+            request_reason="Need this group",
+        ).execute()
+
+    assert (await db.session.scalars(select(GroupRequest))).first() is None
+
+
+async def test_create_group_request_with_deleted_group_name_succeeds(app: FastAPI, db: Db, user: OktaUser) -> None:
+    db.session.add(user)
+    await OktaGroupFactory.create_async(name="Formerly Taken", deleted_at=datetime.now(UTC))
+    await db.session.commit()
+
+    group_request = await CreateGroupRequest(
+        requester_user=user,
+        requested_group_name="Formerly Taken",
+        requested_group_type="okta_group",
+        request_reason="Need this group",
+    ).execute()
+
+    assert group_request is not None
+    assert group_request.status == AccessRequestStatus.PENDING
+
+
+async def test_app_owner_auto_approval_of_taken_name_routes_to_reviewers(
+    app: FastAPI, db: Db, mocker: MockerFixture
+) -> None:
+    app_owner = await OktaUserFactory.create_async()
+    app_obj = await AppFactory.create_async()
+    owner_group = await AppGroupFactory.create_async(
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        app_id=app_obj.id,
+        is_owner=True,
+    )
+    await OktaUserGroupMemberFactory.create_async(user_id=app_owner.id, group_id=owner_group.id, is_owner=True)
+    group_name = f"App-{app_obj.name}-NewTeam"
+    await AppGroupFactory.create_async(name=group_name, app_id=app_obj.id)
+
+    # Let the request through the create-time check so approval meets the
+    # collision, as when another request creates the group in between.
+    mocker.patch("api.operations.create_group_request.is_group_name_taken", return_value=False)
+    create_group_spy = mocker.patch.object(okta, "create_group")
+    created_spy = mocker.patch.object(get_notification_hook(), "access_group_request_created")
+
+    group_request = await CreateGroupRequest(
+        requester_user=app_owner,
+        requested_group_name=group_name,
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        request_reason="Need team group for app",
+    ).execute()
+
+    assert group_request is not None
+    await db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.PENDING
+    assert group_request.approved_group_id is None
+    assert create_group_spy.call_count == 0
+    assert created_spy.call_count == 1
+
+
+async def test_post_group_request_with_taken_name_returns_409_via_http(
+    client: AsyncClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
+) -> None:
+    db.session.add(user)
+    await OktaGroupFactory.create_async(name="Already-Taken")
+    await db.session.commit()
+    mock_user(user.id)
+
+    rep = await client.post(
+        url_for("api-group-requests.group_requests_create"),
+        json=OktaGroupRequestBodyFactory.json(requested_group_name="Already-Taken"),
+    )
+
+    assert rep.status_code == 409
+    assert rep.headers["content-type"] == "application/problem+json"
+    assert rep.json()["detail"] == "A group named 'Already-Taken' already exists."
+
+
+async def test_approve_group_request_with_taken_name_returns_409_via_http(
+    client: AsyncClient, db: Db, user: OktaUser, url_for: Any
+) -> None:
+    db.session.add(user)
+    await db.session.commit()
+    group_request = await CreateGroupRequest(
+        requester_user=user,
+        requested_group_name="Taken-Later",
+        requested_group_type="okta_group",
+        request_reason="Need this group",
+    ).execute()
+    assert group_request is not None
+    group_request_id = group_request.id
+    await OktaGroupFactory.create_async(name="Taken-Later")
+    await db.session.commit()
+
+    rep = await client.put(
+        url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request_id),
+        json=ResolveGroupRequestBodyFactory.json(approved=True, reason="Approved"),
+    )
+
+    assert rep.status_code == 409
+    assert "A group named 'Taken-Later' already exists" in rep.json()["detail"]
+    group_request = await db.session.get(GroupRequest, group_request_id, populate_existing=True)
+    assert group_request is not None
+    assert group_request.status == AccessRequestStatus.PENDING
+
+
 async def test_app_owner_auto_approves_own_app_group_request_tagged(
     app: FastAPI,
     client: AsyncClient,
@@ -1465,11 +1889,12 @@ async def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
     group_request.resolved_group_name = sensitive_group.name
     await db.session.commit()
 
-    await ApproveGroupRequest(
-        group_request=group_request,
-        approver_user=app_owner,
-        approval_reason="Approved",
-    ).execute()
+    with pytest.raises(ConflictError, match="already exists"):
+        await ApproveGroupRequest(
+            group_request=group_request,
+            approver_user=app_owner,
+            approval_reason="Approved",
+        ).execute()
 
     await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.PENDING, (
@@ -1534,11 +1959,12 @@ async def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
     group_request.resolved_group_name = existing_okta_group.name
     await db.session.commit()
 
-    await ApproveGroupRequest(
-        group_request=group_request,
-        approver_user=app_owner,
-        approval_reason="Approved",
-    ).execute()
+    with pytest.raises(ConflictError, match="already exists"):
+        await ApproveGroupRequest(
+            group_request=group_request,
+            approver_user=app_owner,
+            approval_reason="Approved",
+        ).execute()
 
     await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.PENDING, (
@@ -1674,11 +2100,12 @@ async def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
     group_request.resolved_group_name = sensitive_group.name.upper()
     await db.session.commit()
 
-    await ApproveGroupRequest(
-        group_request=group_request,
-        approver_user=app_owner,
-        approval_reason="Approved",
-    ).execute()
+    with pytest.raises(ConflictError, match="already exists"):
+        await ApproveGroupRequest(
+            group_request=group_request,
+            approver_user=app_owner,
+            approval_reason="Approved",
+        ).execute()
 
     await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.PENDING, "case-insensitive name collision must also be blocked"
@@ -2078,12 +2505,12 @@ async def test_post_group_request_validation_via_http(
     """POST /api/group-requests pre-validates: deleted requester → 403,
     unknown tag → 400, and `app_group` without `requested_app_id` → 400
     (the Pydantic discriminator catches it before the handler runs)."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     create_url = url_for("api-group-requests.group_requests_create")
 
     # (a) Deleted requester → 403
-    deleted = await OktaUserFactory.create_async(deleted_at=datetime.now(timezone.utc))
+    deleted = await OktaUserFactory.create_async(deleted_at=datetime.now(UTC))
     mock_user(deleted.id)
     rep = await client.post(
         create_url,
@@ -2153,7 +2580,7 @@ async def test_post_group_request_app_id_must_exist_deleted(
     """`requested_app_id` pointing at a soft-deleted App → 404 (the resource
     queries `App.deleted_at.is_(None)` before accepting the request)."""
     db.session.add(user)
-    deleted_app = await AppFactory.create_async(name="DeletedApp", deleted_at=datetime.now(timezone.utc))
+    deleted_app = await AppFactory.create_async(name="DeletedApp", deleted_at=datetime.now(UTC))
     await db.session.commit()
     mock_user(user.id)
     rep = await client.post(
@@ -2175,7 +2602,7 @@ async def test_post_group_request_tag_ids_must_be_undeleted(
     from tests.factories import TagFactory
 
     db.session.add(user)
-    deleted_tag = await TagFactory.create_async(name="DeletedTag", deleted_at=datetime.now(timezone.utc))
+    deleted_tag = await TagFactory.create_async(name="DeletedTag", deleted_at=datetime.now(UTC))
     await db.session.commit()
     mock_user(user.id)
     rep = await client.post(

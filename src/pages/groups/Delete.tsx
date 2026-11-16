@@ -108,7 +108,7 @@ export default function DeleteGroup(props: DeleteGroupProps) {
 
   return (
     <>
-      <IconButton aria-label="edit" onClick={() => setOpen(true)}>
+      <IconButton aria-label="delete" onClick={() => setOpen(true)}>
         <DeleteIcon />
       </IconButton>
       {open ? <GroupDialog setOpen={setOpen} group={props.group}></GroupDialog> : null}

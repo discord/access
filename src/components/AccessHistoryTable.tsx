@@ -10,7 +10,7 @@ import TableRow from '@mui/material/TableRow';
 import TablePagination from '@mui/material/TablePagination';
 import Typography from '@mui/material/Typography';
 
-import {OktaUserGroupMemberDetail, RoleGroupMapDetail} from '../api/apiSchemas';
+import {AuditGroupRoleRow, AuditUserGroupRow} from '../api/apiSchemas';
 import {displayUserName} from '../helpers';
 import Started from './Started';
 import Ending from './Ending';
@@ -18,8 +18,8 @@ import InlineReason from './InlineReason';
 import AccessMethodChip from './AccessMethodChip';
 import TablePaginationActions from './actions/TablePaginationActions';
 
-// Accept both OktaUserGroupMemberDetail[] and RoleGroupMapDetail[]
-type AccessAuditEntry = OktaUserGroupMemberDetail | RoleGroupMapDetail;
+// Rows from the user-group and group-role audit endpoints
+type AccessAuditEntry = AuditUserGroupRow | AuditGroupRoleRow;
 
 interface AccessHistoryTableProps {
   accessEntries: AccessAuditEntry[];
@@ -51,7 +51,13 @@ export default function AccessHistoryTable({
 
   if (accessEntries.length === 0) {
     return (
-      <Typography variant="body2" color="text.secondary" align="center" sx={{my: 2}}>
+      <Typography
+        variant="body2"
+        align="center"
+        sx={{
+          color: 'text.secondary',
+          my: 2,
+        }}>
         {emptyMessage}
       </Typography>
     );

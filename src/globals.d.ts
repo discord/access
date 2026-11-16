@@ -1,6 +1,7 @@
 declare const ACCESS_CONFIG: any;
 declare const APP_NAME: string;
 declare const REQUIRE_DESCRIPTIONS: boolean;
+declare const REQUIRE_REQUEST_REASONS: boolean;
 
 interface ImportMetaEnv {
   readonly VITE_API_SERVER_URL: string;
@@ -11,4 +12,10 @@ interface ImportMetaEnv {
 
 interface ImportMeta {
   readonly env: ImportMetaEnv;
+}
+
+interface Window {
+  // The per-response CSP nonce, stamped into the SPA shell by `api.app.serve_spa`.
+  // Undefined under `vite dev`, which serves index.html without one.
+  __webpack_nonce__?: string;
 }

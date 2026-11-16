@@ -71,14 +71,22 @@ function RoleMembersDialog(props: RoleMembersDialogProps) {
           <>
             <Divider sx={{borderRadius: 1, pt: 2}} />
             <Typography sx={{mt: 2}}>There are currently no members in this role.</Typography>
-            <Typography sx={{mt: 2}} color="text.accent">
+            <Typography
+              sx={{
+                color: 'text.accent',
+                mt: 2,
+              }}>
               If this request is approved, any members added to the role in the future will be added as{' '}
               {props.owner ? 'owners' : 'members'} of {props.groupName} automatically during the approved access period.
             </Typography>
           </>
         ) : (
           <>
-            <Typography variant="subtitle1" color="text.accent">
+            <Typography
+              variant="subtitle1"
+              sx={{
+                color: 'text.accent',
+              }}>
               If the role request is approved, these users will be added as {props.owner ? 'owners' : 'members'} of{' '}
               {props.groupName}.
             </Typography>

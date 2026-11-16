@@ -1,14 +1,12 @@
+import logging
 import random
 import string
 from datetime import datetime
-from typing import Optional
-
-import logging
 
 from sqlalchemy import func, or_, select
-from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import (
     AccessRequestStatus,
@@ -23,10 +21,10 @@ from api.models import (
 )
 from api.models.app_group import get_access_owners, get_app_managers
 from api.models.okta_group import get_group_managers
-from api.models.tag import coalesce_constraints
+from api.models.tag import effective_constraint
+from api.operations._fan_out import defer_notification
 from api.operations.approve_role_request import ApproveRoleRequest
 from api.operations.reject_role_request import RejectRoleRequest
-from api.operations._fan_out import defer_notification
 from api.plugins import ConditionalAccessHook, NotificationHook, evaluate_conditional_access
 from api.schemas import AuditLogSchema, EventType
 
@@ -40,7 +38,7 @@ class CreateRoleRequest:
         requested_group: OktaGroup | str,
         request_ownership: bool = False,
         request_reason: str = "",
-        request_ending_at: Optional[datetime] = None,
+        request_ending_at: datetime | None = None,
     ):
         self.id = self.__generate_id()
 
@@ -52,7 +50,7 @@ class CreateRoleRequest:
         self.request_reason = request_reason
         self.request_ending_at = request_ending_at
 
-    async def execute(self) -> Optional[RoleRequest]:
+    async def execute(self) -> RoleRequest | None:
         requester = await db.session.get(OktaUser, self.requester_user_id)
         assert requester is not None
 
@@ -102,8 +100,6 @@ class CreateRoleRequest:
         # Fetch the users to notify
         approvers = await get_group_managers(requested_group.id)
 
-        requested_group_tags = [tm.active_tag for tm in requested_group.active_group_tags]
-
         role_memberships = [
             u.user_id
             for u in (
@@ -123,16 +119,14 @@ class CreateRoleRequest:
 
         # If group tagged with disallow self add constraint, filter out approvers who are also members of the role
         if self.request_ownership:
-            disallow_self_add_owner = coalesce_constraints(
-                constraint_key=Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
-                tags=requested_group_tags,
+            disallow_self_add_owner = effective_constraint(
+                Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY, requested_group
             )
             if disallow_self_add_owner:
                 approvers = [a for a in approvers if a.id not in role_memberships]
         else:
-            disallow_self_add_member = coalesce_constraints(
-                constraint_key=Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
-                tags=requested_group_tags,
+            disallow_self_add_member = effective_constraint(
+                Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, requested_group
             )
             if disallow_self_add_member:
                 approvers = [a for a in approvers if a.id not in role_memberships]

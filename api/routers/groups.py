@@ -13,7 +13,7 @@ GET    /api/groups/{group_id}/audit         redirects to /api/audit/users
 from __future__ import annotations
 
 import copy
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
@@ -31,6 +31,7 @@ from api.auth.permissions import (
 )
 from api.database import DbSession
 from api.models import App, AppGroup, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
+from api.models.tag import effective_constraints
 from api.operations import (
     CreateGroup,
     DeleteGroup,
@@ -45,6 +46,7 @@ from api.pagination import Page, validated
 from api.plugins.app_group_lifecycle import validate_group_plugin_config_or_raise
 from api.routers._eager import (
     bind_role_group_map_own_groups,
+    effective_constraint_options,
     group_tag_map_options,
     role_group_map_options,
     role_group_map_options_for_own_group,
@@ -54,6 +56,7 @@ from api.routers._fan_out import defer_fan_out
 from api.schemas import (
     CreateGroupBody,
     DeleteMessage,
+    EffectiveConstraintDetail,
     GroupDetail,
     GroupMembersSummary,
     GroupSummary,
@@ -80,6 +83,7 @@ DEFAULT_LOAD_OPTIONS = (
     selectinload(RoleGroup.active_role_associated_group_owner_mappings).options(*role_group_map_options()),
     joinedload(AppGroup.app),
     selectinload(OktaGroup.active_group_tags).options(*group_tag_map_options()),
+    *effective_constraint_options(),
 )
 
 # `GroupDetail` is a discriminated union (`Annotated[Union[...], Field(discriminator="type")]`),
@@ -142,7 +146,11 @@ async def get_group(group_id: str, db: DbSession, current_user_id: CurrentUserId
     group = await _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(status_code=404, detail="Not Found")
-    return _group_adapter.validate_python(group, from_attributes=True)
+    detail = _group_adapter.validate_python(group, from_attributes=True)
+    detail.effective_constraints = [
+        EffectiveConstraintDetail.model_validate(entry) for entry in effective_constraints(group)
+    ]
+    return detail
 
 
 @router.post("", name="groups_create", status_code=201)
@@ -215,6 +223,45 @@ async def post_group(
     return _group_adapter.validate_python(refreshed, from_attributes=True)
 
 
+def _owner_group_plugin_config_changing(group: AppGroup, new_plugin_data: dict[str, Any]) -> bool:
+    """Whether a plugin_data patch asks to change an owner group's plugin configuration.
+
+    `plugin_data` is a patch, and ModifyGroupPluginData merges it key by key down to an
+    individual setting: plugin entries the patch omits are preserved, then each entry's
+    configuration and status take a shallow `dict.update`. Anything the patch does not name
+    that far down survives, so comparing whole dicts would report a change for every key the
+    submitter leaves out -- the status a plugin wrote, or the configuration keys an edit did
+    not touch -- and refuse edits that ask for nothing.
+
+    Below a setting the merge replaces the value whole, so the comparison stops there too. A
+    patch that names a nested value therefore counts as a change even when every leaf inside
+    it matches, because the merge would drop the siblings it leaves out.
+
+    A value the patch names but the stored data lacks counts as a change, so an entry in an
+    unrecognised shape is refused rather than accepted and then quietly dropped.
+
+    Args:
+        group: The owner group being edited.
+        new_plugin_data: The submitted plugin_data patch.
+
+    Returns:
+        True if the patch asks for a value different from the one stored.
+    """
+    missing = object()
+    # plugin id, then section (configuration / status), then setting. The merge is key-wise
+    # across those three and wholesale beneath them.
+    merged_key_wise_depth = 3
+
+    def asks_for_change(patch_value: Any, stored_value: Any, depth: int) -> bool:
+        if depth > 0 and isinstance(patch_value, dict) and isinstance(stored_value, dict):
+            return any(
+                asks_for_change(value, stored_value.get(key, missing), depth - 1) for key, value in patch_value.items()
+            )
+        return stored_value is missing or patch_value != stored_value
+
+    return asks_for_change(new_plugin_data, group.plugin_data or {}, merged_key_wise_depth)
+
+
 @router.put("/{group_id}", name="group_by_id_put")
 async def put_group(
     group_id: str,
@@ -234,10 +281,16 @@ async def put_group(
     if group is None:
         raise HTTPException(404, "Not Found")
 
-    # Capture the pre-update name/description so the single, consolidated group_updated fire
-    # (below) can report them.
+    # Capture the pre-update name/description/app_id so the single, consolidated
+    # group_updated fire (below) can report them. The rebind-authorization block
+    # further down only mutates `group.app_id` in memory for non-owner AppGroups;
+    # the owner-group guard still compares against this captured value rather
+    # than the live attribute as defence in depth, so a future edit that widens
+    # the rebind block's condition can't silently reach an owner group's app_id
+    # before the guard has a chance to reject the change.
     old_name = group.name
     old_description = group.description or ""
+    original_app_id = getattr(group, "app_id", None)
     # Length + REQUIRE_DESCRIPTIONS-when-set are enforced by the schema; this
     # just normalises a `None` (only possible when the client explicitly sent
     # `null`) to an empty string for ModifyGroupDetails.
@@ -259,30 +312,43 @@ async def put_group(
     if not group.is_managed:
         raise HTTPException(400, "Groups not managed by Access cannot be modified")
 
+    # Only Access admins may change a group's type. Check this here, before
+    # any write: the rename below is committed and pushed to Okta first, and
+    # it skips the reserved-prefix rules when the type is also changing. If
+    # the admin check ran after that, a non-admin owner could rename an app
+    # group to a plain name (or a plain group to a Role- name), get a 403,
+    # and still leave the renamed group behind.
+    type_changed = body.type != group.type
+    if type_changed and not await is_access_admin(db, current_user_id):
+        raise HTTPException(403, "Current user is not an Access admin and not allowed to change group types")
+
     new_plugin_data = (
         body.plugin_data if isinstance(body, _AppGroupUpdateBody) and "plugin_data" in fields_set else None
     )
-    if new_plugin_data is not None and new_plugin_data != (group.plugin_data or {}):
-        if not (
+    if (
+        new_plugin_data is not None
+        and new_plugin_data != (group.plugin_data or {})
+        and not (
             await is_access_admin(db, current_user_id)
             or (type(group) is AppGroup and await is_app_owner_group_owner(db, current_user_id, app_group=group))
-        ):
-            raise HTTPException(
-                403, "Only Access owners and app owners are allowed to configure plugins at the group level"
-            )
+        )
+    ):
+        raise HTTPException(
+            403, "Only Access owners and app owners are allowed to configure plugins at the group level"
+        )
 
-    if body.tags_to_remove and len(body.tags_to_remove) > 0:
-        if not await is_access_admin(db, current_user_id):
-            raise HTTPException(
-                403, "Current user is not an Access Admin and not allowed to remove tags from this group"
-            )
+    if body.tags_to_remove and len(body.tags_to_remove) > 0 and not await is_access_admin(db, current_user_id):
+        raise HTTPException(403, "Current user is not an Access Admin and not allowed to remove tags from this group")
 
     # Prevent rebinding an AppGroup to a different app without owning the
     # target app. Access admins can always rebind. Apply the rebind here when
     # the group type isn't also changing — type-change rebinds are wired into
-    # ModifyGroupType below.
+    # ModifyGroupType below. Owner groups are structural (membership confers
+    # app-owner permissions), so they're excluded here and rejected outright
+    # by the owner-group guard further down instead of being rebound.
     if (
         type(group) is AppGroup
+        and not group.is_owner
         and isinstance(body, _AppGroupUpdateBody)
         and "app_id" in fields_set
         and body.app_id != group.app_id
@@ -308,8 +374,28 @@ async def put_group(
     tags_to_add = body.tags_to_add or []
     tags_to_remove = body.tags_to_remove or []
 
-    # App owner groups: only tag changes allowed
+    # App owner groups: only tag and description changes are allowed. The description is
+    # ordinary free text, seeded with a default at app creation and editable thereafter like
+    # any other group's. The group's name, type, and app binding are structural — membership
+    # in an owner group confers app-owner permissions — so those stay locked. Plugin
+    # configuration is rejected explicitly rather than silently dropped: owner groups do
+    # participate in lifecycle plugins, so a discarded `plugin_data` write would be
+    # meaningful config loss, not a cosmetic no-op.
+    #
+    # `type` is the discriminator and is present in `fields_set` on every request, so the
+    # structural fields are compared by value rather than by presence.
     if type(group) is AppGroup and group.is_owner:
+        renaming = "name" in fields_set and body.name is not None and body.name != group.name
+        retyping = body.type != group.type
+        rebinding = isinstance(body, _AppGroupUpdateBody) and "app_id" in fields_set and body.app_id != original_app_id
+        if renaming or retyping or rebinding:
+            raise HTTPException(400, "Only tags and the description can be modified for application owner groups")
+        if new_plugin_data is not None and _owner_group_plugin_config_changing(group, new_plugin_data):
+            raise HTTPException(400, "Plugin configuration cannot be modified for application owner groups")
+
+        if description is not None:
+            await ModifyGroupDetails(group=group, description=description, current_user_id=current_user_id).execute()
+
         if len(tags_to_add) > 0 or len(tags_to_remove) > 0:
             await ModifyGroupTags(
                 group=group,
@@ -317,9 +403,9 @@ async def put_group(
                 tags_to_remove=tags_to_remove,
                 current_user_id=current_user_id,
             ).execute()
-            refreshed = await _load_group_with_options(db, group.id)
-            return _group_adapter.validate_python(refreshed, from_attributes=True)
-        raise HTTPException(400, "Only tags can be modifed for application owner groups")
+
+        refreshed = await _load_group_with_options(db, group.id)
+        return _group_adapter.validate_python(refreshed, from_attributes=True)
 
     # Block renaming to a reserved prefix unless the final group type matches.
     # Computed using the target type since a legitimate
@@ -361,9 +447,7 @@ async def put_group(
         if not final_name.startswith(app_group_name_prefix):
             raise HTTPException(
                 400,
-                'App Group name "{}" should be prefixed with App name. For example: "{}"'.format(
-                    final_name, app_group_name_prefix
-                ),
+                f'App Group name "{final_name}" should be prefixed with App name. For example: "{app_group_name_prefix}"',
             )
 
         # Validate plugin_data against the *target* app's plugin now, on the conversion path.
@@ -395,10 +479,7 @@ async def put_group(
         raise HTTPException(400, str(e)) from e
 
     body_type = body.type
-    type_changed = body_type != group.type
     if type_changed:
-        if not await is_access_admin(db, current_user_id):
-            raise HTTPException(403, "Current user is not an Access admin and not allowed to change group types")
         type_klass = {"okta_group": OktaGroup, "role_group": RoleGroup, "app_group": AppGroup}[body_type]
         new_group = type_klass()
         for k in ("name", "description", "is_managed"):
@@ -552,8 +633,8 @@ async def get_group_member_details(
     group_id: str,
     db: DbSession,
     current_user_id: CurrentUserId,
-    owner: Annotated[Optional[bool], Query()] = None,
-    q: Annotated[Optional[str], Query()] = None,
+    owner: Annotated[bool | None, Query()] = None,
+    q: Annotated[str | None, Query()] = None,
 ) -> Page[OktaUserGroupMemberDetail]:
     """Paginated, fully-hydrated active membership rows for a group. `owner=true`
     returns ownerships, `owner=false` memberships, omitted returns both. Lets the

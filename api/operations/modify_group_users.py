@@ -1,22 +1,17 @@
 import asyncio
-from datetime import UTC, datetime
-from typing import Dict, Optional
-
 import logging
+from datetime import UTC, datetime
 
 from sqlalchemy import func, or_, select, update
-from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
+from api.context import get_request_context
 from api.extensions import db
-from api.operations._derived_reason import role_derived_reason
-from api.operations._fan_out import defer_or_drain_fan_out, prepare_notification_task
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
     AppGroup,
     OktaGroup,
-    OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
@@ -24,13 +19,16 @@ from api.models import (
     Tag,
 )
 from api.models.access_request import get_all_possible_request_approvers
-from api.models.tag import coalesce_ended_at
+from api.models.tag import effective_ended_at
+from api.operations._derived_reason import role_derived_reason
+from api.operations._fan_out import defer_or_drain_fan_out, prepare_notification_task
+from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import NotificationHook
-from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.plugins.app_group_lifecycle import AppGroupLifecycleHook
-from api.services import okta
+from api.routers._eager import effective_constraint_options
 from api.schemas import AuditLogSchema, EventType
+from api.services import okta
 
 
 class ModifyGroupUsers:
@@ -38,26 +36,26 @@ class ModifyGroupUsers:
         self,
         *,
         group: OktaGroup | str,
-        users_added_ended_at: Optional[datetime] = None,
-        members_to_add: list[str] = [],
-        owners_to_add: list[str] = [],
-        members_should_expire: list[int] = [],
-        owners_should_expire: list[int] = [],
-        members_to_remove: list[str] = [],
-        owners_to_remove: list[str] = [],
+        users_added_ended_at: datetime | None = None,
+        members_to_add: list[str] | None = None,
+        owners_to_add: list[str] | None = None,
+        members_should_expire: list[int] | None = None,
+        owners_should_expire: list[int] | None = None,
+        members_to_remove: list[str] | None = None,
+        owners_to_remove: list[str] | None = None,
         sync_to_okta: bool = True,
-        current_user_id: Optional[str] = None,
+        current_user_id: str | None = None,
         created_reason: str = "",
         notify: bool = True,
     ):
         self.group_id = group if isinstance(group, str) else group.id
         self.users_added_ended_at = users_added_ended_at
-        self.member_ids_to_add = members_to_add
-        self.owner_ids_to_add = owners_to_add
-        self.member_should_expire_ids = members_should_expire
-        self.owner_should_expire_ids = owners_should_expire
-        self.member_ids_to_remove = members_to_remove
-        self.owner_ids_to_remove = owners_to_remove
+        self.member_ids_to_add = members_to_add or []
+        self.owner_ids_to_add = owners_to_add or []
+        self.member_should_expire_ids = members_should_expire or []
+        self.owner_should_expire_ids = owners_should_expire or []
+        self.member_ids_to_remove = members_to_remove or []
+        self.owner_ids_to_remove = owners_to_remove or []
 
         self.sync_to_okta = sync_to_okta
 
@@ -71,9 +69,18 @@ class ModifyGroupUsers:
             await db.session.scalars(
                 select(OktaGroup)
                 .options(
+                    # The subtype loader stays here rather than in the helper: it is
+                    # what makes the `RoleGroup` paths resolvable on a polymorphic
+                    # `OktaGroup` query, and a query selecting `RoleGroup` directly
+                    # needs no such pairing.
                     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
                     joinedload(AppGroup.app),
-                    selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
+                    # `effective_ended_at` below reads both association directions
+                    # and each associated group's tags to find the time limits
+                    # reaching a role. They are `raise_on_sql`, so they must be
+                    # loaded here even when this group is not a role and the
+                    # collections come back empty.
+                    *effective_constraint_options(),
                 )
                 .where(OktaGroup.deleted_at.is_(None))
                 .where(OktaGroup.id == self.group_id)
@@ -81,19 +88,13 @@ class ModifyGroupUsers:
         ).first()
         assert group is not None
 
-        # Determine the minimum time allowed for group membership and ownership by current group tags
-        tags = [tag_map.active_tag for tag_map in group.active_group_tags]
-        members_added_ended_at = coalesce_ended_at(
-            constraint_key=Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY,
-            tags=tags,
-            initial_ended_at=self.users_added_ended_at,
-            group_is_managed=group.is_managed,
+        # Determine the minimum time allowed for group membership and ownership,
+        # including any constraints propagated from associated groups if this is a role
+        members_added_ended_at = effective_ended_at(
+            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, group, self.users_added_ended_at
         )
-        owners_added_ended_at = coalesce_ended_at(
-            constraint_key=Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY,
-            tags=tags,
-            initial_ended_at=self.users_added_ended_at,
-            group_is_managed=group.is_managed,
+        owners_added_ended_at = effective_ended_at(
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY, group, self.users_added_ended_at
         )
 
         members_to_add: list[OktaUser] = []
@@ -532,7 +533,7 @@ class ModifyGroupUsers:
             if len(members_gaining_first_access_ids) > 0:
                 members_gained_by_group[group] = [m for m in members_to_add if m.id in members_gaining_first_access_ids]
 
-            group_memberships_added: Dict[str, Dict[str, OktaUserGroupMember]] = {group.id: {}}
+            group_memberships_added: dict[str, dict[str, OktaUserGroupMember]] = {group.id: {}}
             for member in members_to_add:
                 if self.sync_to_okta and group.is_managed:
                     # Add user to Access-managed okta group members
@@ -549,7 +550,7 @@ class ModifyGroupUsers:
                 group_memberships_added[group.id][member.id] = membership_to_add
                 db.session.add(membership_to_add)
 
-            group_ownerships_added: Dict[str, Dict[str, OktaUserGroupMember]] = {group.id: {}}
+            group_ownerships_added: dict[str, dict[str, OktaUserGroupMember]] = {group.id: {}}
             for owner in owners_to_add:
                 if self.sync_to_okta and group.is_managed:
                     # Add user to Access-managed okta group owners
@@ -596,7 +597,7 @@ class ModifyGroupUsers:
                 # Check which members being added currently have NO active memberships in role-associated groups
                 role_associated_group_ids = [m.group_id for m in role_associated_groups_mappings]
                 # Build a dict mapping group_id to set of user_ids that already have access
-                existing_access_by_group: Dict[str, set[str]] = {}
+                existing_access_by_group: dict[str, set[str]] = {}
                 if len(role_associated_group_ids) > 0:
                     for group_id in role_associated_group_ids:
                         existing_access_by_group[group_id] = set()
@@ -622,7 +623,7 @@ class ModifyGroupUsers:
                         existing_access_by_group[row.group_id].add(row.user_id)
 
                 for role_associated_group_map in role_associated_groups_mappings:
-                    role_associated_access_added: Dict[str, OktaUserGroupMember] = {}
+                    role_associated_access_added: dict[str, OktaUserGroupMember] = {}
                     if role_associated_group_map.is_owner:
                         group_ownerships_added[role_associated_group_map.group_id] = role_associated_access_added
                     else:
@@ -749,7 +750,7 @@ class ModifyGroupUsers:
             pending_role_associated_owner_requests = (
                 await db.session.scalars(
                     pending_requests_query.where(
-                        AccessRequest.requested_group_id.in_(set(group_ownerships_added.keys()) - set([group.id]))
+                        AccessRequest.requested_group_id.in_(set(group_ownerships_added.keys()) - {group.id})
                     )
                     .where(AccessRequest.requester_user_id.in_([m.id for m in members_to_add]))
                     .where(AccessRequest.request_ownership.is_(True))

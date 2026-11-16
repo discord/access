@@ -1,5 +1,6 @@
 import logging
-from typing import Any, Callable, Generator
+from collections.abc import Callable, Generator
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -13,19 +14,18 @@ from api.config import settings
 from api.extensions import Db
 from api.models import AccessRequestStatus, AppGroup, GroupRequest, OktaUser, OktaUserGroupMember
 from api.operations import ApproveGroupRequest, CreateGroupRequest
-from api.plugins.app_group_lifecycle import AppGroupLifecyclePluginFilteringError, hookimpl
+from api.plugins.app_group_lifecycle import AppGroupLifecycleContext, AppGroupLifecyclePluginFilteringError, hookimpl
 from api.schemas import EventType
 from api.schemas.requests_schemas import CreateGroupRequestBody, ResolveGroupRequestBody
 from api.services import okta
 from tests.factories import AppFactory, AppGroupFactory, OktaUserFactory
-from api.plugins.app_group_lifecycle import AppGroupLifecycleContext
 from tests.test_app_group_lifecycle_plugin import DummyPlugin
 
 UNREGISTERED_PLUGIN_ID = "unregistered_plugin"
 
 
 @pytest.fixture
-def test_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[DummyPlugin, None, None]:
+def test_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[DummyPlugin]:
     """Register DummyPlugin (id 'test_plugin') as the app group lifecycle plugin."""
     import pluggy
 
@@ -99,7 +99,7 @@ class _StatusWritingPlugin(DummyPlugin):
 
 
 @pytest.fixture
-def mutating_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[_StatusWritingPlugin, None, None]:
+def mutating_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[_StatusWritingPlugin]:
     """Register _StatusWritingPlugin under the test plugin id."""
     import pluggy
 
@@ -693,9 +693,8 @@ async def test_approve_invalid_plugin_config_emits_no_approve_audit_event(
         return_value={"group_id": "changed since submit"},
     )
 
-    with caplog.at_level(logging.INFO, logger="access.audit"):
-        with pytest.raises(ValueError, match="group_id"):
-            await ApproveGroupRequest(group_request=gr, approver_user=admin, approval_reason="ok").execute()
+    with caplog.at_level(logging.INFO, logger="access.audit"), pytest.raises(ValueError, match="group_id"):
+        await ApproveGroupRequest(group_request=gr, approver_user=admin, approval_reason="ok").execute()
 
     audit_messages = [r.getMessage() for r in caplog.records if r.name == "access.audit"]
     assert not any(EventType.group_request_approve.value in message for message in audit_messages), (

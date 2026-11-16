@@ -16,3 +16,4 @@ export default accessConfig;
 
 export const appName = APP_NAME;
 export const requireDescriptions = REQUIRE_DESCRIPTIONS;
+export const requireRequestReasons = REQUIRE_REQUEST_REASONS;

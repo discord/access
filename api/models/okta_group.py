@@ -1,12 +1,10 @@
-from typing import List
-
 from sqlalchemy import func, or_, select
 
 from api.extensions import db
-from api.models.core_models import OktaUser, OktaUserGroupMember
+from api.models.core_models import OktaGroup, OktaUser, OktaUserGroupMember
 
 
-async def get_group_managers(group_id: str) -> List[OktaUser]:
+async def get_group_managers(group_id: str) -> list[OktaUser]:
     # A user can hold two concurrent active OktaUserGroupMember owner rows for
     # the same group at once (a direct grant plus one via a role mapping,
     # per the access-grant-precedence rules) -- distinct() so such a user is
@@ -25,3 +23,24 @@ async def get_group_managers(group_id: str) -> List[OktaUser]:
         )
     )
     return list(result.all())
+
+
+async def is_group_name_taken(name: str) -> bool:
+    """Report whether a live group already uses ``name``.
+
+    Group names are unique case-insensitively among groups that are not
+    soft-deleted, so ``"Platform"`` is taken by an existing ``"platform"``.
+
+    Args:
+        name: The full group name, including any ``App-``/``Role-`` prefix.
+
+    Returns:
+        True if a non-deleted group of any type has this name, ignoring case.
+    """
+    existing = await db.session.scalar(
+        select(OktaGroup.id)
+        .where(func.lower(OktaGroup.name) == func.lower(name))
+        .where(OktaGroup.deleted_at.is_(None))
+        .limit(1)
+    )
+    return existing is not None

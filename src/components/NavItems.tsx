@@ -31,7 +31,7 @@ import GroupRequestIcon from '@mui/icons-material/GroupAdd';
 interface ListItemLinkProps extends ListItemProps {
   to: string;
   displayText: string;
-  displayIcon?: JSX.Element;
+  displayIcon?: React.JSX.Element;
   open?: boolean;
   tooltip?: string;
 }

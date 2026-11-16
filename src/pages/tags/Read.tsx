@@ -1,4 +1,5 @@
 import React from 'react';
+import ActionTooltip from '../../components/ActionTooltip';
 
 import {Link as RouterLink, useNavigate, useParams} from 'react-router-dom';
 
@@ -18,7 +19,6 @@ import TableContainer from '@mui/material/TableContainer';
 import TableFooter from '@mui/material/TableFooter';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
-import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
 import DeleteIcon from '@mui/icons-material/Close';
@@ -47,6 +47,8 @@ import Loading from '../../components/Loading';
 import DeleteTag from './Delete';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
 import MarkdownDescription from '../../components/MarkdownDescription';
+import TagConstraintList from './TagConstraintList';
+import {NO_CONSTRAINTS_NOTE, SCOPE_LABELS, byConstraintOrder, isConstraintInForce} from '../../constraintCopy';
 
 export default function ReadTag() {
   const currentUser = useCurrentUser();
@@ -114,16 +116,20 @@ export default function ReadTag() {
     });
   };
 
-  const moveTooltip = {modifiers: [{name: 'offset', options: {offset: [0, -10]}}]};
+  // `?? true`, not `Boolean(...)`: the field is optional in the generated type
+  // and the server default is `true`, so coercing `undefined` would describe the
+  // opposite of what an older tag actually does.
+  const propagateToRoles = tag.propagate_to_roles ?? true;
 
-  const constraintsNames: Record<string, string> = {
-    member_time_limit: 'Member Time Limit',
-    owner_time_limit: 'Owner Time Limit',
-    require_owner_reason: 'Required to Provide Ownership Reason?',
-    require_member_reason: 'Required to Provide Membership Reason?',
-    disallow_self_add_ownership: 'Owners may not add selves as owners?',
-    disallow_self_add_membership: 'Owners may not add selves as members?',
-  };
+  // Only constraints actually in force. The tag form writes all four boolean
+  // keys on every save, so a typical tag stores several switched off; listing
+  // those as rows reading "No" pads the table with non-constraints. Filtered on
+  // `!== false`, the same test `_constraint_entry` uses in `api/models/tag.py`:
+  // only a flag can be switched off, and a falsy *number* is the tightest
+  // possible limit rather than the absence of one.
+  const constraintsInForce = Object.keys(tag.constraints ?? {})
+    .filter((key) => isConstraintInForce(tag.constraints![key]))
+    .sort(byConstraintOrder);
 
   const hasActions = tag != null && tag.deleted_at == null && isAccessAdmin(currentUser);
   return (
@@ -131,11 +137,25 @@ export default function ReadTag() {
       <ChangeTitle title={`${tag.name} Tag`} />
       <Container maxWidth="lg" sx={{my: 4}}>
         <Grid container spacing={3}>
-          <Grid item xs={12}>
+          <Grid size={12}>
             <Paper sx={{p: 2}}>
-              <Stack direction="column" gap={2}>
-                <Stack alignItems="center" direction="column" sx={{wordBreak: 'break-word'}} gap={1}>
-                  <Typography variant="h3" textAlign="center">
+              <Stack
+                direction="column"
+                sx={{
+                  gap: 2,
+                }}>
+                <Stack
+                  direction="column"
+                  sx={{
+                    alignItems: 'center',
+                    gap: 1,
+                    wordBreak: 'break-word',
+                  }}>
+                  <Typography
+                    variant="h3"
+                    sx={{
+                      textAlign: 'center',
+                    }}>
                     {tag.name}
                   </Typography>
                   <MarkdownDescription description={tag.description} />
@@ -159,96 +179,84 @@ export default function ReadTag() {
                 {hasActions && (
                   <>
                     <Divider />
-                    <Stack direction="row" justifyContent="center">
-                      <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
-                        <div>
-                          <CreateUpdateTag currentUser={currentUser} tag={tag} />
-                        </div>
-                      </Tooltip>
-                      <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
-                        <div>
-                          <DeleteTag currentUser={currentUser} tag={tag} />
-                        </div>
-                      </Tooltip>
+                    <Stack
+                      direction="row"
+                      sx={{
+                        justifyContent: 'center',
+                      }}>
+                      <ActionTooltip title="Edit">
+                        <CreateUpdateTag currentUser={currentUser} tag={tag} />
+                      </ActionTooltip>
+                      <ActionTooltip title="Delete">
+                        <DeleteTag currentUser={currentUser} tag={tag} />
+                      </ActionTooltip>
                     </Stack>
                   </>
                 )}
               </Stack>
             </Paper>
           </Grid>
-          <Grid item xs={12}>
-            <TableContainer component={Paper}>
-              <Table sx={{minWidth: 650}} size="small" aria-label="apps with tag">
-                <TableHead>
-                  <TableRow>
-                    <TableCell colSpan={3}>
-                      <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="text.accent">
-                          Tag Constraints
-                        </Typography>
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Value</TableCell>
-                    <TableCell colSpan={2}>
-                      <Grid container>
-                        <Grid item xs={12}>
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              justifyContent: 'flex-end',
-                              alignItems: 'right',
-                            }}>
-                            <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                            Total: {tag.constraints ? Object.keys(tag.constraints).length : 0}
-                          </Box>
-                        </Grid>
-                      </Grid>
-                    </TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {tag.constraints && Object.keys(tag.constraints).length > 0 ? (
-                    Object.keys(tag.constraints).map((key: string) => (
-                      <TableRow key={'constraint' + key}>
-                        <TableCell>{constraintsNames[key]}</TableCell>
-                        <TableCell colSpan={2}>
-                          {
-                            key == 'member_time_limit' || key == 'owner_time_limit'
-                              ? tag.constraints![key] / 86400 + ' days' // Display days not seconds
-                              : tag.constraints![key]
-                                ? 'Yes'
-                                : 'No' // Display Yes and No not booleans
-                          }
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <EmptyListEntry cellProps={{colSpan: 3}} />
-                  )}
-                </TableBody>
-                <TableFooter>
-                  <TableRow />
-                </TableFooter>
-              </Table>
-            </TableContainer>
+          <Grid size={12}>
+            <Paper sx={{p: 2}}>
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{
+                  alignItems: 'center',
+                }}>
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: 'text.accent',
+                  }}>
+                  Constraints
+                </Typography>
+                {constraintsInForce.length > 0 && (
+                  <Chip
+                    size="small"
+                    label={'Scope: ' + (propagateToRoles ? SCOPE_LABELS.roles : SCOPE_LABELS.groupsOnly)}
+                    color={propagateToRoles ? 'primary' : 'default'}
+                  />
+                )}
+              </Stack>
+              {constraintsInForce.length === 0 ? (
+                // A tag that constrains nothing gets the sentence alone. A list whose
+                // only entry explains that it has no entries is worse than no list.
+                <Typography variant="body2" sx={{marginTop: '4px'}}>
+                  {NO_CONSTRAINTS_NOTE}
+                </Typography>
+              ) : (
+                <TagConstraintList
+                  constraintKeys={constraintsInForce}
+                  constraints={tag.constraints!}
+                  propagateToRoles={propagateToRoles}
+                />
+              )}
+            </Paper>
           </Grid>
-          <Grid item xs={12}>
+          <Grid size={12}>
             <TableContainer component={Paper}>
               <Table sx={{minWidth: 650}} size="small" aria-label="apps with tag">
                 <TableHead>
                   <TableRow>
                     <TableCell colSpan={2}>
                       <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="text.accent">
+                        <Typography
+                          variant="h6"
+                          sx={{
+                            color: 'text.accent',
+                          }}>
                           Apps with Tag
                         </Typography>
                       </Stack>
                     </TableCell>
                     <TableCell align="right">
-                      <Stack direction="row" spacing={1} justifyContent={'flex-end'}>
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{
+                          justifyContent: 'flex-end',
+                        }}>
                         <AddApps currentUser={currentUser} tag={tag} />
                       </Stack>
                     </TableCell>
@@ -257,7 +265,7 @@ export default function ReadTag() {
                     <TableCell>Name</TableCell>
                     <TableCell colSpan={2}>
                       <Grid container>
-                        <Grid item xs={12}>
+                        <Grid size={12}>
                           <Box
                             sx={{
                               display: 'flex',
@@ -306,20 +314,29 @@ export default function ReadTag() {
               </Table>
             </TableContainer>
           </Grid>
-          <Grid item xs={12}>
+          <Grid size={12}>
             <TableContainer component={Paper}>
               <Table sx={{minWidth: 650}} size="small" aria-label="group owners">
                 <TableHead>
                   <TableRow>
                     <TableCell colSpan={3}>
                       <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="text.accent">
+                        <Typography
+                          variant="h6"
+                          sx={{
+                            color: 'text.accent',
+                          }}>
                           Groups with Tag
                         </Typography>
                       </Stack>
                     </TableCell>
                     <TableCell align="right">
-                      <Stack direction="row" spacing={1} justifyContent={'flex-end'}>
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{
+                          justifyContent: 'flex-end',
+                        }}>
                         <AddGroups currentUser={currentUser} tag={tag} />
                       </Stack>
                     </TableCell>
@@ -329,10 +346,8 @@ export default function ReadTag() {
                     <TableCell>Group Type</TableCell>
                     <TableCell colSpan={2}>
                       <Grid container>
-                        <Grid item xs={3}>
-                          Direct or via App
-                        </Grid>
-                        <Grid item xs={9}>
+                        <Grid size={3}>Direct or via App</Grid>
+                        <Grid size={9}>
                           <Box
                             sx={{
                               display: 'flex',

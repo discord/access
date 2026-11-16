@@ -9,7 +9,7 @@ rollback-on-exception behavior.
 Session-scope lifecycle
 -----------------------
 MCP tool handlers do **not** execute in the ``/mcp`` HTTP request task.
-FastMCP's ``StreamableHTTPSessionManager`` runs the server (and therefore
+The SDK's ``StreamableHTTPSessionManager`` runs the server (and therefore
 the tool) in its own task, inside the session manager's task group. That
 matters for connection lifecycle: ``RequestIdMiddleware`` calls
 ``db.remove()`` from the *request* task, but a connection a tool checks
@@ -24,28 +24,31 @@ duration of a single tool call and removes it *in the same task the tool
 ran in*, so the connection is returned to the pool by its owning task.
 ``requires_scope`` (the wrapper every tool passes through) enters it, so
 both read-only tools (``db.session`` directly) and write tools
-(``mcp_db_session``) are covered without per-tool boilerplate.
+(``mcp_db_session``) are covered without per-tool boilerplate. The
+teardown is shielded from cancellation, so a tool cancelled mid-call (the
+client drops the session) still returns its connection.
 """
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.extensions import _session_scope, db as _db_shim
+from api.extensions import _session_scope
+from api.extensions import db as _db_shim
 
 
 @asynccontextmanager
-async def tool_session_scope() -> AsyncIterator[None]:
+async def tool_session_scope() -> AsyncGenerator[None]:
     """Bind a fresh DB session scope for one MCP tool call and tear it
     down in the calling task.
 
     Each tool invocation gets its own ``async_scoped_session`` key so the
     session it uses (via ``db.session``) is created and removed within the
-    FastMCP server task, guaranteeing the connection returns to the pool
+    MCP server task, guaranteeing the connection returns to the pool
     from the task that checked it out. See the module docstring for why
     the ``/mcp`` request task's ``db.remove()`` can't do this.
     """
@@ -53,24 +56,19 @@ async def tool_session_scope() -> AsyncIterator[None]:
     try:
         yield
     finally:
+        # Shielded: a cancelled tool (the client dropped the session) would
+        # otherwise leak its connection.
+        await _db_shim.remove_shielded()
         try:
-            # Swallow teardown errors so a failed close never masks the
-            # tool's result (or its own exception) — mirrors the
-            # RequestIdMiddleware teardown.
-            await _db_shim.remove()
-        except Exception:
-            pass
-        finally:
-            try:
-                _session_scope.reset(token)
-            except ValueError:
-                # Scope was set on a context copy; the token isn't valid
-                # here. Fall back to the process-global default.
-                _session_scope.set("__default__")
+            _session_scope.reset(token)
+        except ValueError:
+            # Scope was set on a context copy; the token isn't valid
+            # here. Fall back to the process-global default.
+            _session_scope.set("__default__")
 
 
 @asynccontextmanager
-async def mcp_db_session() -> AsyncIterator[AsyncSession]:
+async def mcp_db_session() -> AsyncGenerator[AsyncSession]:
     """Yield the request-scoped DB session, committing on success and
     rolling back on exception. Matches the contract of
     ``api/database.py::get_db`` so write tools behave the same way as
@@ -81,7 +79,7 @@ async def mcp_db_session() -> AsyncIterator[AsyncSession]:
     except Exception:
         try:
             await session.rollback()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 - re-raise the original error, not the rollback's
             pass
         raise
     else:

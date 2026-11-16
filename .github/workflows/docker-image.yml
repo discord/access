@@ -49,6 +49,8 @@ jobs:
           build-args: |
             SENTRY_RELEASE=${{ github.sha }}
             INSTALL_GOOGLE_GROUP_LIFECYCLE_PLUGIN=true
+            REQUIRE_DESCRIPTIONS=true
+            REQUIRE_REQUEST_REASONS=true
           secrets: |
             "SENTRY_ORG=${{ secrets.SENTRY_ORG }}"
             "SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}"

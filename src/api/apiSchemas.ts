@@ -135,6 +135,7 @@ export type AppGroupDetail = {
   updated_at: string | null;
   deleted_at?: string | null;
   active_group_tags?: OktaGroupTagMapDetail[];
+  effective_constraints?: EffectiveConstraintDetail[] | null;
   /**
    * @default app_group
    */
@@ -357,6 +358,16 @@ export type AuditUserGroupRow = {
   ended_actor?: UserSummaryForAudit | null;
 };
 
+/**
+ * How a tag reaches the group a constraint is being evaluated for.
+ *
+ * A `StrEnum` so it serializes as the bare string it always was: the JSON
+ * contract is unchanged, but the OpenAPI schema now carries the value set,
+ * and the generated TypeScript client gets a literal union instead of
+ * `string`.
+ */
+export type ConstraintOrigin = 'direct' | 'app' | 'member_association' | 'owner_association';
+
 export type CreateAccessRequestBody = {
   group_id: string;
   /**
@@ -421,10 +432,42 @@ export type CreateTagBody = {
    * @default true
    */
   enabled?: boolean;
+  propagate_to_roles?: boolean | null;
 };
 
 export type DeleteMessage = {
   deleted: boolean;
+};
+
+export type EffectiveConstraintDetail = {
+  constraint: string;
+  value: number | boolean;
+  sources?: EffectiveConstraintSourceDetail[];
+};
+
+export type EffectiveConstraintSourceDetail = {
+  tag_id: string;
+  tag_name: string;
+  origin: ConstraintOrigin;
+  source_id?: string | null;
+  source_name?: string | null;
+};
+
+/**
+ * The answer to "what constraints apply here?" for a set of groups or tags.
+ *
+ * Carries both shapes because callers need both and neither can be derived
+ * from the other without re-implementing `coalesce`: `coalesced` bounds one
+ * shared control across the whole set (a bulk dialog's single duration
+ * picker), while `by_group` answers per row (which groups block a self-add,
+ * which picker options to disable). `by_group` is empty in tag mode, where
+ * no group was named.
+ */
+export type EffectiveConstraintsResponse = {
+  coalesced?: EffectiveConstraintDetail[];
+  by_group?: {
+    [key: string]: EffectiveConstraintDetail[];
+  };
 };
 
 export type GroupDetail =
@@ -558,6 +601,7 @@ export type OktaGroupDetail = {
   updated_at: string | null;
   deleted_at?: string | null;
   active_group_tags?: OktaGroupTagMapDetail[];
+  effective_constraints?: EffectiveConstraintDetail[] | null;
   /**
    * @default okta_group
    */
@@ -1056,6 +1100,7 @@ export type RoleGroupDetail = {
   updated_at: string | null;
   deleted_at?: string | null;
   active_group_tags?: OktaGroupTagMapDetail[];
+  effective_constraints?: EffectiveConstraintDetail[] | null;
   /**
    * @default role_group
    */
@@ -1328,102 +1373,6 @@ export type RoleRequestSummary = {
   active_resolver?: OktaUserSummary | null;
 };
 
-export type SearchAccessRequestQuery = {
-  q?: string | null;
-  status?: string | null;
-  requester_user_id?: string | null;
-  assignee_user_id?: string | null;
-  requested_group_id?: string | null;
-  resolver_user_id?: string | null;
-};
-
-export type SearchAppQuery = {
-  q?: string | null;
-};
-
-export type SearchGroupQuery = {
-  q?: string | null;
-  managed?: boolean | null;
-};
-
-export type SearchGroupRequestQuery = {
-  q?: string | null;
-  status?: string | null;
-  requester_user_id?: string | null;
-  assignee_user_id?: string | null;
-  requested_group_id?: string | null;
-  resolver_user_id?: string | null;
-  requested_group_type?: string | null;
-  requested_app_id?: string | null;
-};
-
-export type SearchGroupRoleAuditQuery = {
-  q?: string | null;
-  owner?: boolean | null;
-  active?: boolean | null;
-  needs_review?: boolean | null;
-  order_by?: AuditOrderBy;
-  /**
-   * @default true
-   */
-  order_desc?: boolean;
-  user_id?: string | null;
-  group_id?: string | null;
-  owner_id?: string | null;
-  app_owner?: boolean | null;
-  managed?: boolean | null;
-  start_date?: number | null;
-  end_date?: number | null;
-  direct?: boolean | null;
-  deleted?: boolean | null;
-  role_id?: string | null;
-  role_owner_id?: string | null;
-};
-
-export type SearchRoleQuery = {
-  q?: string | null;
-  owner_id?: string | null;
-};
-
-export type SearchRoleRequestQuery = {
-  q?: string | null;
-  status?: string | null;
-  requester_user_id?: string | null;
-  assignee_user_id?: string | null;
-  requested_group_id?: string | null;
-  resolver_user_id?: string | null;
-  requester_role_id?: string | null;
-};
-
-export type SearchTagQuery = {
-  q?: string | null;
-};
-
-export type SearchUserGroupAuditQuery = {
-  q?: string | null;
-  owner?: boolean | null;
-  active?: boolean | null;
-  needs_review?: boolean | null;
-  order_by?: AuditOrderBy;
-  /**
-   * @default true
-   */
-  order_desc?: boolean;
-  user_id?: string | null;
-  group_id?: string | null;
-  owner_id?: string | null;
-  app_owner?: boolean | null;
-  managed?: boolean | null;
-  start_date?: number | null;
-  end_date?: number | null;
-  direct?: boolean | null;
-  deleted?: boolean | null;
-};
-
-export type SearchUserQuery = {
-  q?: string | null;
-};
-
 export type TagDetail = {
   id: string;
   name: string;
@@ -1435,6 +1384,10 @@ export type TagDetail = {
    * @default true
    */
   enabled?: boolean;
+  /**
+   * @default true
+   */
+  propagate_to_roles?: boolean;
   created_at: string | null;
   updated_at: string | null;
   deleted_at?: string | null;
@@ -1444,8 +1397,8 @@ export type TagDetail = {
 
 /**
  * Tag list-endpoint item. Slim field set (id, name, description,
- * enabled, constraints, created_at, updated_at) — does not hydrate
- * `active_group_tags`, which would be an N+1 across the page.
+ * enabled, propagate_to_roles, constraints, created_at, updated_at) — does
+ * not hydrate `active_group_tags`, which would be an N+1 across the page.
  */
 export type TagListItem = {
   id: string;
@@ -1458,6 +1411,10 @@ export type TagListItem = {
    * @default true
    */
   enabled?: boolean;
+  /**
+   * @default true
+   */
+  propagate_to_roles?: boolean;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -1472,6 +1429,10 @@ export type TagSummary = {
    * @default true
    */
   enabled?: boolean;
+  /**
+   * @default true
+   */
+  propagate_to_roles?: boolean;
 };
 
 /**
@@ -1502,6 +1463,7 @@ export type UpdateTagBody = {
     [key: string]: any;
   } | null;
   enabled?: boolean;
+  propagate_to_roles?: boolean;
 };
 
 export type AccessRequestAppGroupRef = {

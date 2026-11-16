@@ -29,7 +29,7 @@ from api.operations._lifecycle_fan_out import (
 )
 
 
-async def defer_fan_out(background_tasks: BackgroundTasks) -> AsyncGenerator[None, None]:
+async def defer_fan_out(background_tasks: BackgroundTasks) -> AsyncGenerator[None]:
     """Defer this request's Okta/notification fan-out and app-group-lifecycle hooks to
     post-response tasks.
 

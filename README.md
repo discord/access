@@ -263,6 +263,8 @@ The `.env.production` file is where you configure the application.
 - `MCP_FALLBACK_SCOPES`: **[OPTIONAL]** Comma-separated scopes granted to MCP tokens that carry no `scope` claim. Defaults to `read_all,create_requests` (read + filing requests). Set to `read_all` for read-only MCP sessions, or `""` to fail closed. Only relevant when `ENABLE_MCP=true`.
 - `OIDC_MCP_AUDIENCE`: **[REQUIRED when `ENABLE_MCP=true` and `OIDC_SERVER_METADATA_URL` is set]** The OAuth audience to validate against the `aud` claim on incoming MCP bearer tokens. Typically the OAuth client identifier of the MCP application registered with your IdP, e.g. `access-mcp`.
 - `MCP_RESOURCE_URL`: **[OPTIONAL]** Canonical public URL of the MCP resource (e.g. `https://access.example.com/mcp`), published in the RFC 9728 metadata document and the 401 `resource_metadata` pointer. Derived from the request when unset; set it explicitly behind a proxy that rewrites Host. Only relevant when `ENABLE_MCP=true`.
+- `LOG_LEVEL`: **[OPTIONAL]** Root log level. Defaults to `INFO`.
+- `LOG_FORMAT`: **[OPTIONAL]** How application log lines are written to stdout. `plain` (default) writes the bare message. `text` prefixes each line with its source and origin: `[cli:sync] [plugin:my_plugin] WARNING my_plugin: ...`. `json` writes one JSON object per line with `timestamp`, `severity`, `logger`, `source`, `origin`, `message`, and, inside a request, `request_id`. `source` is who invoked the work (`web` or `mcp` for a request, otherwise `server` or `cli:<command>`); `origin` is whose code logged it (`app`, `plugin:<package>`, or `lib:<library>`). Audit log lines (the `access.audit` logger) are written as bare JSON in every format.
 
 **Check out `.env.psql.example` or `.env.production.example` for an example configuration file structure**.
 
@@ -312,6 +314,24 @@ it; for a role request that includes Access admins. A sync run that closes many
 requests at once sends a correspondingly large number of notifications, so on a
 busy instance it is worth knowing how many requests are pending past a cutoff or
 past their requested end date.
+
+##### Requiring request reasons
+
+Set `REQUIRE_REQUEST_REASONS=true` to reject any access, role, or group request
+submitted without a reason, whatever tags its target carries. It applies to
+every requester, Access admins included, and to requests made through the MCP
+server. A reason made only of whitespace counts as missing.
+
+It governs the requester's reason only. Approvers' reasons, and reasons for
+adding members or owners directly, still follow the `require_member_reason` and
+`require_owner_reason` tag constraints.
+
+The frontend reads the same variable when it is built, to mark the reason field
+required, so set it in the build environment as well as at runtime. For the
+Docker image, pass it as a build argument
+(`docker build --build-arg REQUIRE_REQUEST_REASONS=true .`); `REQUIRE_DESCRIPTIONS`
+works the same way. A frontend built without it still works; requests without a
+reason are then rejected by the server instead of the form.
 
 ### Access application configuration
 
@@ -406,6 +426,78 @@ access init <YOUR_OKTA_USER_EMAIL>
 
 Visit [http://localhost:3000/](http://localhost:3000/) to view your running version of Access!
 
+### Interactive shell
+
+`access shell` opens a Python REPL with the application context bootstrapped: the database
+engine is bound, plugins are loaded, and `db.session` is ready. Use it for one-off inspection
+and for repairs that don't yet have a command of their own.
+
+```
+access shell
+```
+
+In a running container, that is `docker compose exec discord-access access shell` (or
+`kubectl exec ... -- access shell`).
+
+The session starts with `db`, every ORM model and operation class, and the query and eager-load
+helpers (`select`, `func`, `joinedload`, `selectinload`, ...) already in scope. Statements may
+use top-level `await`, which they need to -- the session, the operation classes, and the Okta
+service are all async:
+
+```python
+>>> group = (await db.session.scalars(
+...     select(OktaGroup).where(OktaGroup.name == "App-Example-Owners")
+...     .options(selectinload(OktaGroup.active_group_memberships))
+... )).one()
+>>> [m.user_id for m in group.active_group_memberships]
+```
+
+Two things to keep in mind:
+
+- **Work commits when the session ends.** Call `await db.session.rollback()` to discard instead.
+- **Relationships are `lazy="raise_on_sql"`.** Reading one you did not eagerly load raises rather
+  than emitting a query, so reach for `joinedload` / `selectinload` in the query itself.
+
+Operations run here exactly as they do under the API server, including their Okta calls and
+notification hooks -- outside an HTTP request those drain inline, so `await
+SomeOperation(...).execute()` returns only once its fan-out has finished. A repair you expect to
+run more than once belongs in `api/integrity.py` behind a CLI command with a `--dry-run` flag
+(see `fix-unmanaged-groups`), not in shell history.
+
+### CLI commands
+
+Installing the package (`make dev`, or the container image) puts an `access` command on the path.
+`access <command> --help` prints the full option list for any of them.
+
+**Setup**, run once when standing up a deployment:
+
+| Command | What it does |
+|---|---|
+| `access init <admin email>` | Import users, groups, and memberships from Okta, then create the built-in Access app owned by that user. The other two below are its halves, for re-running one without the other. |
+| `access import-from-okta` | Import users, groups, and memberships from Okta. Skips each of the three if that table is already populated. |
+| `access init-builtin-apps <admin email>` | Create the built-in Access app and its owner group. No-ops if they already exist. |
+
+**Scheduled jobs**, wired up as cronjobs (see [examples/kubernetes](https://github.com/discord/access/tree/main/examples/kubernetes)):
+
+| Command | What it does |
+|---|---|
+| `access sync` | Reconcile users, groups, and memberships with Okta, and expire requests that have sat too long. Okta is the source of truth by default; `--sync-groups-authoritatively` and `--sync-group-memberships-authoritatively` reverse that and make Access push its state to Okta instead, so reach for them deliberately. `--group-fetch-concurrency` bounds how many groups are fetched from Okta at once. |
+| `access notify` | Send expiring-access notifications to the users losing access. `--owner` notifies group owners instead, and `--role-owner` notifies role owners about expiring role-to-group attachments; run all three to cover every audience. |
+| `access sync-app-groups` | Invoke the periodic `sync_group` hook for every group of every app with an app-group-lifecycle plugin configured. Each group is its own unit of work, so one failure cannot strand the rest; the command still exits non-zero if any group failed. |
+
+**Repair and cleanup**, run as needed. Each takes `--dry-run` to report without changing anything,
+except `prune-redundant-direct-access`, which reports by default and needs `--apply` to commit:
+
+| Command | What it does |
+|---|---|
+| `access fix-unmanaged-groups` | Re-apply unmanaged status to every group Access has marked unmanaged, which ends the memberships and role associations Access no longer owns and rejects the requests against them. |
+| `access fix-role-memberships` | Reconcile each role's memberships against the groups it grants, adding the group memberships a role implies and ending the ones it no longer does. |
+| `access cap-role-memberships` | Shorten role memberships that outlast the time limit their role's associated groups impose. The grant-time path bounds a membership as it is granted, so this covers the ones granted before a tag's limit applied. Safe to re-run; a membership already under its limit is skipped. |
+| `access prune-redundant-direct-access` | Remove a user's direct grant to a group when a role they hold already grants the same access; the duplicate obscures why they have access and outlives their role membership. By default only grants ending no later than the role coverage are removed, so nobody loses access sooner than they otherwise would; `--allow-shortening` lifts that. Okta group membership is untouched, since the role-based grant survives. |
+
+`access shell` is also available for one-off inspection and repairs that have no command of their
+own; see [Interactive shell](#interactive-shell) above.
+
 ### Kubernetes Deployment and CronJobs
 
 As Access is a web application packaged with Docker, it can easily be deployed to a Kubernetes cluster. We've included example Kubernetes yaml objects you can use to deploy Access in the [examples/kubernetes](https://github.com/discord/access/tree/main/examples/kubernetes) directory.
@@ -418,7 +510,7 @@ Access can embed a [Model Context Protocol](https://modelcontextprotocol.io/) se
 
 ### Enabling
 
-Set `ENABLE_MCP=true` in your `.env.production`. When the flag is on, Access mounts the FastMCP server at `POST /mcp` and activates the MCP auth middleware. When off, the `/mcp` route is not registered and the MCP code path is never imported.
+Set `ENABLE_MCP=true` in your `.env.production`. When the flag is on, Access mounts the MCP server at `POST /mcp` and activates the MCP auth middleware. When off, the `/mcp` route is not registered and the MCP code path is never imported.
 
 `mcp[cli]` is pinned in [`pyproject.toml`](pyproject.toml) and imported unconditionally; only the runtime wiring is gated by the flag.
 
@@ -528,6 +620,7 @@ As of Access 2.0 the plugin hooks are **async** — Access is an async applicati
 - **`group_deleted` is the exception and runs inline, on the request.** The sweep skips soft-deleted groups, so nothing would revisit a delete that went missing, and the external group would outlive the Access one. Your `group_deleted` therefore blocks the API response — keep it as quick as the external system allows — and the only way to lose it is to raise.
 - **Whatever a hook writes is absent from the create/update response the user just got.** Declare `pending_values` on the status property that carries your reconcile state (e.g. `pending_values=("pending",)` on a `sync_status`) and the UI keeps refreshing the group until it moves off them. If you declare them, write a status on *every* reconcile outcome, including the ones where you decide there is nothing to do — an empty status reads as "the hook has not run yet" and the UI will poll for it.
 - **Request-path notification hooks receive read-only, detached ORM snapshots.** Every notification raised from an HTTP request — the `*_created` and `*_completed` hooks for access, role, and group requests — runs in a post-response background task, after the request's DB session has been torn down, so Access detaches (`expunge`s) the objects it passes. Read only the attributes Access already loaded — the request, its group/role, a group request's `requested_app`, the requester, and the approvers, and their columns — and don't trigger a lazy load / re-query (there's no live session behind them) or expect mutations to persist. If your notifier needs a wider object graph than what's passed, open an issue so the operation can eager-load it. (The `access_expiring_*` hooks are the exception — they run inline in the syncer CronJob.)
+- **Log through `logging.getLogger(__name__)`.** Access attributes a log line to your plugin by matching the logger name against your plugin's top-level package, so lines from the root logger (`logging.warning(...)`) or a logger named outside your package show up as `lib:<name>` instead of `plugin:<package>`. See `LOG_FORMAT` above.
 - **Metrics `batch_metrics` is an async context manager** — use it as `async with metrics.batch_metrics(): await metrics.record_counter(...)`.
 - **These hooks stay synchronous:** the app-group-lifecycle metadata/config-schema/status-schema/validation hooks (`get_plugin_metadata`, `get_plugin_*_config_properties`, `validate_plugin_*_config`, `get_plugin_*_status_properties`). They are pure schema accessors with no I/O.
 - **Plugin-contributed CLI commands** (the `access.commands` entry point) run as ordinary Click commands, so they must drive their own async boundary — write an `async def` body and run it with `asyncio.run(...)`, as [health_check_plugin](https://github.com/discord/access/tree/main/examples/plugins/health_check_plugin) does.

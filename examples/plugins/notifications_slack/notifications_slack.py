@@ -1,11 +1,10 @@
-from __future__ import print_function
-
 import asyncio
 import logging
 import os
 import random
+from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timedelta
-from typing import Any, Awaitable, Callable, Dict, List, Optional, TypeVar
+from typing import Any
 
 import pluggy
 from slack_sdk.web.async_client import AsyncWebClient
@@ -24,13 +23,10 @@ from api.models import (
 notification_hook_impl = pluggy.HookimplMarker("access_notifications")
 logger = logging.getLogger(__name__)
 
-# Type variable for generic return type
-T = TypeVar("T")
 
-
-async def retry_operation(
+async def retry_operation[T](
     operation_func: Callable[[], Awaitable[T]], max_attempts: int = 3, base_delay: float = 1.0, max_delay: float = 10.0
-) -> Optional[T]:
+) -> T | None:
     """
     Await an async operation with retries, without propagating exceptions.
 
@@ -49,19 +45,19 @@ async def retry_operation(
     while attempt < max_attempts:
         try:
             return await operation_func()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - retried, then logged; notifications never propagate
             attempt += 1
 
             # Log differently based on attempt number
             if attempt >= max_attempts:
-                logger.error(f"Max retry attempts ({max_attempts}) reached. Last error: {str(e)}")
+                logger.error(f"Max retry attempts ({max_attempts}) reached. Last error: {e!s}")
                 return None
             else:
                 # Add jitter to avoid thundering herd
                 jitter = random.uniform(0, 0.1 * delay)
                 sleep_time = min(delay + jitter, max_delay)
                 logger.warning(
-                    f"Operation failed (attempt {attempt}/{max_attempts}): {str(e)}. Retrying in {sleep_time:.2f}s"
+                    f"Operation failed (attempt {attempt}/{max_attempts}): {e!s}. Retrying in {sleep_time:.2f}s"
                 )
                 await asyncio.sleep(sleep_time)
                 delay = min(delay * 2, max_delay)  # Exponential backoff
@@ -113,15 +109,15 @@ def parse_dates(comparison_date: datetime, owner: bool) -> str:
     prev_monday = today - timedelta(days=today.weekday())
 
     if owner:  # 'round' dates to previous Monday
-        if prev_monday <= just_date and just_date < prev_monday + timedelta(weeks=1):
+        if prev_monday <= just_date < prev_monday + timedelta(weeks=1):
             return "this week"
-        elif prev_monday + timedelta(weeks=1) <= just_date and just_date < prev_monday + timedelta(weeks=2):
+        elif prev_monday + timedelta(weeks=1) <= just_date < prev_monday + timedelta(weeks=2):
             return "next week"
-        elif prev_monday + timedelta(weeks=2) <= just_date and just_date < prev_monday + timedelta(weeks=3):
+        elif prev_monday + timedelta(weeks=2) <= just_date < prev_monday + timedelta(weeks=3):
             return "in two weeks"
-        elif prev_monday + timedelta(weeks=3) <= just_date and just_date < prev_monday + timedelta(weeks=4):
+        elif prev_monday + timedelta(weeks=3) <= just_date < prev_monday + timedelta(weeks=4):
             return "in three weeks"
-        elif prev_monday + timedelta(weeks=4) <= just_date and just_date < prev_monday + timedelta(weeks=5):
+        elif prev_monday + timedelta(weeks=4) <= just_date < prev_monday + timedelta(weeks=5):
             return "in four weeks"
     else:
         if just_date == today + timedelta(days=1):  # one day before
@@ -134,11 +130,11 @@ def parse_dates(comparison_date: datetime, owner: bool) -> str:
     return "soon"
 
 
-def expiring_access_list_user(expiring_access_list: List[OktaUserGroupMember] | None) -> str:
+def expiring_access_list_user(expiring_access_list: list[OktaUserGroupMember] | None) -> str:
     """Formats list of expiring access for expiring access individual DMs.
 
     Args:
-        expiring_access_list (List[OktaUserGroupMember] | None): User access expiring soon.
+        expiring_access_list (list[OktaUserGroupMember] | None): User access expiring soon.
 
     Returns:
         str: Formatted string of user access expiring soon.
@@ -158,11 +154,11 @@ def expiring_access_list_user(expiring_access_list: List[OktaUserGroupMember] | 
     return out
 
 
-def expiring_access_list_owner_roles(expiring_access_list: List[RoleGroupMap] | None) -> str:
+def expiring_access_list_owner_roles(expiring_access_list: list[RoleGroupMap] | None) -> str:
     """Formats list of expiring role access for expiring access group owner DMs.
 
     Args:
-        expiring_access_list (List[RoleGroupMap] | None): Role access expiring soon.
+        expiring_access_list (list[RoleGroupMap] | None): Role access expiring soon.
 
     Returns:
         str: Formatted string of role access expiring soon.
@@ -184,11 +180,11 @@ def expiring_access_list_owner_roles(expiring_access_list: List[RoleGroupMap] | 
     return out
 
 
-def expiring_access_list_owner_users(expiring_access_list: List[OktaUserGroupMember] | None) -> str:
+def expiring_access_list_owner_users(expiring_access_list: list[OktaUserGroupMember] | None) -> str:
     """Formats list of expiring user access for expiring access group owner DMs.
 
     Args:
-        expiring_access_list (List[OktaUserGroupMember] | None): User access expiring soon.
+        expiring_access_list (list[OktaUserGroupMember] | None): User access expiring soon.
 
     Returns:
         str: Formatted string of user access expiring soon.
@@ -213,11 +209,11 @@ def expiring_access_list_owner_users(expiring_access_list: List[OktaUserGroupMem
     return out
 
 
-def expiring_access_list_role_owner(expiring_access_list: List[RoleGroupMap]) -> str:
+def expiring_access_list_role_owner(expiring_access_list: list[RoleGroupMap]) -> str:
     """Formats list of expiring role access for expiring access role owner DMs.
 
     Args:
-        expiring_access_list (List[RoleGroupMap] | None): Role access expiring soon.
+        expiring_access_list (list[RoleGroupMap] | None): Role access expiring soon.
 
     Returns:
         str: Formatted string of role access expiring soon.
@@ -239,14 +235,14 @@ def expiring_access_list_role_owner(expiring_access_list: List[RoleGroupMap]) ->
     return out
 
 
-async def get_user_id_by_email(email: str) -> Optional[str]:
+async def get_user_id_by_email(email: str) -> str | None:
     """Get Slack user ID by email with retry logic.
 
     Args:
         email (str): The email of the user.
 
     Returns:
-        Optional[str]: The Slack user ID if found, otherwise None.
+        str | None: The Slack user ID if found, otherwise None.
     """
 
     async def lookup_user() -> str:
@@ -275,7 +271,7 @@ async def send_slack_dm(user: OktaUser, message: str) -> None:
     if user_id:
         mention_message = f"<@{user_id}> {message}"
 
-        async def send_message() -> Dict[str, Any]:
+        async def send_message() -> dict[str, Any]:
             response = await client.chat_postMessage(
                 channel=user_id, text=mention_message, as_user=True, unfurl_links=True, unfurl_media=True
             )
@@ -303,7 +299,7 @@ async def send_slack_channel_message(user: OktaUser, message: str) -> None:
     if user_id:
         channel_message = f"{user.email} - {message}"
 
-        async def send_message() -> Dict[str, Any]:
+        async def send_message() -> dict[str, Any]:
             response = await client.chat_postMessage(
                 channel=alerts_channel, text=channel_message, as_user=True, unfurl_links=True, unfurl_media=True
             )
@@ -317,7 +313,7 @@ async def send_slack_channel_message(user: OktaUser, message: str) -> None:
 
 @notification_hook_impl
 async def access_request_created(
-    access_request: AccessRequest, group: OktaGroup, requester: OktaUser, approvers: List[OktaUser]
+    access_request: AccessRequest, group: OktaGroup, requester: OktaUser, approvers: list[OktaUser]
 ) -> None:
     """Notify all the approvers of the access request through a notification.
 
@@ -325,7 +321,7 @@ async def access_request_created(
         access_request (AccessRequest): The access request.
         group (OktaGroup): The group for which access is requested.
         requester (OktaUser): The user requesting access.
-        approvers (List[OktaUser]): The list of approvers.
+        approvers (list[OktaUser]): The list of approvers.
     """
     type_of_access = (
         "*ownership* :large_yellow_circle: of" if access_request.request_ownership else "*membership* :white_circle: to"
@@ -354,7 +350,7 @@ async def access_request_created(
 
 @notification_hook_impl
 async def access_role_request_created(
-    role_request: RoleRequest, role: RoleGroup, group: OktaGroup, requester: OktaUser, approvers: List[OktaUser]
+    role_request: RoleRequest, role: RoleGroup, group: OktaGroup, requester: OktaUser, approvers: list[OktaUser]
 ) -> None:
     """Notify all the approvers of the role request through a notification.
 
@@ -363,7 +359,7 @@ async def access_role_request_created(
         role (RoleGroup): The role for which access is requested.
         group (OktaGroup): The group to which access is requested.
         requester (OktaUser): The user requesting access.
-        approvers (List[OktaUser]): The list of approvers.
+        approvers (list[OktaUser]): The list of approvers.
     """
     type_of_access = "ownership of" if role_request.request_ownership else "membership to"
 
@@ -390,14 +386,14 @@ async def access_role_request_created(
 
 @notification_hook_impl
 async def access_group_request_created(
-    group_request: GroupRequest, requester: OktaUser, approvers: List[OktaUser]
+    group_request: GroupRequest, requester: OktaUser, approvers: list[OktaUser]
 ) -> None:
     """Notify the approvers that a group creation has been requested.
 
     Args:
         group_request (GroupRequest): The group request.
         requester (OktaUser): The user requesting the group.
-        approvers (List[OktaUser]): The list of approvers.
+        approvers (list[OktaUser]): The list of approvers.
     """
     group_request_url = get_base_url() + f"/group-requests/{group_request.id}"
 
@@ -433,7 +429,7 @@ async def access_request_completed(
     access_request: AccessRequest,
     group: OktaGroup,
     requester: OktaUser,
-    approvers: List[OktaUser],
+    approvers: list[OktaUser],
 ) -> None:
     """Notify the requester that their access request has been processed.
 
@@ -441,7 +437,7 @@ async def access_request_completed(
         access_request (AccessRequest): The access request.
         group (OktaGroup): The group for which access is requested.
         requester (OktaUser): The user requesting access.
-        approvers (List[OktaUser]): The list of approvers.
+        approvers (list[OktaUser]): The list of approvers.
     """
     access_request_url = get_base_url() + f"/requests/{access_request.id}"
     emoji = ":white_check_mark:" if access_request.status.lower() == "approved" else ":x:"
@@ -468,9 +464,9 @@ async def access_request_completed(
 @notification_hook_impl
 async def access_group_request_completed(
     group_request: GroupRequest,
-    group: Optional[OktaGroup],
+    group: OktaGroup | None,
     requester: OktaUser,
-    approvers: List[OktaUser],
+    approvers: list[OktaUser],
     notify_requester: bool,
 ) -> None:
     """Notify the requester that their group request has been processed.
@@ -479,7 +475,7 @@ async def access_group_request_completed(
         group_request (GroupRequest): The group request.
         group (Optional[OktaGroup]): The group created (None if rejected).
         requester (OktaUser): The user requesting the group.
-        approvers (List[OktaUser]): The list of approvers.
+        approvers (list[OktaUser]): The list of approvers.
         notify_requester (bool): Whether to notify the requester.
     """
     group_request_url = get_base_url() + f"/group-requests/{group_request.id}"
@@ -513,14 +509,14 @@ async def access_group_request_completed(
 async def access_expiring_user(
     user: OktaUser,
     expiration_datetime: datetime,
-    okta_user_group_members: List[OktaUserGroupMember],
+    okta_user_group_members: list[OktaUserGroupMember],
 ) -> None:
     """Notify individuals that their access to a group is expiring soon.
 
     Args:
         user (OktaUser): The user whose access is expiring.
         expiration_datetime (datetime): The expiration date and time.
-        okta_user_group_members (List[OktaUserGroupMember]): List of expiring memberships and ownerships.
+        okta_user_group_members (list[OktaUserGroupMember]): List of expiring memberships and ownerships.
     """
     expiring_access_url = get_base_url() + "/expiring-groups?user_id=@me"
 
@@ -545,16 +541,16 @@ async def access_expiring_user(
 async def access_expiring_owner(
     owner: OktaUser,
     expiration_datetime: datetime,
-    group_user_associations: Optional[List[OktaUserGroupMember]],
-    role_group_associations: Optional[List[RoleGroupMap]],
+    group_user_associations: list[OktaUserGroupMember] | None,
+    role_group_associations: list[RoleGroupMap] | None,
 ) -> None:
     """Notify group owners that individuals or roles access to a group is expiring soon.
 
     Args:
         owner (OktaUser): The owner of the group.
         expiration_datetime (datetime): The expiration date and time.
-        group_user_associations (Optional[List[OktaUserGroupMember]]): List of memberships and ownerships expiring.
-        role_group_associations (Optional[List[RoleGroupMap]]): List of role memberships and ownerships expiring.
+        group_user_associations (list[OktaUserGroupMember] | None): List of memberships and ownerships expiring.
+        role_group_associations (list[RoleGroupMap] | None): List of role memberships and ownerships expiring.
     """
     if group_user_associations is not None and len(group_user_associations) > 0:
         expiring_access_url = get_base_url() + "/expiring-groups?owner_id=@me"
@@ -604,12 +600,12 @@ async def access_expiring_owner(
 
 
 @notification_hook_impl
-async def access_expiring_role_owner(owner: OktaUser, roles: List[RoleGroupMap], expiration_datetime: datetime) -> None:
+async def access_expiring_role_owner(owner: OktaUser, roles: list[RoleGroupMap], expiration_datetime: datetime) -> None:
     """Notify role owners that roles they own will be losing access to groups soon.
 
     Args:
         owner (OktaUser): The owner of the group.
-        roles (roles: List[RoleGroupMap]): List of role memberships and ownerships expiring.
+        roles (list[RoleGroupMap]): List of role memberships and ownerships expiring.
         expiration_datetime (datetime): The expiration date and time.
     """
     expiring_access_url = get_base_url() + "/expiring-roles?role_owner_id=@me"

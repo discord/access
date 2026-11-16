@@ -1,4 +1,5 @@
 import {Grid, Paper, Typography, Box, Chip, Stack, Tooltip, Divider} from '@mui/material';
+import ActionTooltip from '../../../components/ActionTooltip';
 import CreateUpdateApp from '../CreateUpdate';
 import DeleteApp from '../Delete';
 import {AppDetail, OktaUserDetail} from '../../../api/apiSchemas';
@@ -16,8 +17,6 @@ interface AppsHeaderProps {
 
 export const AppsHeader: React.FC<AppsHeaderProps> = React.memo(({app, currentUser}) => {
   const navigate = useNavigate();
-  const moveTooltip = {modifiers: [{name: 'offset', options: {offset: [0, -10]}}]};
-
   const hasActions = React.useMemo(() => {
     return isAccessAdmin(currentUser) || isAppOwnerGroupOwner(currentUser, app.id ?? '');
   }, [currentUser, app.id]);
@@ -42,11 +41,25 @@ export const AppsHeader: React.FC<AppsHeaderProps> = React.memo(({app, currentUs
   }, [app.active_app_tags, navigate]);
 
   return (
-    <Grid item xs={12}>
+    <Grid size={12}>
       <Paper sx={{p: 2}}>
-        <Stack direction="column" gap={2}>
-          <Stack alignItems="center" direction="column" gap={1} sx={{wordBreak: 'break-word'}}>
-            <Typography variant="h3" textAlign={'center'}>
+        <Stack
+          direction="column"
+          sx={{
+            gap: 2,
+          }}>
+          <Stack
+            direction="column"
+            sx={{
+              alignItems: 'center',
+              gap: 1,
+              wordBreak: 'break-word',
+            }}>
+            <Typography
+              variant="h3"
+              sx={{
+                textAlign: 'center',
+              }}>
               {app.name}
             </Typography>
             <MarkdownDescription description={app.description} />
@@ -55,17 +68,17 @@ export const AppsHeader: React.FC<AppsHeaderProps> = React.memo(({app, currentUs
           {hasActions && (
             <>
               <Divider />
-              <Stack direction="row" justifyContent="center">
-                <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
-                  <div>
-                    <CreateUpdateApp currentUser={currentUser} app={app} />
-                  </div>
-                </Tooltip>
-                <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
-                  <div>
-                    <DeleteApp currentUser={currentUser} app={app} />
-                  </div>
-                </Tooltip>
+              <Stack
+                direction="row"
+                sx={{
+                  justifyContent: 'center',
+                }}>
+                <ActionTooltip title="Edit">
+                  <CreateUpdateApp currentUser={currentUser} app={app} />
+                </ActionTooltip>
+                <ActionTooltip title="Delete">
+                  <DeleteApp currentUser={currentUser} app={app} />
+                </ActionTooltip>
               </Stack>
             </>
           )}

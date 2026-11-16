@@ -12,10 +12,11 @@ import json
 import logging
 import re
 import sys
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from os import environ
 from pathlib import Path
-from typing import Any, AsyncIterator, Optional
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
@@ -25,9 +26,16 @@ from starlette.responses import Response
 
 from api import exception_handlers, middleware
 from api.config import settings
+from api.context import set_process_source
 from api.database import build_async_engine
 from api.extensions import db
-from api.log_filters import RedactingUvicornLogger, TokenSanitizingFilter
+from api.log_filters import (
+    TEXT_LOG_FORMAT,
+    JsonLogFormatter,
+    LogOriginFilter,
+    RedactingUvicornLogger,
+    TokenSanitizingFilter,
+)
 from api.schemas.core_schemas import ProblemDetail
 from api.services import okta
 
@@ -46,8 +54,9 @@ def _inject_csp_nonce(html: str, nonce: str) -> str:
     `script-src`/`style-src` authorize inline content by nonce (see
     `api.middleware.build_csp`), so every inline `<script>`/`<style>` the build
     emitted (e.g. Vite's module-preload polyfill) must carry the nonce, and
-    styled-components' runtime `<style>` injections are authorized by seeding
-    `window.__webpack_nonce__` before the app bundle runs. External same-origin
+    Emotion's runtime `<style>` injections are authorized by seeding
+    `window.__webpack_nonce__` before the app bundle runs, which the Emotion
+    cache in `src/index.tsx` reads. External same-origin
     bundles and `<link>` stylesheets need no nonce (they're covered by `'self'`
     / the font-host allowance), so this only touches inline tags.
     """
@@ -119,10 +128,47 @@ def _flatten_query_param_models(openapi_schema: dict[str, Any]) -> None:
             operation["parameters"] = flattened
 
 
-def _configure_logging() -> None:
+_LOG_FORMATS = ("plain", "text", "json")
+_log_origin_filter = LogOriginFilter()
+# Unformatted, so audit lines stay the bare JSON document log pipelines parse.
+_audit_handler = logging.StreamHandler(sys.stdout)
+_audit_handler.setFormatter(logging.Formatter("%(message)s"))
+
+
+def _configure_audit_logging(log_format: str) -> None:
+    """Route `access.audit` around the root formatter under `text` and `json`."""
+    audit_logger = logging.getLogger("access.audit")
+    if log_format == "plain":
+        audit_logger.removeHandler(_audit_handler)
+        audit_logger.propagate = True
+    else:
+        audit_logger.addHandler(_audit_handler)
+        audit_logger.propagate = False
+
+
+def _configure_logging(source: str = "server") -> None:
+    """Configure root logging from `LOG_LEVEL` and `LOG_FORMAT`.
+
+    Args:
+        source: The entrypoint this process runs as (`server`,
+            `cli:<command>`), used to attribute log lines and audit entries
+            emitted outside a request.
+    """
     level = environ.get("LOG_LEVEL", "INFO").upper()
+    requested_format = environ.get("LOG_FORMAT", "plain").lower()
+    log_format = requested_format if requested_format in _LOG_FORMATS else "plain"
+    set_process_source(source)
     logging.basicConfig(level=level, stream=sys.stdout, format="%(message)s")
     logging.root.setLevel(level)
+    for handler in logging.root.handlers:
+        handler.addFilter(_log_origin_filter)
+        # Leave handlers alone under the default format, so another owner of
+        # the root handlers (a test harness, an embedding process) keeps its own.
+        if log_format != "plain":
+            handler.setFormatter(JsonLogFormatter() if log_format == "json" else logging.Formatter(TEXT_LOG_FORMAT))
+    _configure_audit_logging(log_format)
+    if requested_format != log_format:
+        logger.warning("Unknown LOG_FORMAT %r; expected one of %s", requested_format, _LOG_FORMATS)
     token_filter = TokenSanitizingFilter()
     logging.getLogger("authlib").addFilter(token_filter)
     logging.getLogger("uvicorn.access").addFilter(token_filter)
@@ -130,15 +176,17 @@ def _configure_logging() -> None:
     logging.root.addFilter(token_filter)
 
 
-def _drop_wrapped_ignored_errors(event: dict, hint: dict) -> Optional[dict]:
+def _drop_wrapped_ignored_errors(event: dict, hint: dict) -> dict | None:
     """Sentry before_send: drop events whose cause chain contains a type we
     already list in ``ignore_errors``.
 
     ``ignore_errors`` only matches the top-level exception type, but the MCP
     server wraps every exception a tool raises in a ToolError via
     ``raise ToolError(...) from e`` — so an ignored error raised inside a tool
-    (today: a pydantic ValidationError from argument validation) surfaces as a
-    non-ignored ToolError and leaks through. Walk the explicit ``__cause__``
+    surfaces as a non-ignored ToolError and leaks through. The SDK logs a
+    crash (any exception other than ToolError, ResourceError or MCPError) at
+    ERROR with that wrapper as ``exc_info``; an argument ValidationError is
+    logged at INFO and never reaches Sentry. Walk the explicit ``__cause__``
     chain — not implicit ``__context__`` — so a genuine failure that merely ran
     while handling an ignored error still alerts. Keep this set in sync with
     ``_configure_sentry``'s ``ignore_errors``.
@@ -176,8 +224,8 @@ def _configure_sentry() -> None:
     from fastapi import HTTPException
     from fastapi.exceptions import RequestValidationError
     from pydantic import ValidationError
-    from sentry_sdk.integrations.starlette import StarletteIntegration
     from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
     from starlette.exceptions import HTTPException as StarletteHTTPException
 
     from api.auth.dependencies import OIDCRedirectRequired
@@ -252,7 +300,7 @@ def _configure_threadpool_limit() -> None:
     logger.info("Worker-thread pool limit set to %d", settings.THREADPOOL_MAX_WORKERS)
 
 
-def create_app(testing: Optional[bool] = False) -> FastAPI:
+def create_app(testing: bool | None = False) -> FastAPI:
     _configure_logging()
 
     if testing:
@@ -279,15 +327,14 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     # the route registration below can grab the session manager, then
     # enter its lifespan in the FastAPI lifespan so the session
     # manager's task group is running while requests are served.
-    mcp_lifespan: Optional[Any] = None
+    mcp_lifespan: Any | None = None
     if settings.ENABLE_MCP:
-        from api.mcp.server import create_mcp_server
-        from api.mcp.server import mcp_lifespan as mcp_lifespan
+        from api.mcp.server import create_mcp_server, mcp_lifespan
 
         create_mcp_server()
 
     @asynccontextmanager
-    async def lifespan(_fast_app: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(_fast_app: FastAPI) -> AsyncGenerator[None]:
         # Bound the worker-thread pool inside the running event loop (the anyio
         # limiter is loop-scoped, so this can't run at import time).
         _configure_threadpool_limit()
@@ -332,6 +379,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     # OIDC: Authlib + SessionMiddleware. Only mounted if configured.
     if settings.OIDC_CLIENT_SECRETS is not None and settings.SECRET_KEY:
         from starlette.middleware.sessions import SessionMiddleware
+
         from api.auth.oidc import register_oidc
 
         # HttpOnly is set by SessionMiddleware unconditionally; we add Secure
@@ -383,7 +431,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         # Use a Route (not a Mount) so /mcp without trailing slash works;
         # /mcp/ would 405 some MCP clients. Insert the route at the
         # FastAPI level — it doesn't go through include_router because
-        # the handler is a raw ASGI app from FastMCP.
+        # the handler is a raw ASGI app from the MCP SDK.
         app.routes.append(get_mcp_route())
         # RFC 9728 metadata, served unauthenticated for client discovery.
         # Registered ahead of the SPA catch-all so the well-known path
@@ -420,6 +468,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         apps,
         audit,
         bugs,
+        constraints,
         group_requests,
         groups,
         health,
@@ -435,6 +484,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     app.include_router(apps.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(audit.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(bugs.router, responses=DEFAULT_ERROR_RESPONSES)
+    app.include_router(constraints.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(group_requests.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(groups.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(plugins.router, responses=DEFAULT_ERROR_RESPONSES)

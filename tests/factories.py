@@ -96,7 +96,7 @@ class _ORMFactory(SQLAlchemyFactory):
 
     # Columns this factory is responsible for generating. Anything not listed
     # (and not passed explicitly by the caller) is left unset.
-    _managed: ClassVar[set[str]] = set()
+    _managed: ClassVar[frozenset[str]] = frozenset()
 
     @classmethod
     def should_set_field_value(cls, field_meta: FieldMeta, **kwargs: Any) -> bool:
@@ -107,7 +107,7 @@ class _ORMFactory(SQLAlchemyFactory):
 
 class OktaUserFactory(_ORMFactory):
     __model__ = OktaUser
-    _managed = {"id", "email", "first_name", "last_name", "display_name", "profile"}
+    _managed = frozenset({"id", "email", "first_name", "last_name", "display_name", "profile"})
 
     id = Use(_okta_id)
     first_name = Use(_faker.first_name)
@@ -119,7 +119,7 @@ class OktaUserFactory(_ORMFactory):
 
 class AppFactory(_ORMFactory):
     __model__ = App
-    _managed = {"id", "name"}
+    _managed = frozenset({"id", "name"})
 
     id = Use(_okta_id)
     name = Use(lambda: random.choice(string.ascii_uppercase) + _rand())
@@ -127,7 +127,7 @@ class AppFactory(_ORMFactory):
 
 class OktaGroupFactory(_ORMFactory):
     __model__ = OktaGroup
-    _managed = {"id", "name", "type"}
+    _managed = frozenset({"id", "name", "type"})
 
     id = Use(_okta_id)
     name = Use(lambda: random.choice(string.ascii_uppercase) + _rand())
@@ -136,7 +136,7 @@ class OktaGroupFactory(_ORMFactory):
 
 class RoleGroupFactory(_ORMFactory):
     __model__ = RoleGroup
-    _managed = {"id", "name", "type"}
+    _managed = frozenset({"id", "name", "type"})
 
     id = Use(_okta_id)
     name = Use(lambda: RoleGroup.ROLE_GROUP_NAME_PREFIX + random.choice(string.ascii_uppercase) + _rand())
@@ -146,7 +146,7 @@ class RoleGroupFactory(_ORMFactory):
 class AppGroupFactory(_ORMFactory):
     __model__ = AppGroup
     # `app_id` / `is_owner` are supplied by the caller.
-    _managed = {"id", "name", "type"}
+    _managed = frozenset({"id", "name", "type"})
 
     id = Use(_okta_id)
     name = Use(
@@ -163,7 +163,7 @@ class AppGroupFactory(_ORMFactory):
 
 class TagFactory(_ORMFactory):
     __model__ = Tag
-    _managed = {"id", "name"}
+    _managed = frozenset({"id", "name"})
 
     id = Use(_okta_id)
     name = Use(lambda: "Tag-" + _rand())
@@ -171,7 +171,7 @@ class TagFactory(_ORMFactory):
 
 class AccessRequestFactory(_ORMFactory):
     __model__ = AccessRequest
-    _managed = {"id", "status", "request_reason"}
+    _managed = frozenset({"id", "status", "request_reason"})
 
     id = Use(_okta_id)
     status = AccessRequestStatus.PENDING
@@ -180,7 +180,7 @@ class AccessRequestFactory(_ORMFactory):
 
 class RoleRequestFactory(_ORMFactory):
     __model__ = RoleRequest
-    _managed = {"id", "status", "request_reason"}
+    _managed = frozenset({"id", "status", "request_reason"})
 
     id = Use(_okta_id)
     status = AccessRequestStatus.PENDING
@@ -194,7 +194,7 @@ class GroupRequestFactory(_ORMFactory):
     # `requested_group_type` are NOT NULL without a default, so generate them
     # too (an okta_group by default) to keep `create()`/`create_async()`
     # persistable with just a requester.
-    _managed = {"id", "status", "request_reason", "requested_group_name", "requested_group_type"}
+    _managed = frozenset({"id", "status", "request_reason", "requested_group_name", "requested_group_type"})
 
     id = Use(_okta_id)
     status = AccessRequestStatus.PENDING

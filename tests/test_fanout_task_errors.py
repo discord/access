@@ -50,7 +50,7 @@ async def test_drain_logs_failures_and_awaits_all_tasks(caplog: pytest.LogCaptur
     assert len(failures) == 1
     # ERROR, not WARNING: Access surfaces fan-out failures rather than swallowing them.
     assert failures[0].levelno == logging.ERROR
-    assert failures[0].exc_info is not None
+    assert isinstance(failures[0].exc_info, tuple)
     assert "fan-out task exploded" in str(failures[0].exc_info[1])
 
 
@@ -136,7 +136,7 @@ async def test_failing_okta_call_is_logged_and_does_not_fail_request(
     failures = [r for r in caplog.records if f"ModifyGroupUsers for group {okta_group.id}" in r.getMessage()]
     assert len(failures) == 1
     assert failures[0].levelno == logging.ERROR
-    assert failures[0].exc_info is not None
+    assert isinstance(failures[0].exc_info, tuple)
     assert "okta add blew up" in str(failures[0].exc_info[1])
 
 
@@ -166,5 +166,5 @@ async def test_failing_okta_delete_is_logged_and_group_still_deleted(
     failures = [r for r in caplog.records if f"DeleteGroup for group {group_id}" in r.getMessage()]
     assert len(failures) == 1
     assert failures[0].levelno == logging.ERROR
-    assert failures[0].exc_info is not None
+    assert isinstance(failures[0].exc_info, tuple)
     assert "okta delete blew up" in str(failures[0].exc_info[1])

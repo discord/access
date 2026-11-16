@@ -31,7 +31,12 @@ export default function MembershipChip({
   const moveTooltip = {modifiers: [{name: 'offset', options: {offset: [0, -10]}}]};
 
   return activeRoleGroup ? (
-    <Tooltip title={ending_date} placement="right" PopperProps={moveTooltip}>
+    <Tooltip
+      title={ending_date}
+      placement="right"
+      slotProps={{
+        popper: moveTooltip,
+      }}>
       <Chip
         label={activeRoleGroup.name}
         variant="outlined"
@@ -49,7 +54,12 @@ export default function MembershipChip({
       />
     </Tooltip>
   ) : (
-    <Tooltip title={ending_date} placement="right" PopperProps={moveTooltip}>
+    <Tooltip
+      title={ending_date}
+      placement="right"
+      slotProps={{
+        popper: moveTooltip,
+      }}>
       <Chip
         label="Direct"
         color="primary"

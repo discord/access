@@ -17,6 +17,7 @@ make dev          # uv sync — create .venv and install locked deps + the `acce
 make db-migrate   # apply migrations (alembic upgrade head) against the local sqlite DB
 make db-init email=<you@example.com>   # seed an initial admin
 make run-backend  # start the API
+make shell        # access shell — REPL with the app context bootstrapped
 ```
 
 To run a one-off command inside the environment, prefix it with `uv run` (e.g.
@@ -47,6 +48,11 @@ Frontend tests are vitest + React Testing Library: `npm test` watches, `npx vite
 one-shot CI form. Coverage is partial — a handful of suites under `src/`, concentrated on pure
 helpers and form logic rather than page rendering — so treat an untested component as normal here
 and add a suite alongside a change rather than assuming one exists to update.
+
+`npm run check:engines` fails when the root `engines.node` admits a Node version that some
+package in `package-lock.json` doesn't support; CI runs it in the `node-lint` job. When a
+dependency bump raises its own floor, narrow `engines.node` to the versions every package
+supports, then refresh the lockfile's root metadata with the npm version CI pins.
 
 ## The generated API client must not drift
 

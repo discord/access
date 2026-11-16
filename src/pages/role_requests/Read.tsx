@@ -13,8 +13,8 @@ import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
 import RoleRequestIcon from '@mui/icons-material/WorkHistory';
 import AlertIcon from '@mui/icons-material/Campaign';
-import PendingIcon from '@mui/icons-material/HelpOutline';
-import ApprovedIcon from '@mui/icons-material/CheckCircleOutline';
+import PendingIcon from '@mui/icons-material/HelpOutlineOutlined';
+import ApprovedIcon from '@mui/icons-material/CheckCircleOutlineOutlined';
 import RejectedIcon from '@mui/icons-material/HighlightOff';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -34,21 +34,16 @@ import TimelineDot from '@mui/lab/TimelineDot';
 import InfoOutlined from '@mui/icons-material/InfoOutlined';
 import {FormContainer, SelectElement, TextFieldElement, ToggleButtonGroupElement} from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
+import {useForm} from 'react-hook-form';
 
 import dayjs, {Dayjs} from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
 import RoleMembers from './RoleMembers';
-import {
-  groupBy,
-  displayUserName,
-  minTagTime,
-  minTagTimeGroups,
-  ownerCantAddSelf,
-  requiredReason,
-  requiredReasonGroups,
-} from '../../helpers';
+import {groupBy, displayUserName, ownerCantAddSelf} from '../../helpers';
+import {approvalUntilDefault, timeLimitLabel, useConstraintsForGroups} from '../../constraints';
+import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup, isAccessAdmin, ACCESS_APP_RESERVED_NAME} from '../../authorization';
 import {
@@ -127,46 +122,12 @@ const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = {
 
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
 
-function ComputeConstraints(roleRequest: RoleRequestDetail) {
-  const group = roleRequest.requested_group ?? null;
-
-  if (group == null) {
-    return [null, null];
-  }
-
-  let timeLimit = minTagTime(
-    group.active_group_tags ? group.active_group_tags.map((tagMap: OktaGroupTagMapDetail) => tagMap.active_tag!) : [],
-    roleRequest.request_ownership!,
-  );
-
-  let reason = requiredReason(
-    group.active_group_tags ? group.active_group_tags?.map((tagMap: OktaGroupTagMapDetail) => tagMap.active_tag!) : [],
-    roleRequest.request_ownership!,
-  );
-
-  if ((group.type as string) == 'role_group' && !roleRequest.request_ownership) {
-    const active_groups_owners = (group as RoleGroupDetail).active_role_associated_group_owner_mappings?.reduce(
-      (out, curr) => {
-        curr.active_group ? out.push(curr.active_group) : null;
-        return out;
-      },
-      new Array<GroupRefForMembership>(),
-    );
-    const active_groups_members = (group as RoleGroupDetail).active_role_associated_group_member_mappings?.reduce(
-      (out, curr) => {
-        curr.active_group ? out.push(curr.active_group) : null;
-        return out;
-      },
-      new Array<GroupRefForMembership>(),
-    );
-
-    reason =
-      reason ||
-      requiredReasonGroups(active_groups_members ?? [], false) ||
-      requiredReasonGroups(active_groups_owners ?? [], true);
-  }
-
-  return [timeLimit, reason];
+// Which constraints apply to the requested group, resolved by the API rather
+// than re-derived here. A requested role's applicable constraints cannot be
+// read off its own tags: they depend on which of its associations propagate,
+// which is the server's rule to apply.
+function useRequestConstraints(roleRequest: RoleRequestDetail) {
+  return useConstraintsForGroups([roleRequest.requested_group?.id]);
 }
 
 export default function ReadRoleRequest() {
@@ -205,7 +166,7 @@ export default function ReadRoleRequest() {
   // Check to see if current user is a blocked group owner
   const ownedGroup = currentUser.active_group_ownerships
     ?.map((group: OktaUserGroupMemberDetail) => group.active_group!.id)
-    .includes(roleRequest.requested_group?.id);
+    .includes(roleRequest.requested_group?.id ?? '');
   const roleMembers =
     roleRequest.requester_role?.active_user_memberships?.map(
       (user: OktaUserGroupMemberDetail) => user.active_user!.id,
@@ -221,11 +182,17 @@ export default function ReadRoleRequest() {
     },
     new Array<TagSummary>(),
   );
+  // Deliberately read from the group's own tags rather than the constraints
+  // endpoint. This is the role-to-group direction, where nothing propagates —
+  // the target of a role request is never itself a role — so the group's own
+  // tags are the whole answer and both sources agree. Answering synchronously
+  // costs no request and spares the approver a render with the controls
+  // withheld while a fetch that could not change the answer settles.
   const tagged =
     (ownerCantAddSelf(tags, false) && !roleRequest.request_ownership) ||
     (ownerCantAddSelf(tags, true) && roleRequest.request_ownership);
   const blocked = ownedGroup && roleMembers.includes(currentUser.id) && tagged;
-  const manager = canManageGroup(currentUser, roleRequest.requested_group);
+  const manager = canManageGroup(currentUser, roleRequest.requested_group as GroupDetail | undefined);
   const requestedGroupManager = manager && !blocked;
 
   const complete = (
@@ -257,10 +224,13 @@ export default function ReadRoleRequest() {
 
   const group = groupData ?? ({} as GroupDetail);
 
-  const constraints = ComputeConstraints(roleRequest);
-
-  const timeLimit: number | null = constraints[0] as number | null;
-  const reason: boolean = constraints[1] as boolean;
+  const constraints = useRequestConstraints(roleRequest);
+  const constraintSide = !!roleRequest.request_ownership;
+  // `isReasonRequired` reports true until the answer lands, and approval stays
+  // disabled while `blocked`, so nothing offers a duration or waives a
+  // justification on the strength of an answer that has not arrived.
+  const timeLimit = constraints.timeLimit(constraintSide);
+  const reason = constraints.isReasonRequired(constraintSide);
 
   let autofill_until = false;
   if (requestedUntilDelta && timeLimit && requestedUntilDelta <= timeLimit) {
@@ -268,7 +238,7 @@ export default function ReadRoleRequest() {
   }
 
   let labels = null;
-  let requestedUntilAdjusted = null;
+  let requestedUntilAdjusted: string | undefined = undefined;
   if (!(timeLimit == null)) {
     const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
       .filter((key) => Number(key) <= timeLimit!)
@@ -287,6 +257,33 @@ export default function ReadRoleRequest() {
       label: label,
     }));
   }
+
+  // Owned here rather than by `FormContainer` so the effect below can move the
+  // `until` field once the request and its constraints arrive: React Hook Form
+  // snapshots `defaultValues` on the mounting render, where both queries are
+  // still in flight.
+  const resolveForm = useForm<ResolveRequestForm>({
+    defaultValues: {until: requestedUntil, customUntil: (requestEndingAt as unknown as string) ?? ''},
+  });
+
+  React.useEffect(() => {
+    // The field's starting value, not just an adjustment to it -- both inputs
+    // land after the mounting render. `approvalUntilDefault` carries the
+    // reasoning and what each branch protects against.
+    const until = approvalUntilDefault({
+      requestedUntil,
+      requestedUntilAdjusted,
+      timeLimit,
+      autofillUntil: autofill_until,
+    });
+    if (until !== null) {
+      resolveForm.setValue('until', until);
+    }
+    resolveForm.setValue('customUntil', (requestEndingAt as unknown as string) ?? '');
+    // `requestEndingAt` is a fresh dayjs every render; it changes only when
+    // `requestedUntil` does, which is a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLimit, autofill_until, requestedUntil, requestedUntilAdjusted]);
 
   // Owner/approver lists are no longer inlined on the group/app payloads; they
   // come from the bounded owner-filtered endpoints instead.
@@ -409,7 +406,12 @@ export default function ReadRoleRequest() {
       />
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
-          <Grid item xs={12} md={5} lg={3}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 5,
+              lg: 3,
+            }}>
             <Paper
               sx={{
                 p: 2,
@@ -457,7 +459,12 @@ export default function ReadRoleRequest() {
               </Avatar>
             </Paper>
           </Grid>
-          <Grid item xs={12} md={7} lg={9}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 7,
+              lg: 9,
+            }}>
             <Paper
               sx={{
                 p: 2,
@@ -469,12 +476,11 @@ export default function ReadRoleRequest() {
               }}>
               <Grid container>
                 <Grid
-                  item
-                  xs={8}
                   sx={{
                     textAlign: 'center',
                     wordBreak: 'break-word',
-                  }}>
+                  }}
+                  size={8}>
                   <Typography variant="h4">
                     {(roleRequest.requester_role?.deleted_at ?? null) != null ? (
                       <Link
@@ -525,14 +531,13 @@ export default function ReadRoleRequest() {
                 </Grid>
                 <Divider orientation="vertical" flexItem sx={{mr: '-1px'}} />
                 <Grid
-                  item
-                  xs={4}
                   sx={{
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
                     textAlign: 'center',
-                  }}>
+                  }}
+                  size={4}>
                   <Typography variant="h6">Status</Typography>
                   <Typography variant="h4">
                     <b>{roleRequest.status}</b>
@@ -542,7 +547,7 @@ export default function ReadRoleRequest() {
             </Paper>
           </Grid>
           {/* Access History Section */}
-          <Grid item xs={12}>
+          <Grid size={12}>
             <AccessHistory
               subjectType="role"
               subjectName={roleRequest.requester_role?.name ?? ''}
@@ -550,7 +555,7 @@ export default function ReadRoleRequest() {
               auditHistory={groupRoleAudits}
             />
           </Grid>
-          <Grid item xs={12}>
+          <Grid size={12}>
             <Timeline
               sx={{
                 [`& .${timelineOppositeContentClasses.root}`]: {
@@ -559,7 +564,7 @@ export default function ReadRoleRequest() {
               }}>
               <TimelineItem>
                 <TimelineOppositeContent sx={{m: 'auto 0'}} align="right">
-                  <span title={roleRequest.created_at}>
+                  <span title={roleRequest.created_at ?? undefined}>
                     {dayjs(roleRequest.created_at).startOf('second').fromNow()}
                   </span>
                 </TimelineOppositeContent>
@@ -652,9 +657,18 @@ export default function ReadRoleRequest() {
                   </Paper>
                   {manager && blocked ? (
                     <Paper sx={{p: 2}}>
-                      <Stack alignItems="center" direction="row" gap={2}>
+                      <Stack
+                        direction="row"
+                        sx={{
+                          alignItems: 'center',
+                          gap: 2,
+                        }}>
                         <AlertIcon fontSize="large" sx={{color: 'primary.main'}} />
-                        <Typography display="inline" variant="body1">
+                        <Typography
+                          variant="body1"
+                          sx={{
+                            display: 'inline',
+                          }}>
                           <b>
                             While you own group {group.name}, you are blocked from responding to this request by group
                             tags. The request has been forwarded to other group owners or Access admins.
@@ -666,9 +680,18 @@ export default function ReadRoleRequest() {
                     <>
                       {adminNoteForBlocked ? (
                         <Paper sx={{p: 2, mb: 1}}>
-                          <Stack alignItems="center" direction="row" gap={2}>
+                          <Stack
+                            direction="row"
+                            sx={{
+                              alignItems: 'center',
+                              gap: 2,
+                            }}>
                             <AlertIcon fontSize="large" sx={{color: 'primary.main'}} />
-                            <Typography display="inline" variant="body1">
+                            <Typography
+                              variant="body1"
+                              sx={{
+                                display: 'inline',
+                              }}>
                               <b>
                                 All owners of group {group.name} are blocked from approving this request due to group
                                 tags. As an Access admin, you may respond to it on their behalf.
@@ -686,7 +709,12 @@ export default function ReadRoleRequest() {
                           groupName={roleRequest.requested_group?.name ?? ''}
                           owner={roleRequest.request_ownership ?? false}
                         />
-                        <Typography display="inline" variant="body1" sx={{pl: 1}}>
+                        <Typography
+                          variant="body1"
+                          sx={{
+                            display: 'inline',
+                            pl: 1,
+                          }}>
                           If approved, everyone who is a member of the role will be added to the group.
                         </Typography>
                       </Paper>
@@ -732,11 +760,7 @@ export default function ReadRoleRequest() {
                           </Paper>
                           <Paper sx={{p: 2, mt: 1}}>
                             <FormContainer<ResolveRequestForm>
-                              defaultValues={
-                                timeLimit && !autofill_until && requestedUntilAdjusted
-                                  ? {until: requestedUntilAdjusted} // case where time limit lowered below requested time
-                                  : {until: requestedUntil, customUntil: (requestEndingAt as unknown as string) ?? ''}
-                              }
+                              formContext={resolveForm}
                               onSuccess={(formData) => submit(formData)}>
                               {requestError != '' ? (
                                 <Alert severity="error" sx={{my: 1}}>
@@ -746,17 +770,21 @@ export default function ReadRoleRequest() {
                               {!ownRequest ? (
                                 <FormControl fullWidth>
                                   <Grid container>
-                                    <Grid item xs={12}>
-                                      <Typography variant="subtitle1" color="text.accent">
+                                    <Grid size={12}>
+                                      <Typography
+                                        variant="subtitle1"
+                                        sx={{
+                                          color: 'text.accent',
+                                        }}>
                                         {timeLimit
                                           ? (roleRequest.request_ownership ? 'Ownership of ' : 'Membership to ') +
                                             'this group is limited to ' +
-                                            Math.floor(timeLimit / 86400) +
-                                            ' days.'
+                                            timeLimitLabel(timeLimit) +
+                                            '.'
                                           : null}
                                       </Typography>
                                     </Grid>
-                                    <Grid item xs={8}>
+                                    <Grid size={8}>
                                       <SelectElement
                                         fullWidth
                                         label="For how long?"
@@ -766,8 +794,8 @@ export default function ReadRoleRequest() {
                                         required
                                       />
                                     </Grid>
-                                    <Grid item xs={1} />
-                                    <Grid item xs={2}>
+                                    <Grid size={1} />
+                                    <Grid size={2}>
                                       <ToggleButtonGroupElement
                                         name="ownerOrMember"
                                         enforceAtLeastOneSelected
@@ -787,7 +815,7 @@ export default function ReadRoleRequest() {
                                         ]}
                                       />
                                     </Grid>
-                                    <Grid item xs={1} />
+                                    <Grid size={1} />
                                   </Grid>
                                 </FormControl>
                               ) : null}
@@ -820,6 +848,7 @@ export default function ReadRoleRequest() {
                                   }}
                                 />
                               </FormControl>
+                              <ConstraintsUnavailableAlert constraints={constraints} action="approval" />
                               <FormControl margin="normal" style={{flexDirection: 'row'}}>
                                 <Button
                                   variant="contained"
@@ -828,7 +857,7 @@ export default function ReadRoleRequest() {
                                   type="submit"
                                   startIcon={<ApprovedIcon />}
                                   sx={{mx: 2}}
-                                  disabled={submitting || ownRequest}
+                                  disabled={submitting || ownRequest || constraints.blocked}
                                   onClick={() => setApproved(true)}>
                                   Approve
                                 </Button>
@@ -863,9 +892,12 @@ export default function ReadRoleRequest() {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="text.accent">
-                                        {roleRequest.requested_group?.name}{' '}
-                                        {roleRequest.requested_group?.type == 'role_group' ? 'Owners' : 'Group Owners'}
+                                      <Typography
+                                        variant="h6"
+                                        sx={{
+                                          color: 'text.accent',
+                                        }}>
+                                        {roleRequest.requested_group?.name} Group Owners
                                       </Typography>
                                     </TableCell>
                                   </TableRow>
@@ -918,7 +950,11 @@ export default function ReadRoleRequest() {
                                   ) : (
                                     <TableRow key="owners">
                                       <TableCell colSpan={3}>
-                                        <Typography variant="body2" color="text.secondary">
+                                        <Typography
+                                          variant="body2"
+                                          sx={{
+                                            color: 'text.secondary',
+                                          }}>
                                           None
                                         </Typography>
                                       </TableCell>
@@ -934,7 +970,11 @@ export default function ReadRoleRequest() {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="text.accent">
+                                      <Typography
+                                        variant="h6"
+                                        sx={{
+                                          color: 'text.accent',
+                                        }}>
                                         {((roleRequest.requested_group ?? {}) as AppGroupDetail).app?.name}
                                         {' App Owners'}
                                       </Typography>
@@ -989,7 +1029,11 @@ export default function ReadRoleRequest() {
                                   ) : (
                                     <TableRow key="owners">
                                       <TableCell colSpan={3}>
-                                        <Typography variant="body2" color="text.secondary">
+                                        <Typography
+                                          variant="body2"
+                                          sx={{
+                                            color: 'text.secondary',
+                                          }}>
                                           None
                                         </Typography>
                                       </TableCell>
@@ -1006,7 +1050,11 @@ export default function ReadRoleRequest() {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="text.accent">
+                                      <Typography
+                                        variant="h6"
+                                        sx={{
+                                          color: 'text.accent',
+                                        }}>
                                         {ACCESS_APP_RESERVED_NAME}
                                         {' Admins'}
                                       </Typography>
@@ -1061,7 +1109,11 @@ export default function ReadRoleRequest() {
                                   ) : (
                                     <TableRow key="owners">
                                       <TableCell colSpan={3}>
-                                        <Typography variant="body2" color="text.secondary">
+                                        <Typography
+                                          variant="body2"
+                                          sx={{
+                                            color: 'text.secondary',
+                                          }}>
                                           None
                                         </Typography>
                                       </TableCell>

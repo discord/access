@@ -1,18 +1,19 @@
 from datetime import datetime, timedelta
-from typing import Any, Dict, Protocol, cast
+from types import SimpleNamespace
+from typing import Any, Protocol, cast
 from unittest.mock import Mock
 
 import pytest
 from faker import Faker
+from fastapi import FastAPI
 from httpx import AsyncClient
 from okta.models.group import Group
 from pytest_mock import MockerFixture
-from fastapi import FastAPI
-
 from sqlalchemy import event, func, or_, select
+
 from api.auth import permissions as AuthorizationHelpers
-from api.extensions import Db, db
 from api.config import settings
+from api.extensions import Db, db
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -26,7 +27,9 @@ from api.models import (
     RoleGroup,
     Tag,
 )
+from api.models.app_group import app_owners_group_description
 from api.operations import CreateAccessRequest, ModifyGroupUsers, ModifyRoleGroups
+from api.routers.groups import _owner_group_plugin_config_changing
 from api.services import okta
 from tests.factories import (
     AppFactory,
@@ -41,6 +44,7 @@ from tests.factories import (
 from tests.helpers import db_count
 from tests.request_factories import (
     AppGroupCreateBodyFactory,
+    AppGroupUpdateBodyFactory,
     GroupMemberFactory,
     OktaGroupCreateBodyFactory,
     OktaGroupUpdateBodyFactory,
@@ -327,14 +331,12 @@ async def test_put_group(
     rep = await client.put(group_url, json=data)
     assert rep.status_code == 400
 
-    # Updating tags is allowed, but nothing else
+    # Tags may be updated. The payload has to be type-correct and free of a rename: an
+    # owner group's type, name and app binding are structural, and a request carrying any
+    # of them is rejected outright rather than having them quietly ignored.
     update_group_spy.reset_mock()
-    data.update(
-        {
-            "tags_to_add": [tag_id],
-        }
-    )
-    rep = await client.put(group_url, json=data)
+    tags_only: dict[str, Any] = AppGroupUpdateBodyFactory.json(tags_to_add=[tag_id])
+    rep = await client.put(group_url, json=tags_only)
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
@@ -346,12 +348,8 @@ async def test_put_group(
     assert await db_count(db.session, select(OktaGroupTagMap).where(OktaGroupTagMap.ended_at.is_(None))) == 1
 
     update_group_spy.reset_mock()
-    data.update(
-        {
-            "tags_to_remove": [tag_id],
-        }
-    )
-    rep = await client.put(group_url, json=data)
+    tags_only = AppGroupUpdateBodyFactory.json(tags_to_remove=[tag_id])
+    rep = await client.put(group_url, json=tags_only)
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
@@ -368,7 +366,7 @@ async def _update_group_type(
     okta_group: OktaGroup,
     update_group_spy: Mock,
     group_type: str,
-    extra_data: Dict[str, Any] = {},
+    extra_data: dict[str, Any] | None = None,
     expected_tags_count: int = 0,
     url_for: Any = None,
 ) -> None:
@@ -379,7 +377,7 @@ async def _update_group_type(
         "name": "Updated",
         "description": f"new description {group_type}",
     }
-    data.update(extra_data)
+    data.update(extra_data or {})
 
     group_id = okta_group.id
     assert url_for is not None, "_update_group_type requires the url_for fixture"
@@ -453,7 +451,7 @@ async def test_put_app_group_rebind_authorization(
     # A group owner who does not own the target app cannot rebind the group
     mocker.patch.object(AuthorizationHelpers, "is_access_admin", return_value=False)
     rep = await client.put(group_url, json=rebind_data)
-    assert rep.status_code == 403
+    assert rep.status_code == 403, rep.text
     assert (await db.session.get(AppGroup, app_group_id)).app_id == source_app_id
 
     # An Access admin can rebind the group to a different app
@@ -1037,7 +1035,7 @@ async def test_do_not_renew(
     # should fail
     group_url = url_for("api-groups.group_members_by_id", group_id=group_id)
     rep = await client.put(group_url, json=data)
-    assert rep.status_code == 403
+    assert rep.status_code == 403, rep.text
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
@@ -2040,3 +2038,262 @@ async def test_get_group_member_details_search_paginates(client: AsyncClient, db
     assert set(emails1).isdisjoint(emails2)
     assert all(e.startswith("match-") for e in emails1 + emails2)
     assert sorted(emails1 + emails2) == [f"match-{i:02d}@example.com" for i in range(15)]
+
+
+async def test_put_group_app_owner_group_description_is_editable(
+    client: AsyncClient, db: Db, mocker: MockerFixture, url_for: Any
+) -> None:
+    """An owner group's description is ordinary free text, editable like any other group's."""
+    owner_app = AppFactory.build()
+    owner_group = AppGroupFactory.build(
+        app_id=owner_app.id,
+        is_owner=True,
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{owner_app.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        description=app_owners_group_description(owner_app.name),
+    )
+    db.session.add_all([owner_app, owner_group])
+    await db.session.commit()
+    owner_group_id = owner_group.id
+
+    mocker.patch.object(okta, "update_group")
+    edited = "Owners of the billing stack; also approvers for its quarterly access review."
+    rep = await client.put(
+        url_for("api-groups.group_by_id", group_id=owner_group_id),
+        json=AppGroupUpdateBodyFactory.json(description=edited),
+    )
+    assert rep.status_code == 200
+    assert rep.json()["description"] == edited
+
+    db.session.expire_all()
+    refreshed = await db.session.get(AppGroup, owner_group_id)
+    assert refreshed is not None
+    assert refreshed.description == edited
+
+
+async def test_put_group_app_owner_group_structural_fields_stay_locked(
+    client: AsyncClient, db: Db, mocker: MockerFixture, url_for: Any
+) -> None:
+    """Name, type, app binding and plugin config are structural for an owner group.
+
+    Membership in one confers app-owner permissions, so none of these may be changed
+    through the group endpoint even though the description now can be.
+    """
+    owner_app = AppFactory.build()
+    other_app = AppFactory.build()
+    owner_group = AppGroupFactory.build(
+        app_id=owner_app.id,
+        is_owner=True,
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{owner_app.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        description=app_owners_group_description(owner_app.name),
+    )
+    db.session.add_all([owner_app, other_app, owner_group])
+    await db.session.commit()
+    owner_group_id = owner_group.id
+    original_name = owner_group.name
+    original_app_id = owner_group.app_id
+    other_app_id = other_app.id
+
+    mocker.patch.object(okta, "update_group")
+    group_url = url_for("api-groups.group_by_id", group_id=owner_group_id)
+
+    rename = await client.put(group_url, json=AppGroupUpdateBodyFactory.json(name="App-Whatever-Renamed"))
+    assert rename.status_code == 400
+
+    retype = await client.put(group_url, json=OktaGroupUpdateBodyFactory.json(name=original_name))
+    assert retype.status_code == 400
+
+    rebind = await client.put(group_url, json=AppGroupUpdateBodyFactory.json(app_id=other_app_id))
+    assert rebind.status_code == 400
+
+    plugin = await client.put(group_url, json=AppGroupUpdateBodyFactory.json(plugin_data={"some_plugin": {"a": 1}}))
+    assert plugin.status_code == 400
+
+    # Nothing was applied by any of the four rejected requests.
+    db.session.expire_all()
+    refreshed = await db.session.get(AppGroup, owner_group_id)
+    assert refreshed is not None
+    assert refreshed.name == original_name
+    assert refreshed.app_id == original_app_id
+    assert refreshed.type == "app_group"
+    assert not refreshed.plugin_data
+
+
+async def test_non_admin_type_change_is_rejected_before_rename(
+    client: AsyncClient,
+    db: Db,
+    mocker: MockerFixture,
+    access_app: App,
+    user: OktaUser,
+    url_for: Any,
+    mock_user: Any,
+) -> None:
+    """A group owner who is not an Access admin asks to change the group's
+    type and rename it in one PUT. The request must fail with 403 before
+    anything is written: the name must stay as it was in the database and
+    nothing may be pushed to Okta."""
+    update_group_spy = mocker.patch.object(okta, "update_group")
+
+    app_group = AppGroupFactory.build(
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Members",
+        app_id=access_app.id,
+        is_owner=False,
+    )
+    db.session.add_all([user, access_app, app_group])
+    await db.session.commit()
+    await ModifyGroupUsers(group=app_group, owners_to_add=[user.id], sync_to_okta=False).execute()
+
+    group_id = app_group.id
+    app_id = access_app.id
+    original_name = app_group.name
+    mock_user(user.id)
+
+    group_url = url_for("api-groups.group_by_id", group_id=group_id)
+    rep = await client.put(group_url, json={"type": "okta_group", "name": "Engineering", "description": "desc"})
+    assert rep.status_code == 403, rep.text
+
+    db.session.expire_all()
+    stored = await db.session.get(OktaGroup, group_id)
+    assert stored is not None
+    assert stored.name == original_name
+    assert type(stored) is AppGroup
+    update_group_spy.assert_not_called()
+
+    # The same owner can still do a plain rename within the current type.
+    rep = await client.put(
+        group_url,
+        json={"type": "app_group", "name": f"{original_name}2", "description": "desc", "app_id": app_id},
+    )
+    assert rep.status_code == 200, rep.text
+
+
+async def test_put_group_app_owner_group_tolerates_a_plugin_status_echo(
+    client: AsyncClient, db: Db, mocker: MockerFixture, url_for: Any
+) -> None:
+    """A plugin status echo is not a configuration change.
+
+    plugin_data arrives as a patch and ModifyGroupPluginData preserves the per-plugin
+    status keys it omits, so the edit form submits configuration only. Once a lifecycle
+    plugin has written status, comparing the raw patch against the stored document would
+    report a change on every edit and reject it.
+    """
+    owner_app = AppFactory.build()
+    owner_group = AppGroupFactory.build(
+        app_id=owner_app.id,
+        is_owner=True,
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{owner_app.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        description=app_owners_group_description(owner_app.name),
+        plugin_data={
+            "audit_logger": {
+                "configuration": {"level": "info", "channel": "#ops"},
+                "status": {"synced_at": "yesterday"},
+            }
+        },
+    )
+    db.session.add_all([owner_app, owner_group])
+    await db.session.commit()
+    owner_group_id = owner_group.id
+
+    mocker.patch.object(okta, "update_group")
+    group_url = url_for("api-groups.group_by_id", group_id=owner_group_id)
+
+    # The configuration is unchanged; only `status` is absent, as the form submits it.
+    echo = await client.put(
+        group_url,
+        json=AppGroupUpdateBodyFactory.json(
+            description="Owners, plus billing approvers.",
+            plugin_data={"audit_logger": {"configuration": {"level": "info"}}},
+        ),
+    )
+    assert echo.status_code == 200, echo.text
+    assert echo.json()["description"] == "Owners, plus billing approvers."
+
+    # A patch naming a subset of the configuration merges key by key, so one that repeats
+    # only unchanged keys asks for nothing.
+    subset = await client.put(
+        group_url,
+        json=AppGroupUpdateBodyFactory.json(
+            plugin_data={"audit_logger": {"configuration": {"level": "info"}}},
+        ),
+    )
+    assert subset.status_code == 200, subset.text
+
+    # A real configuration change is still refused.
+    changed = await client.put(
+        group_url,
+        json=AppGroupUpdateBodyFactory.json(
+            plugin_data={"audit_logger": {"configuration": {"level": "debug"}}},
+        ),
+    )
+    assert changed.status_code == 400
+    assert "Plugin configuration" in changed.json()["detail"]
+
+    # The status a plugin wrote survives the accepted edit.
+    db.session.expire_all()
+    refreshed = await db.session.get(AppGroup, owner_group_id)
+    assert refreshed is not None
+    assert refreshed.plugin_data["audit_logger"]["status"] == {"synced_at": "yesterday"}
+
+
+_STORED_PLUGIN_DATA = {"p": {"configuration": {"level": "info", "channel": "#ops"}, "status": {"s": 1}}}
+
+
+@pytest.mark.parametrize(
+    "case, patch, stored, expected",
+    [
+        ("a patch repeating a subset of unchanged keys", {"p": {"configuration": {"level": "info"}}}, None, False),
+        (
+            "a patch repeating the whole configuration",
+            {"p": {"configuration": {"level": "info", "channel": "#ops"}}},
+            None,
+            False,
+        ),
+        ("a changed configuration value", {"p": {"configuration": {"level": "debug"}}}, None, True),
+        ("a configuration key the stored data lacks", {"p": {"configuration": {"new": 1}}}, None, True),
+        ("a status the plugin already wrote", {"p": {"status": {"s": 1}}}, None, False),
+        ("a status that differs", {"p": {"status": {"s": 2}}}, None, True),
+        ("an entry in an unrecognised shape", {"p": {"a": 1}}, None, True),
+        ("an entry for a plugin with nothing stored", {"q": {"a": 1}}, None, True),
+        ("an empty patch", {}, None, False),
+        (
+            "an unchanged list value",
+            {"p": {"configuration": {"l": [1, 2]}}},
+            {"p": {"configuration": {"l": [1, 2]}}},
+            False,
+        ),
+        (
+            "a changed list value",
+            {"p": {"configuration": {"l": [1, 3]}}},
+            {"p": {"configuration": {"l": [1, 2]}}},
+            True,
+        ),
+        ("an explicit null for a key not stored", {"p": {"configuration": {"z": None}}}, None, True),
+        ("any entry when nothing is stored", {"p": {"configuration": {"a": 1}}}, {}, True),
+        # Below a setting the merge replaces the value whole, so a patch naming a nested
+        # value drops the siblings it leaves out even when every leaf it names matches.
+        (
+            "a nested value missing a sibling the merge would drop",
+            {"p": {"configuration": {"opts": {"a": 1}}}},
+            {"p": {"configuration": {"opts": {"a": 1, "b": 2}}}},
+            True,
+        ),
+        (
+            "a nested value repeated in full",
+            {"p": {"configuration": {"opts": {"a": 1, "b": 2}}}},
+            {"p": {"configuration": {"opts": {"a": 1, "b": 2}}}},
+            False,
+        ),
+    ],
+)
+def test_owner_group_plugin_config_changing(
+    case: str, patch: dict[str, Any], stored: dict[str, Any] | None, expected: bool
+) -> None:
+    """The guard mirrors how ModifyGroupPluginData merges: key by key, at every level.
+
+    Only the values a patch names can change anything, so repeating unchanged ones -- or
+    leaving out the status a plugin wrote -- asks for nothing.
+    """
+    group = cast(AppGroup, SimpleNamespace(plugin_data=_STORED_PLUGIN_DATA if stored is None else stored))
+    assert _owner_group_plugin_config_changing(group, patch) is expected, case

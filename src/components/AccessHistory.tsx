@@ -2,7 +2,7 @@ import React from 'react';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
-import {OktaUserGroupMemberDetail, RoleGroupMapDetail} from '../api/apiSchemas';
+import {AuditGroupRoleRow, AuditUserGroupRow} from '../api/apiSchemas';
 import AccessHistoryTable from './AccessHistoryTable';
 import InfoOutlined from '@mui/icons-material/InfoOutlined';
 import Accordion from '@mui/material/Accordion';
@@ -10,7 +10,7 @@ import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
-type AccessAuditEntry = OktaUserGroupMemberDetail | RoleGroupMapDetail;
+type AccessAuditEntry = AuditUserGroupRow | AuditGroupRoleRow;
 
 type SubjectType = 'user' | 'role';
 
@@ -19,7 +19,7 @@ interface AccessHistoryProps {
   subjectName: string;
   groupName: string;
   auditHistory: AccessAuditEntry[];
-  alternativeRoleMappings?: RoleGroupMapDetail[];
+  alternativeRoleMappings?: AuditGroupRoleRow[];
 }
 
 export default function AccessHistory({
@@ -45,7 +45,11 @@ export default function AccessHistory({
             <Typography variant="subtitle1" sx={{fontWeight: 600}}>
               No prior access history
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+              }}>
               {subjectType === 'user'
                 ? `This user has never had access to this group. Approving this request will grant access for the first time.`
                 : `This role has never had access to this group. Approving this request will grant access for the first time.`}
@@ -66,7 +70,13 @@ export default function AccessHistory({
         </AccordionSummary>
         <AccordionDetails>
           {/* Current Access Section */}
-          <Typography variant="subtitle1" color="success.main" sx={{mb: 1, fontWeight: 500}}>
+          <Typography
+            variant="subtitle1"
+            sx={{
+              color: 'success.main',
+              mb: 1,
+              fontWeight: 500,
+            }}>
             {`Current Access${currentAccess.length > 0 ? ` (${currentAccess.length} active membership${currentAccess.length !== 1 ? 's' : ''})` : ''}`}
           </Typography>
           <AccessHistoryTable
@@ -78,7 +88,13 @@ export default function AccessHistory({
           <hr />
           {/* Past Access Section */}
           <Box sx={{mt: 2}}>
-            <Typography variant="subtitle1" color="text.secondary" sx={{mb: 1, fontWeight: 500}}>
+            <Typography
+              variant="subtitle1"
+              sx={{
+                color: 'text.secondary',
+                mb: 1,
+                fontWeight: 500,
+              }}>
               {`Past Access${pastAccess.length > 0 ? ` (${pastAccess.length} previous membership${pastAccess.length !== 1 ? 's' : ''})` : ''}`}
             </Typography>
             <AccessHistoryTable

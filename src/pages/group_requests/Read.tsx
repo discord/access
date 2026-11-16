@@ -1,9 +1,9 @@
 import React from 'react';
 import {Link as RouterLink, useNavigate, useParams} from 'react-router-dom';
 
-import ApprovedIcon from '@mui/icons-material/CheckCircleOutline';
+import ApprovedIcon from '@mui/icons-material/CheckCircleOutlineOutlined';
 import GroupRequestIcon from '@mui/icons-material/GroupAdd';
-import PendingIcon from '@mui/icons-material/HelpOutline';
+import PendingIcon from '@mui/icons-material/HelpOutlineOutlined';
 import RejectedIcon from '@mui/icons-material/HighlightOff';
 import Timeline from '@mui/lab/Timeline';
 import TimelineConnector from '@mui/lab/TimelineConnector';
@@ -13,7 +13,6 @@ import TimelineItem from '@mui/lab/TimelineItem';
 import TimelineOppositeContent, {timelineOppositeContentClasses} from '@mui/lab/TimelineOppositeContent';
 import TimelineSeparator from '@mui/lab/TimelineSeparator';
 import Alert from '@mui/material/Alert';
-import Autocomplete from '@mui/material/Autocomplete';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -26,14 +25,14 @@ import Grid from '@mui/material/Grid';
 import Link from '@mui/material/Link';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import {AutocompleteElement, FormContainer, SelectElement, TextFieldElement, useFormContext} from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 import InputLabel from '@mui/material/InputLabel';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
-import {Controller} from 'react-hook-form';
+import {Controller, useWatch} from 'react-hook-form';
+import {useQueries} from '@tanstack/react-query';
 
 import dayjs, {Dayjs} from 'dayjs';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
@@ -43,6 +42,7 @@ import {
   GroupRequestByIdPutError,
   GroupRequestByIdPutVariables,
   useAppById,
+  tagByIdQuery,
   useApps,
   useGroupRequestById,
   useTags,
@@ -54,17 +54,21 @@ import {
   GroupRequestDetail,
   OktaUserGroupMemberDetail,
   ResolveGroupRequestBody,
+  TagDetail,
   TagListItem,
 } from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
-import {displayUserName, minTagTime} from '../../helpers';
+import {displayUserName} from '../../helpers';
+import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
+import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import Loading from '../../components/Loading';
 import accessConfig from '../../config/accessConfig';
 import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
 import PluginConfigDisplay from './PluginConfigDisplay';
+import TagsField, {inheritedAppTags} from './TagsField';
 import ChangeTitle from '../../tab-title';
 import NotFound from '../NotFound';
 
@@ -91,29 +95,40 @@ const ROLE_GROUP_PREFIX = 'Role-';
 
 interface OwnershipEndingFieldProps {
   ownershipTimeLimit: number | null;
-  ownershipUntil: string | null;
+  constraintsBlocked: boolean;
   setOwnershipUntil: (v: string | null) => void;
 }
 
-function OwnershipEndingField({ownershipTimeLimit, ownershipUntil, setOwnershipUntil}: OwnershipEndingFieldProps) {
+function OwnershipEndingField({ownershipTimeLimit, constraintsBlocked, setOwnershipUntil}: OwnershipEndingFieldProps) {
   const {control, setValue} = useFormContext();
 
   const [availableUntilOptions, defaultUntilId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
+    // While the tag-mode answer is in flight the limit reads as null. Holding
+    // the narrower list rather than re-offering the full one keeps a duration
+    // the chosen tags forbid from being briefly clickable.
     if (ownershipTimeLimit == null) {
-      return [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
+      return constraintsBlocked
+        ? [[], accessConfig.DEFAULT_ACCESS_TIME]
+        : [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
     }
     const [lastId, filtered] = filterUntilLabels(ownershipTimeLimit);
     return [filtered, lastId];
-  }, [ownershipTimeLimit]);
+  }, [ownershipTimeLimit, constraintsBlocked]);
+
+  const selectedUntil = useWatch({control, name: 'resolved_ownership_ending_at'});
 
   React.useEffect(() => {
-    if (ownershipUntil == null || ownershipUntil === 'indefinite' || ownershipUntil === 'custom') return;
-    const seconds = parseInt(ownershipUntil, 10);
-    if (!isNaN(seconds) && ownershipTimeLimit != null && seconds > ownershipTimeLimit) {
+    if (ownershipTimeLimit == null) return;
+    // A limit drops Indefinite and every duration over it from the list. The
+    // field is seeded from the request, so it can be holding one of them: a
+    // Select whose value has no option renders blank, and submits as it stands
+    // for `ApproveGroupRequest` to shorten. Move it to the longest duration
+    // still offered instead.
+    if (!availableUntilOptions.some((option) => option.id === selectedUntil)) {
       setOwnershipUntil(defaultUntilId ?? null);
       setValue('resolved_ownership_ending_at', defaultUntilId ?? '');
     }
-  }, [ownershipTimeLimit, ownershipUntil, defaultUntilId, setValue, setOwnershipUntil]);
+  }, [ownershipTimeLimit, selectedUntil, availableUntilOptions, defaultUntilId, setValue, setOwnershipUntil]);
 
   return (
     <FormControl margin="normal" fullWidth>
@@ -139,6 +154,27 @@ function OwnershipEndingField({ownershipTimeLimit, ownershipUntil, setOwnershipU
         )}
       />
     </FormControl>
+  );
+}
+
+// Every tag named in `ids`, each fetched by its own id.
+//
+// Not by filtering a page of the tag list: a request can name a tag that no
+// single page of that list contains, and a partial match would drop it from
+// the approval -- and from the constraints answered for -- without saying so.
+function useTagsByIds(ids: string[]): {tags: TagListItem[]; settled: boolean} {
+  const results = useQueries({queries: ids.map((id) => tagByIdQuery({pathParams: {tagId: id}}))});
+  const signature = results.map((result) => `${result.status}:${result.dataUpdatedAt}`).join('|');
+  return React.useMemo(
+    () => ({
+      // A tag that no longer exists answers with an error rather than data. It
+      // cannot be applied either way, so it is left out of the list while
+      // still counting as settled.
+      tags: results.map((result) => result.data).filter((tag): tag is TagDetail => tag != null),
+      settled: results.every((result) => result.data !== undefined || result.error != null),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [signature],
   );
 }
 
@@ -185,10 +221,11 @@ export default function ReadGroupRequest() {
   const [appName, setAppName] = React.useState('');
   const [appSearchInput, setAppSearchInput] = React.useState('');
   const [selectedTags, setSelectedTags] = React.useState<TagListItem[]>([]);
+  // The app the approver has settled on, which is the requested one until they
+  // change it. Tracked by id because the group inherits that app's tags.
+  const [resolvedAppId, setResolvedAppId] = React.useState<string | null>(null);
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [ownershipUntil, setOwnershipUntil] = React.useState<string | null>(null);
-
-  const ownershipTimeLimit = React.useMemo<number | null>(() => minTagTime(selectedTags, true), [selectedTags]);
 
   const {data, isError, isLoading} = useGroupRequestById({
     pathParams: {groupRequestId: id ?? ''},
@@ -226,9 +263,46 @@ export default function ReadGroupRequest() {
   React.useEffect(() => {
     if (!appSeeded && requestedAppData?.name) {
       setAppName(requestedAppData.name);
+      setResolvedAppId(requestedAppData.id ?? null);
       setAppSeeded(true);
     }
   }, [requestedAppData, appSeeded]);
+
+  // Reloaded for the resolved app, which is the requested one until the
+  // approver picks another; the app search results carry no tags of their own.
+  // React Query serves the requested app from cache while the two agree.
+  const {data: resolvedAppData} = useAppById(
+    {pathParams: {appId: resolvedAppId ?? ''}},
+    {enabled: resolvedAppId != null && groupType === 'app_group'},
+  );
+
+  // Only an app group inherits an app's tags, so a type the approver has
+  // switched away from `app_group` contributes none.
+  const inheritedTags = React.useMemo(
+    () =>
+      groupType === 'app_group'
+        ? inheritedAppTags(
+            resolvedAppData,
+            selectedTags.map((tag) => tag.id),
+          )
+        : null,
+    [groupType, resolvedAppData, selectedTags],
+  );
+
+  // The group being tagged does not exist yet, so there is no id to resolve
+  // constraints against — only the tags it will be created with. That is what
+  // the endpoint's tag mode is for, and it keeps the coalescing on the server
+  // here too.
+  //
+  // An app group carries the app's tags on top of the chosen ones, so both go
+  // in: asking about the chosen tags alone reports weaker constraints than
+  // creation applies, and the approver is offered durations that
+  // `ApproveGroupRequest` then quietly shortens.
+  const tagConstraints = useConstraintsForTags([
+    ...selectedTags.map((tag) => tag.id),
+    ...(inheritedTags?.tags ?? []).map((tag) => tag.id),
+  ]);
+  const ownershipTimeLimit = tagConstraints.timeLimit(true);
 
   const isAppOwner = React.useMemo<boolean>(() => {
     if (admin || ownRequest || requestedGroupType !== 'app_group' || !requestedAppId) {
@@ -274,36 +348,24 @@ export default function ReadGroupRequest() {
   });
   const tagSearchOptions = tagSearchData?.items ?? [];
 
-  const {data: allTagsForSeeding} = useTags(
-    {queryParams: {page: 1, size: 100, q: ''}},
-    {enabled: requestedTagNames.length > 0},
-  );
+  const requested = useTagsByIds(requestedTagNames);
+  const requestedTags = requested.tags;
   const [tagsSeeded, setTagsSeeded] = React.useState(false);
   React.useEffect(() => {
-    if (!tagsSeeded && requestedTagNames.length > 0 && allTagsForSeeding?.items) {
-      const matched = allTagsForSeeding.items.filter((t: TagListItem) => requestedTagNames.includes(t.id));
-      setSelectedTags(matched);
+    // Seeded only once every id has settled, so a request naming several tags
+    // cannot be seeded from the subset that happened to answer first.
+    if (!tagsSeeded && requestedTagNames.length > 0 && requested.settled) {
+      setSelectedTags(requestedTags);
       setTagsSeeded(true);
     }
-  }, [allTagsForSeeding, tagsSeeded, requestedTagNames.length]);
-
-  const requestedTags = React.useMemo<TagListItem[]>(() => {
-    if (!allTagsForSeeding?.items) return [];
-    return allTagsForSeeding.items.filter((t: TagListItem) => requestedTagNames.includes(t.id));
-  }, [allTagsForSeeding, requestedTagNames]);
+  }, [requested.settled, requestedTags, tagsSeeded, requestedTagNames.length]);
 
   const resolvedTagIds: string[] =
     Array.isArray(groupRequest.resolved_group_tags) && groupRequest.resolved_group_tags.length > 0
       ? groupRequest.resolved_group_tags
       : [];
-  const {data: allTagsForResolved} = useTags(
-    {queryParams: {page: 1, size: 100, q: ''}},
-    {enabled: groupRequest.status === 'APPROVED' && resolvedTagIds.length > 0},
-  );
-  const resolvedTags = React.useMemo<TagListItem[]>(() => {
-    if (!allTagsForResolved?.items) return [];
-    return allTagsForResolved.items.filter((t: TagListItem) => resolvedTagIds.includes(t.id));
-  }, [allTagsForResolved, resolvedTagIds]);
+  // Only an approved request has resolved tags to show.
+  const resolvedTags = useTagsByIds(groupRequest.status === 'APPROVED' ? resolvedTagIds : []).tags;
 
   const complete = (
     completedRequest: GroupRequestDetail | undefined,
@@ -511,7 +573,12 @@ export default function ReadGroupRequest() {
       <ChangeTitle title={`Group Request: ${requesterName} — ${titleGroupName}`} />
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
-          <Grid item xs={12} md={5} lg={3}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 5,
+              lg: 3,
+            }}>
             <Paper
               sx={{
                 p: 2,
@@ -544,7 +611,12 @@ export default function ReadGroupRequest() {
               </Avatar>
             </Paper>
           </Grid>
-          <Grid item xs={12} md={7} lg={9}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 7,
+              lg: 9,
+            }}>
             <Paper
               sx={{
                 p: 2,
@@ -554,7 +626,7 @@ export default function ReadGroupRequest() {
                 justifyContent: 'center',
               }}>
               <Grid container>
-                <Grid item xs={8} sx={{textAlign: 'center', wordBreak: 'break-word'}}>
+                <Grid sx={{textAlign: 'center', wordBreak: 'break-word'}} size={8}>
                   <Typography variant="h4">
                     {(groupRequest.requester?.deleted_at ?? null) != null ? (
                       <Link
@@ -590,9 +662,8 @@ export default function ReadGroupRequest() {
                 </Grid>
                 <Divider orientation="vertical" flexItem sx={{mr: '-1px'}} />
                 <Grid
-                  item
-                  xs={4}
-                  sx={{display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center'}}>
+                  sx={{display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center'}}
+                  size={4}>
                   <Typography variant="h6">Status</Typography>
                   <Typography variant="h4">
                     <b>{groupRequest.status}</b>
@@ -601,7 +672,7 @@ export default function ReadGroupRequest() {
               </Grid>
             </Paper>
           </Grid>
-          <Grid item xs={12}>
+          <Grid size={12}>
             <Timeline sx={{[`& .${timelineOppositeContentClasses.root}`]: {flex: 0.1}}}>
               <TimelineItem>
                 <TimelineOppositeContent sx={{m: 'auto 0'}} align="right">
@@ -656,30 +727,38 @@ export default function ReadGroupRequest() {
                       Requested Details
                     </Typography>
                     <Grid container spacing={1}>
-                      <Grid item xs={12}>
+                      <Grid size={12}>
                         <Typography variant="body2">
                           <b>Name:</b> {groupRequest.requested_group_name ?? '—'}
                         </Typography>
                       </Grid>
-                      <Grid item xs={12}>
+                      <Grid size={12}>
                         <Typography variant="body2">
                           <b>Type:</b> {GROUP_TYPE_ID_TO_LABELS[requestedGroupType] ?? requestedGroupType}
                         </Typography>
                       </Grid>
                       {requestedAppData && (
-                        <Grid item xs={12} sm={6}>
+                        <Grid
+                          size={{
+                            xs: 12,
+                            sm: 6,
+                          }}>
                           <Typography variant="body2">
                             <b>App:</b> {requestedAppData.name}
                           </Typography>
                         </Grid>
                       )}
-                      <Grid item xs={12}>
+                      <Grid size={12}>
                         <Typography variant="body2">
                           <b>Description:</b> {groupRequest.requested_group_description ?? '—'}
                         </Typography>
                       </Grid>
                       {groupRequest.requested_ownership_ending_at && (
-                        <Grid item xs={12} sm={6}>
+                        <Grid
+                          size={{
+                            xs: 12,
+                            sm: 6,
+                          }}>
                           <Typography variant="body2">
                             <b>Ownership Ending:</b>{' '}
                             {dayjs(groupRequest.requested_ownership_ending_at).startOf('second').fromNow()}
@@ -687,8 +766,14 @@ export default function ReadGroupRequest() {
                         </Grid>
                       )}
                       {requestedTagNames.length > 0 && (
-                        <Grid item xs={12}>
-                          <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
+                        <Grid size={12}>
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            sx={{
+                              flexWrap: 'wrap',
+                              alignItems: 'center',
+                            }}>
                             <Typography variant="body2">
                               <b>Tags:</b>
                             </Typography>
@@ -699,7 +784,7 @@ export default function ReadGroupRequest() {
                         </Grid>
                       )}
                       {requestPluginId && (
-                        <Grid item xs={12}>
+                        <Grid size={12}>
                           <PluginConfigDisplay
                             label="Plugin Configuration"
                             pluginId={requestPluginId}
@@ -763,13 +848,19 @@ export default function ReadGroupRequest() {
                                 {requestError}
                               </Alert>
                             ) : null}
+                            <ConstraintsUnavailableAlert constraints={tagConstraints} action="approval" />
                             {canApprove && (
                               <>
                                 <Typography variant="h6" sx={{mb: 1}}>
                                   Group Details
                                 </Typography>
-                                <Grid container spacing={2} alignItems="center">
-                                  <Grid item xs={6}>
+                                <Grid
+                                  container
+                                  spacing={2}
+                                  sx={{
+                                    alignItems: 'center',
+                                  }}>
+                                  <Grid size={6}>
                                     <FormControl size="small" margin="normal" fullWidth>
                                       <SelectElement
                                         label="Type"
@@ -778,6 +869,7 @@ export default function ReadGroupRequest() {
                                         onChange={(value) => {
                                           setGroupType(value);
                                           setAppName('');
+                                          setResolvedAppId(null);
                                         }}
                                         required
                                         // `readOnly`, not `disabled`: react-hook-form omits a
@@ -791,21 +883,28 @@ export default function ReadGroupRequest() {
                                     </FormControl>
                                   </Grid>
                                   {groupType == 'app_group' ? (
-                                    <Grid item xs={6}>
+                                    <Grid size={6}>
                                       <FormControl margin="normal" fullWidth required>
                                         <AutocompleteElement<(typeof appSearchOptions)[number]>
                                           label="App"
                                           name="resolved_app"
                                           options={appSearchOptions}
                                           required
+                                          // Show the app the form holds. rhf-mui otherwise displays the entry of
+                                          // `options` matching the form value, and `options` is a search this field's
+                                          // input drives: the requested app can fall past the first page and render
+                                          // blank, and an in-flight search empties it, resetting the input mid-typing.
+                                          transform={{input: (app) => app ?? null}}
                                           autocompleteProps={{
                                             getOptionLabel: (option: AppDetail) => option.name,
                                             isOptionEqualToValue: (option: AppDetail, value: AppDetail) =>
                                               option.id == value?.id,
                                             onInputChange: (_event: React.SyntheticEvent, newInputValue: string) =>
                                               setAppSearchInput(newInputValue),
-                                            onChange: (_event: React.SyntheticEvent, value: AppDetail | null) =>
-                                              setAppName(value?.name ?? ''),
+                                            onChange: (_event: React.SyntheticEvent, value: AppDetail | null) => {
+                                              setAppName(value?.name ?? '');
+                                              setResolvedAppId(value?.id ?? null);
+                                            },
                                             // `readOnly`, not `disabled`: react-hook-form clears a disabled field's value, and
                                             // rhf-mui forwards `autocompleteProps.disabled` into `useController`, so disabling
                                             // this would drop the app from the submitted form.
@@ -884,47 +983,52 @@ export default function ReadGroupRequest() {
                                     }}
                                   />
                                 </FormControl>
-                                <Grid container columnSpacing={2} rowSpacing={0} alignItems="center">
+                                {/* Top-aligned, not centred: the Tags column grows when the
+                                    app contributes tags of its own, and centring would drop the
+                                    duration field below the field beside it. */}
+                                <Grid
+                                  container
+                                  columnSpacing={2}
+                                  rowSpacing={0}
+                                  sx={{
+                                    alignItems: 'flex-start',
+                                  }}>
                                   {ownershipTimeLimit != null && (
-                                    <Grid item xs={12}>
-                                      <Typography variant="subtitle2" color="text.accent" sx={{pt: 1}}>
+                                    <Grid size={12}>
+                                      <Typography
+                                        variant="subtitle2"
+                                        sx={{
+                                          color: 'text.accent',
+                                          pt: 1,
+                                        }}>
                                         {'Ownership is limited to ' +
-                                          Math.floor(ownershipTimeLimit / 86400) +
-                                          ' days by a tag constraint.'}
+                                          timeLimitLabel(ownershipTimeLimit) +
+                                          ' by a tag constraint.'}
                                       </Typography>
                                     </Grid>
                                   )}
-                                  <Grid item xs={6}>
+                                  <Grid size={6}>
                                     <OwnershipEndingField
                                       ownershipTimeLimit={ownershipTimeLimit}
-                                      ownershipUntil={ownershipUntil}
+                                      constraintsBlocked={tagConstraints.blocked}
                                       setOwnershipUntil={setOwnershipUntil}
                                     />
                                   </Grid>
-                                  <Grid item xs={6}>
+                                  <Grid size={6}>
                                     <FormControl margin="normal" fullWidth>
-                                      <Autocomplete
-                                        multiple
+                                      <TagsField
                                         options={tagSearchOptions}
-                                        value={selectedTags}
-                                        getOptionLabel={(option: TagListItem) => option.name}
-                                        onInputChange={(_event, newInputValue) => setTagSearchInput(newInputValue)}
-                                        onChange={(_event, newValue) => setSelectedTags(newValue)}
-                                        renderTags={(value: TagListItem[], getTagProps) =>
-                                          value.map((option: TagListItem, index: number) => (
-                                            <Chip variant="outlined" label={option.name} {...getTagProps({index})} />
-                                          ))
-                                        }
-                                        renderInput={(params) => (
-                                          <TextField {...params} label="Tags" placeholder="Tags" />
-                                        )}
+                                        selected={selectedTags}
+                                        inherited={inheritedTags}
+                                        onSelectedChange={setSelectedTags}
+                                        onSearchChange={setTagSearchInput}
                                       />
                                     </FormControl>
                                   </Grid>
                                 </Grid>
                                 <Grid>
                                   {ownershipUntil == 'custom' ? (
-                                    <Grid item xs={6} sx={{pr: 1}}>
+                                    <Grid sx={{pr: 1}} size={6}>
                                       <FormControl margin="normal" fullWidth>
                                         <DatePickerElement
                                           label="Custom End Date"
@@ -979,7 +1083,7 @@ export default function ReadGroupRequest() {
                                   type="submit"
                                   startIcon={<ApprovedIcon />}
                                   sx={{mx: 2}}
-                                  disabled={submitting}
+                                  disabled={submitting || tagConstraints.blocked}
                                   onClick={() => setApproved(true)}>
                                   Approve
                                 </Button>
@@ -1051,8 +1155,14 @@ export default function ReadGroupRequest() {
                                   return null;
                                 }
                                 return (
-                                  <Grid item xs={12} key="tags">
-                                    <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
+                                  <Grid key="tags" size={12}>
+                                    <Stack
+                                      direction="row"
+                                      spacing={1}
+                                      sx={{
+                                        flexWrap: 'wrap',
+                                        alignItems: 'center',
+                                      }}>
                                       <Typography variant="body2">
                                         <b>Tags:</b>
                                       </Typography>
@@ -1081,7 +1191,7 @@ export default function ReadGroupRequest() {
                                 );
                               }
                               return (
-                                <Grid item xs={12} key={field.label}>
+                                <Grid key={field.label} size={12}>
                                   <Typography variant="body2">
                                     <b>{field.label}:</b>{' '}
                                     {field.changed ? (

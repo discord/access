@@ -179,12 +179,20 @@ export default function ListGroupRequests() {
               const [id, displayName, group_name, status, resolver] = option.split(';');
               return (
                 <li {...props} key={id}>
-                  <Grid container alignItems="center">
-                    <Grid item>
+                  <Grid
+                    container
+                    sx={{
+                      alignItems: 'center',
+                    }}>
+                    <Grid>
                       <Box>
                         {displayName} is requesting the creation of {group_name}
                       </Box>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: 'text.secondary',
+                        }}>
                         {status} {status == 'PENDING' || resolver == '' ? '' : 'by ' + resolver}
                       </Typography>
                     </Grid>
@@ -301,15 +309,17 @@ export default function ListGroupRequests() {
                 count={totalRows}
                 rowsPerPage={rowsPerPage}
                 page={page}
-                SelectProps={{
-                  inputProps: {
-                    'aria-label': 'rows per page',
-                  },
-                  native: true,
-                }}
                 onPageChange={handleChangePage}
                 onRowsPerPageChange={handleChangeRowsPerPage}
                 ActionsComponent={TablePaginationActions}
+                slotProps={{
+                  select: {
+                    inputProps: {
+                      'aria-label': 'rows per page',
+                    },
+                    native: true,
+                  },
+                }}
               />
             </TableRow>
           </TableFooter>

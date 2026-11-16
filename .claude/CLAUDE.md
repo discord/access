@@ -26,7 +26,7 @@ that area:
 ## Stack
 
 **Backend:** FastAPI + Pydantic v2 + **async** SQLAlchemy 2.0 (asyncio) + Alembic
-**Frontend:** React 18 + TypeScript, Vite, MUI, React Query
+**Frontend:** React 19 + TypeScript, Vite, MUI, React Query
 **Auth:** Authlib (OIDC or Cloudflare Access JWT — operator's choice)
 **Plugins:** pluggy
 **Tooling:** `uv` (deps + venv, pinned to Python 3.13), `ruff` (lint/format), `ty` (type check)
@@ -258,14 +258,16 @@ from api.schemas import AuditLogSchema, EventType
 
 _ctx = get_request_context()
 logging.getLogger("access.audit").info(
-    AuditLogSchema().dumps({
-        "event_type": EventType.your_event,
-        "user_agent": _ctx.user_agent if _ctx else None,
-        "ip": _ctx.ip if _ctx else None,
-        "current_user_id": self.actor_id,
-        "current_user_email": self.actor_email,
-        # ... relevant entities
-    })
+    AuditLogSchema().dumps(
+        {
+            "event_type": EventType.your_event,
+            "user_agent": _ctx.user_agent if _ctx else None,
+            "ip": _ctx.ip if _ctx else None,
+            "current_user_id": self.actor_id,
+            "current_user_email": self.actor_email,
+            # ... relevant entities
+        }
+    )
 )
 ```
 
@@ -280,6 +282,16 @@ When adding a new operation:
 If you change what fields are logged or add a new `EventType`, any downstream detection tooling
 that parses these audit logs (e.g. a SIEM or a Panther detection schema) also needs to be
 updated. Those schemas typically live in the operator's own private repo, outside Access.
+
+## Logging: use parameterized format strings, not f-strings
+
+For any `logger.error`/`logger.exception`/`logger.warning` call that Sentry might capture, pass
+the variable parts as `%s` arguments — e.g. `logger.error("Reconciliation failed for group %s: %s",
+group.name, err)` — rather than an f-string or `.format()` call. Sentry's logging integration
+groups issues by the literal, uninterpolated message template. An f-string bakes the
+interpolated value into that template, so every distinct group name, user id, or error detail
+mints its own Sentry issue instead of coalescing into the one issue that captures how often the
+failure actually recurs.
 
 ## Comments and docstrings describe the present
 

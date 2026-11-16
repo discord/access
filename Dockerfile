@@ -1,12 +1,12 @@
 # Build step #1: build the React front end
-FROM node:24-alpine AS build-step
+FROM node:26-alpine AS build-step
 WORKDIR /app
 ENV PATH=/app/node_modules/.bin:$PATH
 # Pin npm >= 11.16 so the v12 install defaults in .npmrc are enforced
 # regardless of the npm bundled with the base image. Run before copying the
 # project so this step isn't gated by package.json "engines".
 RUN npm install -g npm@11.16.0
-COPY .npmrc index.html package.json package-lock.json tsconfig.json tsconfig.paths.json vite.config.ts .env.production* ./
+COPY .npmrc index.html package.json package-lock.json tsconfig.json vite.config.ts .env.production* ./
 COPY ./src ./src
 COPY ./public ./public
 COPY ./config ./config
@@ -20,6 +20,12 @@ ENV NODE_ENV=production
 # are filed under. Empty for a plain `docker build`, which reports events with no release.
 ARG SENTRY_RELEASE=""
 ENV SENTRY_RELEASE=$SENTRY_RELEASE
+# Frontend halves of the REQUIRE_* toggles, which vite.config.ts reads at build time. Declared
+# without defaults so that, when not passed, they stay unset rather than empty: vite.config.ts
+# lets the process environment override .env.production, and an empty value would mask a
+# toggle set there.
+ARG REQUIRE_DESCRIPTIONS
+ARG REQUIRE_REQUEST_REASONS
 # One build produces both the assets that ship and the source maps that explain them. Uploading
 # from a second build would file maps against a bundle nobody serves: @sentry/vite-plugin injects
 # a debug id into every asset, which changes its content hash, so two builds of the same commit
@@ -42,7 +48,7 @@ RUN --mount=type=secret,id=ACCESS_CONFIG_OVERRIDE \
   ACCESS_CONFIG_FILE=$(test -f config/config.override.json && echo config.override.json) npm run build
 
 # Build step #2: build the API with the client as static files
-FROM python:3.13
+FROM python:3.15
 ARG SENTRY_RELEASE=""
 WORKDIR /app
 
@@ -71,6 +77,16 @@ COPY alembic.ini ./
 
 RUN uv sync --frozen --no-dev
 
+# Constrain every later `uv pip install` (the plugin installs below, and any in an
+# image built FROM this one) to the exact versions in uv.lock. `uv pip install`
+# does not honor the app's own requirements, so without this a plugin that asks
+# for a different version of a locked package silently replaces it in the venv.
+# With it, that plugin fails the build instead. Packages not in the lock (a
+# plugin's own dependencies) resolve freely. Unhashed, since plugin packages
+# carry no hashes; the app's own installs above are already hash-checked.
+RUN uv export --frozen --no-dev --no-hashes --no-emit-project --no-header -q -o /app/constraints.txt
+ENV UV_CONSTRAINT=/app/constraints.txt
+
 # --- Optional example plugins -------------------------------------------------
 # The example plugins under examples/plugins/ are opt-in. Each installs into the
 # app venv only when its build arg is set to "true" (default "false"), so the
@@ -81,7 +97,8 @@ RUN uv sync --frozen --no-dev
 # it. A plugin's requirements.txt is installed first when present (no example
 # ships one, but your own plugin may keep runtime deps there rather than in its
 # project metadata). See examples/plugins/README.md for the full list and for
-# how to bake in your own plugin.
+# how to bake in your own plugin. These installs are constrained to uv.lock via
+# UV_CONSTRAINT above.
 ARG INSTALL_AUDIT_LOGGER_PLUGIN="false"
 ARG INSTALL_CONDITIONAL_ACCESS_PLUGIN="false"
 ARG INSTALL_DATADOG_METRICS_PLUGIN="false"

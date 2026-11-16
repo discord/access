@@ -15,13 +15,14 @@ longer there.
 from __future__ import annotations
 
 import logging
+from collections.abc import Generator
 from datetime import UTC, datetime
-from typing import Any, Generator
+from typing import Any
 
 import pytest
 from fastapi import BackgroundTasks, FastAPI
-from okta.models.group import Group
 from httpx import AsyncClient
+from okta.models.group import Group
 from pytest_mock import MockerFixture
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
@@ -38,13 +39,13 @@ from api.operations._lifecycle_fan_out import (
     end_deferred_lifecycle,
     run_deferred_lifecycle,
 )
-from api.routers._fan_out import defer_fan_out
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecycleContext,
     AppGroupLifecycleHook,
     AppGroupLifecyclePluginMetadata,
     hookimpl,
 )
+from api.routers._fan_out import defer_fan_out
 from api.services import okta
 from tests.factories import AppFactory, AppGroupFactory, OktaUserFactory, RoleGroupFactory
 
@@ -124,7 +125,7 @@ class RecordingPlugin:
 
 
 @pytest.fixture
-def recording_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[RecordingPlugin, None, None]:
+def recording_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[RecordingPlugin]:
     import pluggy
 
     import api.plugins.app_group_lifecycle as plugin_module
@@ -146,7 +147,7 @@ def recording_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[Recording
 
 
 @pytest.fixture
-def collector() -> Generator[list[_DeferredFire], None, None]:
+def collector() -> Generator[list[_DeferredFire]]:
     """Bind a lifecycle collector, as the `defer_fan_out` router dependency does per request."""
     collected, token = begin_deferred_lifecycle()
     try:

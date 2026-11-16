@@ -1,5 +1,4 @@
-import time
-from typing import Optional
+import asyncio
 
 from okta.models.group_rule import GroupRule as OktaGroupRuleType
 from okta.models.group_rule_conditions import GroupRuleConditions as OktaGroupRuleConditionsType
@@ -8,8 +7,8 @@ from pytest_mock import MockerFixture
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.models import OktaGroup
 from api.extensions import Db
+from api.models import OktaGroup
 from api.services import okta
 from api.services.okta_service import Group
 from api.syncer import sync_groups
@@ -106,7 +105,7 @@ async def test_group_sync_deleted_in_db_exists_in_okta(db: Db, mocker: MockerFix
     assert deleted_at is not None
 
     # Wait a second to make sure the deleted_at timestamp is different
-    time.sleep(1)
+    await asyncio.sleep(1)
 
     # Add the group back to okta to simulate a case where the value was updated in the DB
     # but somehow didn't get deleted from okta
@@ -181,7 +180,7 @@ async def run_sync(
         return list((await session.scalars(select(OktaGroup))).all())
 
 
-def get_group_by_id(group_list: list[OktaGroup], group_id: str) -> Optional[OktaGroup]:
+def get_group_by_id(group_list: list[OktaGroup], group_id: str) -> OktaGroup | None:
     ret = None
     for x in group_list:
         if x.id == group_id:
@@ -191,7 +190,7 @@ def get_group_by_id(group_list: list[OktaGroup], group_id: str) -> Optional[Okta
     return ret
 
 
-def okta_groups_are_equal(left: Optional[OktaGroup], right: Optional[OktaGroup]) -> bool:
+def okta_groups_are_equal(left: OktaGroup | None, right: OktaGroup | None) -> bool:
     # Checks if there are property differences between
     # two OktaUser objects without implementing it on the model
     # itself.

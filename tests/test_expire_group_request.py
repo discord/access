@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -28,7 +28,7 @@ async def test_no_expire_new_group_request(db: Db, group_request: GroupRequest, 
 
 
 async def test_expire_old_group_request(db: Db, group_request: GroupRequest, user: OktaUser) -> None:
-    group_request.created_at = datetime.now(timezone.utc) - timedelta(days=30)
+    group_request.created_at = datetime.now(UTC) - timedelta(days=30)
     group_request_id = await _persist(db, group_request, user)
 
     await expire_group_requests()
@@ -59,8 +59,8 @@ async def test_no_expire_group_request_with_lapsed_ownership_window(
     row and leave the new group unowned. Repairing that belongs in the approve
     path and not in this sweep; it is not a reason to expire the request here.
     """
-    group_request.created_at = datetime.now(timezone.utc) - timedelta(days=1)
-    group_request.requested_ownership_ending_at = datetime.now(timezone.utc) - timedelta(hours=12)
+    group_request.created_at = datetime.now(UTC) - timedelta(days=1)
+    group_request.requested_ownership_ending_at = datetime.now(UTC) - timedelta(hours=12)
     group_request_id = await _persist(db, group_request, user)
 
     await expire_group_requests()
@@ -78,7 +78,7 @@ async def test_group_request_uses_its_own_cutoff(
     monkeypatch.setattr(settings, "MAX_GROUP_REQUEST_AGE_SECONDS", 30 * 24 * 60 * 60)
 
     # 10 days old: past the access cutoff, inside the longer group cutoff.
-    group_request.created_at = datetime.now(timezone.utc) - timedelta(days=10)
+    group_request.created_at = datetime.now(UTC) - timedelta(days=10)
     group_request_id = await _persist(db, group_request, user)
 
     await expire_group_requests()
@@ -91,7 +91,7 @@ async def test_never_disables_group_age_expiry(
     db: Db, group_request: GroupRequest, user: OktaUser, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(settings, "MAX_GROUP_REQUEST_AGE_SECONDS", "never")
-    group_request.created_at = datetime.now(timezone.utc) - timedelta(days=30)
+    group_request.created_at = datetime.now(UTC) - timedelta(days=30)
     group_request_id = await _persist(db, group_request, user)
 
     await expire_group_requests()
@@ -106,7 +106,7 @@ async def test_group_expiry_is_independent_of_the_access_cutoff(
 ) -> None:
     """Disabling the access cutoff must not disable the group one."""
     monkeypatch.setattr(settings, "MAX_ACCESS_REQUEST_AGE_SECONDS", "never")
-    group_request.created_at = datetime.now(timezone.utc) - timedelta(days=30)
+    group_request.created_at = datetime.now(UTC) - timedelta(days=30)
     group_request_id = await _persist(db, group_request, user)
 
     await expire_group_requests()

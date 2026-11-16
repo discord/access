@@ -31,25 +31,10 @@ import {
   GroupMembersByIdPutError,
   GroupMembersByIdPutVariables,
 } from '../../api/apiComponents';
-import {
-  GroupDetail,
-  GroupMember,
-  GroupMembersSummary,
-  GroupRefForMembership,
-  OktaUserDetail,
-  RoleGroupDetail,
-  RoleGroupMapDetail,
-} from '../../api/apiSchemas';
+import {GroupDetail, GroupMember, GroupMembersSummary, OktaUserDetail} from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin} from '../../authorization';
-import {
-  displayUserName,
-  minTagTime,
-  minTagTimeGroups,
-  ownerCantAddSelf,
-  ownerCantAddSelfGroups,
-  requiredReason,
-  requiredReasonGroups,
-} from '../../helpers';
+import {displayUserName} from '../../helpers';
+import {carriedConstraints, timeLimitLabel} from '../../constraints';
 import accessConfig from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
@@ -95,47 +80,14 @@ function AddUsersDialog(props: AddUsersDialogProps) {
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
-  // in seconds
-  let timeLimit = minTagTime(
-    props.group.active_group_tags ? props.group.active_group_tags.map((tagMap) => tagMap.active_tag!) : [],
-    props.owner,
-  );
-
-  let reason = requiredReason(
-    props.group.active_group_tags ? props.group.active_group_tags.map((tagMap) => tagMap.active_tag!) : [],
-    props.owner,
-  );
-
-  let disallow_owner_add = ownerCantAddSelf(
-    props.group.active_group_tags ? props.group.active_group_tags.map((tagMap) => tagMap.active_tag!) : [],
-    props.owner,
-  );
-
-  if (props.group.type == 'role_group' && !props.owner) {
-    const active_groups_owners = (props.group as RoleGroupDetail).active_role_associated_group_owner_mappings?.reduce(
-      (out: GroupRefForMembership[], curr: RoleGroupMapDetail) => {
-        curr.active_group ? out.push(curr.active_group) : null;
-        return out;
-      },
-      new Array<GroupRefForMembership>(),
-    );
-    const active_groups_members = (props.group as RoleGroupDetail).active_role_associated_group_member_mappings?.reduce(
-      (out: GroupRefForMembership[], curr: RoleGroupMapDetail) => {
-        curr.active_group ? out.push(curr.active_group) : null;
-        return out;
-      },
-      new Array<GroupRefForMembership>(),
-    );
-
-    reason =
-      reason ||
-      requiredReasonGroups(active_groups_members ?? [], false) ||
-      requiredReasonGroups(active_groups_owners ?? [], true);
-    disallow_owner_add =
-      disallow_owner_add ||
-      ownerCantAddSelfGroups(active_groups_members ?? [], false) ||
-      ownerCantAddSelfGroups(active_groups_owners ?? [], true);
-  }
+  // `effective_constraints` is resolved server-side by the same code that
+  // enforces these: a role's own tags plus anything reaching it through its
+  // associations, gated on `propagate_to_roles`. It arrives on the group the
+  // page already fetched, so reading it costs no request of its own.
+  const constraints = carriedConstraints(props.group.effective_constraints);
+  const timeLimit = constraints.timeLimit(props.owner); // in seconds
+  const reason = constraints.isReasonRequired(props.owner);
+  const selfAddDisallowed = constraints.isSelfAddDisallowed(props.owner);
 
   let labels = null;
   let timeLimitUntil = null;
@@ -240,16 +192,24 @@ function AddUsersDialog(props: AddUsersDialogProps) {
         onSuccess={(formData) => submit(formData)}>
         <DialogTitle>Add {addUsersText}</DialogTitle>
         <DialogContent>
-          <Typography variant="subtitle1" color="text.accent">
+          <Typography
+            variant="subtitle1"
+            sx={{
+              color: 'text.accent',
+            }}>
             {timeLimit
               ? (props.owner ? 'Ownership of ' : 'Membership to ') +
                 'this group is limited to ' +
-                Math.floor(timeLimit / 86400) +
-                ' days.'
+                timeLimitLabel(timeLimit) +
+                '.'
               : null}
           </Typography>
-          <Typography variant="subtitle1" color="text.accent">
-            {disallow_owner_add && !isAccessAdmin(props.currentUser) ? (
+          <Typography
+            variant="subtitle1"
+            sx={{
+              color: 'text.accent',
+            }}>
+            {selfAddDisallowed && !isAccessAdmin(props.currentUser) ? (
               <>
                 You cannot add yourself to this group due to the{' '}
                 <strong>owner can't add themselves as {ownerOrMember}</strong> tag constraint. Please get another owner
@@ -310,7 +270,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
                     const userIds = users.map((user) => user.id);
                     return (
                       !userIds.includes(option.id) &&
-                      (disallow_owner_add && !isAccessAdmin(props.currentUser)
+                      (selfAddDisallowed && !isAccessAdmin(props.currentUser)
                         ? !(option.id == props.currentUser.id)
                         : true)
                     );
@@ -330,10 +290,18 @@ function AddUsersDialog(props: AddUsersDialogProps) {
                 renderOption: (props, option, state) => {
                   return (
                     <li {...props}>
-                      <Grid container alignItems="center">
-                        <Grid item>
+                      <Grid
+                        container
+                        sx={{
+                          alignItems: 'center',
+                        }}>
+                        <Grid>
                           <Box>{displayUserName(option)}</Box>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: 'text.secondary',
+                            }}>
                             {option.email.toLowerCase()}
                           </Typography>
                         </Grid>
@@ -414,7 +382,3 @@ export default function AddUsers(props: AddUsersProps) {
     </>
   );
 }
-
-AddUsers.defaultProps = {
-  owner: false,
-};

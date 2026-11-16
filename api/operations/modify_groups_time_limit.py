@@ -5,7 +5,11 @@ from sqlalchemy import select
 from api.extensions import db
 from api.models import OktaGroup, RoleGroup, Tag
 from api.models.tag import coalesce_constraints
-from api.operations._time_limits import limit_access_conferred_by_roles, limit_memberships_to_groups
+from api.operations._time_limits import (
+    limit_access_conferred_by_roles,
+    limit_memberships_to_groups,
+    limit_roles_associated_with_groups,
+)
 
 
 class ModifyGroupsTimeLimit:
@@ -15,13 +19,16 @@ class ModifyGroupsTimeLimit:
     access granted on them -- the tag being attached, edited, or inherited from
     an app. Existing grants are shortened to fit; nothing is ever extended.
 
-    A tag reaches access on two sides:
+    A tag reaches access three ways:
 
     - Its **member** limit caps membership of the tagged groups, and where a
       tagged group is a role, everything that membership confers in the groups
       the role is associated with.
     - Its **owner** limit caps ownership of the tagged groups. Owning a role
       confers none of the role's access, so nothing follows from it.
+    - By **propagation**, to roles associated with a tagged group: their
+      members are governed by the tagged group's limit, and so is everything
+      those memberships in turn confer.
     """
 
     def __init__(self, groups: list[str] | set[str], tags: list[str] | set[str]):
@@ -74,5 +81,25 @@ class ModifyGroupsTimeLimit:
         if ownership_seconds_limit is not None:
             end_at = datetime.now(UTC) + timedelta(seconds=ownership_seconds_limit)
             await limit_memberships_to_groups(group_ids, is_owner=True, end_at=end_at)
+
+        # Propagation to associated roles. Only tags that propagate contribute,
+        # and the axis decides which key is read: a role that is a MEMBER of
+        # these groups is governed by their member limit, a role that OWNS them
+        # by their owner limit. Either way the limit lands on the role's own
+        # members, so this is independent of whether the group's own limits
+        # above applied.
+        propagating_tags = [t for t in tags if t.propagate_to_roles]
+        for is_owner, constraint_key in (
+            (False, Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY),
+            (True, Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY),
+        ):
+            propagated_seconds_limit = coalesce_constraints(constraint_key, propagating_tags)
+            if propagated_seconds_limit is None:
+                continue
+            await limit_roles_associated_with_groups(
+                group_ids,
+                is_owner=is_owner,
+                end_at=datetime.now(UTC) + timedelta(seconds=propagated_seconds_limit),
+            )
 
         await db.session.commit()

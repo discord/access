@@ -1,10 +1,10 @@
 import copy
 import logging
 from datetime import UTC, datetime
-from typing import Any, Optional
+from typing import Any
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.context import get_request_context
 from api.exceptions import ConflictError, InvalidRequestError
@@ -23,7 +23,8 @@ from api.models import (
 )
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.app_group import get_access_owners
-from api.models.tag import coalesce_ended_at
+from api.models.okta_group import is_group_name_taken
+from api.models.tag import effective_ended_at
 from api.operations._fan_out import defer_notification
 from api.operations.constraints.check_for_self_add import CheckForSelfAdd
 from api.operations.create_group import CreateGroup
@@ -39,8 +40,9 @@ class ApproveGroupRequest:
         self,
         *,
         group_request: GroupRequest | str,
-        approver_user: Optional[OktaUser | str] = None,
+        approver_user: OktaUser | str | None = None,
         approval_reason: str = "",
+        ending_at: datetime | None = None,
         notify: bool = True,
         bypass_self_approval: bool = False,
     ):
@@ -50,10 +52,11 @@ class ApproveGroupRequest:
         )
 
         self.approval_reason = approval_reason
+        self.ending_at = ending_at
         self.notify = notify
         self.bypass_self_approval = bypass_self_approval
 
-    async def execute(self) -> Optional[GroupRequest]:
+    async def execute(self) -> GroupRequest | None:
         # Lock the request row for the transaction so concurrent approvers
         # can't both pass the pending-state guard and double-create the group.
         # `of=` keeps FOR UPDATE off the joinedload's nullable outer-join side
@@ -135,39 +138,47 @@ class ApproveGroupRequest:
             if group_request.resolved_ownership_ending_at
             else group_request.requested_ownership_ending_at
         )
+        if resolved_ownership_ending_at is not None:
+            resolved_ownership_ending_at = _as_utc(resolved_ownership_ending_at)
+        # `ending_at` (a conditional-access plugin's response) caps the ownership
+        # window and never extends it.
+        if self.ending_at is not None:
+            plugin_ending_at = _as_utc(self.ending_at)
+            resolved_ownership_ending_at = (
+                plugin_ending_at
+                if resolved_ownership_ending_at is None
+                else min(resolved_ownership_ending_at, plugin_ending_at)
+            )
         # Refuse to approve into an ownership window that has already closed.
-        # Nothing downstream clamps it: coalesce_ended_at only ever moves the date
+        # Nothing downstream clamps it: effective_ended_at only ever moves the date
         # earlier, so a past value reaches ModifyGroupUsers and writes an ownership
         # row that is expired on arrival. get_group_managers filters on ended_at, so
         # the new group would have no owners at all, and its future approvals would
         # silently route to the app owner or an Access admin instead of the person
         # who asked for it.
         #
-        # This is reachable three ways, which is why the guard lives here rather
+        # This is reachable four ways, which is why the guard lives here rather
         # than in the router: any client that omits resolved_ownership_ending_at
         # (the field is optional and only assigned when present), an approver
         # selecting "Indefinite" in the UI (which sends nothing, so the stale
-        # requested value survives), or an approver leaving the custom date
-        # prefilled with the original — already past — date. Failing loudly makes
-        # the approver name a window they mean, which is the only safe default: the
-        # alternatives silently grant either nothing or more than was asked.
-        if resolved_ownership_ending_at is not None:
-            ending_at = (
-                resolved_ownership_ending_at.replace(tzinfo=UTC)
-                if resolved_ownership_ending_at.tzinfo is None
-                else resolved_ownership_ending_at
+        # requested value survives), an approver leaving the custom date
+        # prefilled with the original — already past — date, or a conditional-access
+        # plugin returning a past `ending_at`. Failing loudly makes the approver name
+        # a window they mean, which is the only safe default: the alternatives
+        # silently grant either nothing or more than was asked.
+        if resolved_ownership_ending_at is not None and resolved_ownership_ending_at <= datetime.now(UTC):
+            raise InvalidRequestError(
+                "The ownership window for this request has already passed. Set an ownership end date when approving it."
             )
-            if ending_at <= datetime.now(UTC):
-                raise InvalidRequestError(
-                    "The ownership window for this request has already passed. "
-                    "Set an ownership end date when approving it."
-                )
 
-        # authorization
+        # authorization: no approver means a conditional-access plugin approved the
+        # request (see `ConditionalAccessPluginSpec.group_request_created`), and that
+        # operator-installed plugin stands in for the approval tiers below. The resolve
+        # route always passes the calling user, so a person never reaches this path.
         access_owner_ids = {u.id for u in await get_access_owners()}
-        is_admin = approver_id in access_owner_ids
+        may_approve_any = approver_id is None or approver_id in access_owner_ids
 
-        if not is_admin:
+        if not may_approve_any:
             type_changed = resolved_type != group_request.requested_group_type
             app_changed = resolved_app_id != group_request.requested_app_id
             if type_changed or app_changed:
@@ -175,7 +186,7 @@ class ApproveGroupRequest:
 
         if resolved_app_id is not None:
             # App group request: admins OR owners of that specific app can approve
-            if not is_admin:
+            if not may_approve_any:
                 is_app_owner = (
                     await db.session.scalars(
                         select(OktaUserGroupMember)
@@ -186,7 +197,10 @@ class ApproveGroupRequest:
                             AppGroup.deleted_at.is_(None),
                             OktaUserGroupMember.user_id == approver_id,
                             OktaUserGroupMember.is_owner.is_(True),
-                            OktaUserGroupMember.ended_at.is_(None),
+                            or_(
+                                OktaUserGroupMember.ended_at.is_(None),
+                                OktaUserGroupMember.ended_at > func.now(),
+                            ),
                         )
                     )
                 ).first()
@@ -195,7 +209,7 @@ class ApproveGroupRequest:
                     return group_request
         else:
             # okta_group / role_group request: only admins can approve
-            if not is_admin:
+            if not may_approve_any:
                 return group_request
 
         # Validation
@@ -210,15 +224,13 @@ class ApproveGroupRequest:
         ):
             return group_request
 
-        existing_group = (
-            await db.session.scalars(
-                select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-                .where(func.lower(OktaGroup.name) == func.lower(resolved_name))
-                .where(OktaGroup.deleted_at.is_(None))
+        # Raise rather than leave the request pending: otherwise the approver sees a
+        # successful response for an approval that created nothing.
+        if await is_group_name_taken(resolved_name):
+            raise ConflictError(
+                f"A group named '{resolved_name}' already exists. Reject this request, "
+                "or approve it under a different name."
             )
-        ).first()
-        if existing_group is not None:
-            return group_request
 
         # Resolve the plugin config the new group will carry, and re-validate it here
         # with the rest of the validation: the app or its plugin config may have
@@ -313,14 +325,8 @@ class ApproveGroupRequest:
         ).first()
         assert created_group_with_tags is not None
 
-        tags = [tag_map.active_tag for tag_map in created_group_with_tags.active_group_tags]
-
-        # Determine the initial ending time: prefer resolved, fall back to requested
-        coalesced_ownership_ending_at = coalesce_ended_at(
-            constraint_key=Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY,
-            tags=tags,
-            initial_ended_at=resolved_ownership_ending_at,
-            group_is_managed=True,
+        coalesced_ownership_ending_at = effective_ended_at(
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY, created_group_with_tags, resolved_ownership_ending_at
         )
 
         # Update the group request with the coalesced value to ensure consistency
@@ -367,3 +373,8 @@ class ApproveGroupRequest:
             )
 
         return group_request
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Return `value` as an aware UTC datetime, reading a naive one as UTC."""
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)

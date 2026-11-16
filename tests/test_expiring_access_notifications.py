@@ -2,16 +2,15 @@ import threading
 from datetime import datetime, timedelta
 from typing import Any
 
+from fastapi import FastAPI
 from pytest_mock import MockerFixture
 from sqlalchemy import select
 
-from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
-from api.extensions import Db
 from api.config import settings
+from api.extensions import Db
+from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.plugins import get_notification_hook
-from fastapi import FastAPI
-
 from api.syncer import (
     expiring_access_notifications_owner,
     expiring_access_notifications_role_owner,

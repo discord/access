@@ -1,11 +1,9 @@
-from typing import Optional
-
 import logging
 
-from api.context import get_request_context
 from sqlalchemy import func, nullsfirst, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
+from api.context import get_request_context
 from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleRequest
@@ -23,7 +21,7 @@ class RejectRoleRequest:
         rejection_reason: str = "",
         notify: bool = True,
         notify_requester: bool = True,
-        current_user_id: Optional[str | OktaUser] = None,
+        current_user_id: str | OktaUser | None = None,
     ):
         self.role_request_id = role_request if isinstance(role_request, str) else role_request.id
         self.current_user_id = (

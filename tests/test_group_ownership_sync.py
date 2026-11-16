@@ -1,15 +1,15 @@
 import logging
 from collections import namedtuple
+from collections.abc import Callable
 from datetime import datetime, timedelta
-from typing import Callable, Tuple
 
 import pytest
 from pytest_mock import MockerFixture
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.models import AppGroup, OktaGroup, OktaUser, OktaUserGroupMember
 from api.extensions import Db
+from api.models import AppGroup, OktaGroup, OktaUser, OktaUserGroupMember
 from api.services import okta
 from api.services.okta_service import Group, OktaResourceNotFoundError, User
 from api.syncer import sync_group_ownerships
@@ -21,7 +21,7 @@ OwnershipDetails = namedtuple("OwnershipDetails", ["expired_at", "db_pk"])
 async def test_ownership_sync(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.build_batch(3)
-    initial_db_users, initial_db_groups = await seed_db(db, initial_okta_users, initial_okta_groups)
+    _initial_db_users, _initial_db_groups = await seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_owners_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
@@ -36,7 +36,7 @@ async def test_ownership_sync(db: Db, mocker: MockerFixture) -> None:
 async def test_ownership_in_okta_not_in_db_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
-    initial_db_users, initial_db_groups = await seed_db(db, initial_okta_users, initial_okta_groups)
+    _initial_db_users, _initial_db_groups = await seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_owners_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
@@ -270,8 +270,6 @@ async def test_ownership_in_both_authoritative(db: Db, mocker: MockerFixture) ->
     # Verify valid user is untouched
     assert owners_rows[initial_okta_users[1].id].expired_at == non_expired_date
 
-    return
-
 
 async def test_ownership_in_both_non_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
@@ -316,13 +314,11 @@ async def test_ownership_in_both_non_authoritative(db: Db, mocker: MockerFixture
     # Verify that non-expired ownerships are unchanged
     assert owners_rows[initial_okta_users[1].id].expired_at == non_expired_date
 
-    return
-
 
 async def test_ownership_unamanaged_group_in_okta_not_in_db_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
-    initial_db_users, initial_db_groups = await seed_db(db, initial_okta_users, initial_okta_groups)
+    _initial_db_users, _initial_db_groups = await seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_owners_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
@@ -386,7 +382,7 @@ async def test_ownership_through_multiple_groups_non_authoritative(db: Db, mocke
     assert (await _get_group_ownership(db, pk_2)).expired_at == date_2
 
 
-async def seed_db(db: Db, users: list[OktaUser], groups: list[OktaGroup]) -> Tuple[list[OktaUser], list[OktaGroup]]:
+async def seed_db(db: Db, users: list[OktaUser], groups: list[OktaGroup]) -> tuple[list[OktaUser], list[OktaGroup]]:
     async with AsyncSession(db.engine) as session:
         session.add_all([Group(g).update_okta_group(OktaGroup(), {}) for g in groups])
         session.add_all([User(u).update_okta_user(OktaUser(), {}) for u in users])
@@ -439,14 +435,14 @@ async def run_sync(
     okta_groups: list[OktaGroup],
     user_ownership_func: Callable[[str], list[User]],
     act_as_authority: bool,
-    groups_with_rules: set[str] = set(),
+    groups_with_rules: set[str] | None = None,
 ) -> list[OktaUserGroupMember]:
     async with AsyncSession(db.engine) as session:
         mocker.patch.object(okta, "list_groups", return_value=okta_groups)
 
         mocker.patch.object(okta, "list_owners_for_group", side_effect=user_ownership_func)
 
-        mocker.patch.object(okta, "list_groups_with_active_rules", return_value=groups_with_rules)
+        mocker.patch.object(okta, "list_groups_with_active_rules", return_value=groups_with_rules or set())
 
         await sync_group_ownerships(act_as_authority, concurrency=10)
 

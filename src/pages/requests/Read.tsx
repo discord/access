@@ -11,8 +11,8 @@ import Avatar from '@mui/material/Avatar';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
 import AccessRequestIcon from '../../components/icons/MoreTime';
-import PendingIcon from '@mui/icons-material/HelpOutline';
-import ApprovedIcon from '@mui/icons-material/CheckCircleOutline';
+import PendingIcon from '@mui/icons-material/HelpOutlineOutlined';
+import ApprovedIcon from '@mui/icons-material/CheckCircleOutlineOutlined';
 import RejectedIcon from '@mui/icons-material/HighlightOff';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -32,19 +32,15 @@ import TimelineDot from '@mui/lab/TimelineDot';
 import Chip from '@mui/material/Chip';
 import {FormContainer, SelectElement, TextFieldElement, ToggleButtonGroupElement} from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
+import {useForm} from 'react-hook-form';
 
 import dayjs, {Dayjs} from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
-import {
-  groupBy,
-  displayUserName,
-  minTagTime,
-  minTagTimeGroups,
-  requiredReason,
-  requiredReasonGroups,
-} from '../../helpers';
+import {groupBy, displayUserName} from '../../helpers';
+import {approvalUntilDefault, timeLimitLabel, useConstraintsForGroups} from '../../constraints';
+import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup, ACCESS_APP_RESERVED_NAME} from '../../authorization';
 import {
@@ -111,46 +107,12 @@ const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntri
 );
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
 
-function ComputeConstraints(accessRequest: AccessRequestDetail) {
-  const group = accessRequest.requested_group ?? null;
-
-  if (group == null) {
-    return [null, null];
-  }
-
-  let timeLimit = minTagTime(
-    group.active_group_tags ? group.active_group_tags.map((tagMap: OktaGroupTagMapDetail) => tagMap.active_tag!) : [],
-    accessRequest.request_ownership!,
-  );
-
-  let reason = requiredReason(
-    group.active_group_tags ? group.active_group_tags?.map((tagMap: OktaGroupTagMapDetail) => tagMap.active_tag!) : [],
-    accessRequest.request_ownership!,
-  );
-
-  if (group.type == 'role_group' && !accessRequest.request_ownership) {
-    const active_groups_owners = (group as RoleGroupDetail).active_role_associated_group_owner_mappings?.reduce(
-      (out, curr) => {
-        curr.active_group ? out.push(curr.active_group) : null;
-        return out;
-      },
-      new Array<GroupRefForMembership>(),
-    );
-    const active_groups_members = (group as RoleGroupDetail).active_role_associated_group_member_mappings?.reduce(
-      (out, curr) => {
-        curr.active_group ? out.push(curr.active_group) : null;
-        return out;
-      },
-      new Array<GroupRefForMembership>(),
-    );
-
-    reason =
-      reason ||
-      requiredReasonGroups(active_groups_members ?? [], false) ||
-      requiredReasonGroups(active_groups_owners ?? [], true);
-  }
-
-  return [timeLimit, reason];
+// Which constraints apply to the requested group, resolved by the API rather
+// than re-derived here. A requested role's applicable constraints cannot be
+// read off its own tags: they depend on which of its associations propagate,
+// which is the server's rule to apply.
+function useRequestConstraints(accessRequest: AccessRequestDetail) {
+  return useConstraintsForGroups([accessRequest.requested_group?.id]);
 }
 
 export default function ReadRequest() {
@@ -185,7 +147,7 @@ export default function ReadRequest() {
         ? requestedUntilDelta.toString()
         : 'custom';
 
-  const requestedGroupManager = canManageGroup(currentUser, accessRequest.requested_group);
+  const requestedGroupManager = canManageGroup(currentUser, accessRequest.requested_group as GroupDetail | undefined);
 
   const complete = (
     completedAccessRequest: AccessRequestSummary | undefined,
@@ -216,10 +178,13 @@ export default function ReadRequest() {
 
   const group = groupData ?? ({} as GroupDetail);
 
-  const constraints = ComputeConstraints(accessRequest);
-
-  const timeLimit: number | null = constraints[0] as number | null;
-  const reason: boolean = constraints[1] as boolean;
+  const constraints = useRequestConstraints(accessRequest);
+  const owner = !!accessRequest.request_ownership;
+  // `isReasonRequired` reports true until the answer lands, and approval stays
+  // disabled while `blocked`, so nothing offers a duration or waives a
+  // justification on the strength of an answer that has not arrived.
+  const timeLimit = constraints.timeLimit(owner);
+  const reason = constraints.isReasonRequired(owner);
 
   let autofill_until = false;
   if (requestedUntilDelta && timeLimit && requestedUntilDelta <= timeLimit) {
@@ -227,7 +192,7 @@ export default function ReadRequest() {
   }
 
   let labels = null;
-  let requestedUntilAdjusted = null;
+  let requestedUntilAdjusted: string | undefined = undefined;
   if (!(timeLimit == null)) {
     const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
       .filter((key) => Number(key) <= timeLimit!)
@@ -246,6 +211,33 @@ export default function ReadRequest() {
       label: label,
     }));
   }
+
+  // Owned here rather than by `FormContainer` so the effect below can move the
+  // `until` field once the request and its constraints arrive: React Hook Form
+  // snapshots `defaultValues` on the mounting render, where both queries are
+  // still in flight.
+  const resolveForm = useForm<ResolveRequestForm>({
+    defaultValues: {until: requestedUntil, customUntil: (requestEndingAt as unknown as string) ?? ''},
+  });
+
+  React.useEffect(() => {
+    // The field's starting value, not just an adjustment to it -- both inputs
+    // land after the mounting render. `approvalUntilDefault` carries the
+    // reasoning and what each branch protects against.
+    const until = approvalUntilDefault({
+      requestedUntil,
+      requestedUntilAdjusted,
+      timeLimit,
+      autofillUntil: autofill_until,
+    });
+    if (until !== null) {
+      resolveForm.setValue('until', until);
+    }
+    resolveForm.setValue('customUntil', (requestEndingAt as unknown as string) ?? '');
+    // `requestEndingAt` is a fresh dayjs every render; it changes only when
+    // `requestedUntil` does, which is a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLimit, autofill_until, requestedUntil, requestedUntilAdjusted]);
 
   // Owner/approver lists are no longer inlined on the group/app payloads; they
   // come from the bounded owner-filtered endpoints instead.
@@ -381,7 +373,12 @@ export default function ReadRequest() {
       />
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
-          <Grid item xs={12} md={5} lg={3}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 5,
+              lg: 3,
+            }}>
             <Paper
               sx={{
                 p: 2,
@@ -429,7 +426,12 @@ export default function ReadRequest() {
               </Avatar>
             </Paper>
           </Grid>
-          <Grid item xs={12} md={7} lg={9}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 7,
+              lg: 9,
+            }}>
             <Paper
               sx={{
                 p: 2,
@@ -441,12 +443,11 @@ export default function ReadRequest() {
               }}>
               <Grid container>
                 <Grid
-                  item
-                  xs={8}
                   sx={{
                     textAlign: 'center',
                     wordBreak: 'break-word',
-                  }}>
+                  }}
+                  size={8}>
                   <Typography variant="h4">
                     {(accessRequest.requester?.deleted_at ?? null) != null ? (
                       <Link
@@ -497,14 +498,13 @@ export default function ReadRequest() {
                 </Grid>
                 <Divider orientation="vertical" flexItem sx={{mr: '-1px'}} />
                 <Grid
-                  item
-                  xs={4}
                   sx={{
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
                     textAlign: 'center',
-                  }}>
+                  }}
+                  size={4}>
                   <Typography variant="h6">Status</Typography>
                   <Typography variant="h4">
                     <b>{accessRequest.status}</b>
@@ -515,7 +515,7 @@ export default function ReadRequest() {
           </Grid>
 
           {/* Historical Access Information Section */}
-          <Grid item xs={12}>
+          <Grid size={12}>
             <AccessHistory
               subjectType="user"
               subjectName={displayUserName(accessRequest.requester)}
@@ -525,7 +525,7 @@ export default function ReadRequest() {
             />
           </Grid>
 
-          <Grid item xs={12}>
+          <Grid size={12}>
             <Timeline
               sx={{
                 [`& .${timelineOppositeContentClasses.root}`]: {
@@ -534,7 +534,7 @@ export default function ReadRequest() {
               }}>
               <TimelineItem>
                 <TimelineOppositeContent sx={{m: 'auto 0'}} align="right">
-                  <span title={accessRequest.created_at}>
+                  <span title={accessRequest.created_at ?? undefined}>
                     {dayjs(accessRequest.created_at).startOf('second').fromNow()}
                   </span>
                 </TimelineOppositeContent>
@@ -643,27 +643,27 @@ export default function ReadRequest() {
                           </Paper>
                           <Paper sx={{p: 2, mt: 1}}>
                             <FormContainer<ResolveRequestForm>
-                              defaultValues={
-                                timeLimit && !autofill_until && requestedUntilAdjusted
-                                  ? {until: requestedUntilAdjusted} // case where time limit lowered below requested time
-                                  : {until: requestedUntil, customUntil: (requestEndingAt as unknown as string) ?? ''}
-                              }
+                              formContext={resolveForm}
                               onSuccess={(formData) => submit(formData)}>
                               {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
                               {!ownRequest ? (
                                 <FormControl fullWidth>
                                   <Grid container>
-                                    <Grid item xs={12}>
-                                      <Typography variant="subtitle1" color="text.accent">
+                                    <Grid size={12}>
+                                      <Typography
+                                        variant="subtitle1"
+                                        sx={{
+                                          color: 'text.accent',
+                                        }}>
                                         {timeLimit
                                           ? (accessRequest.request_ownership ? 'Ownership of ' : 'Membership to ') +
                                             'this group is limited to ' +
-                                            Math.floor(timeLimit / 86400) +
-                                            ' days.'
+                                            timeLimitLabel(timeLimit) +
+                                            '.'
                                           : null}
                                       </Typography>
                                     </Grid>
-                                    <Grid item xs={8}>
+                                    <Grid size={8}>
                                       <SelectElement
                                         fullWidth
                                         label="For how long?"
@@ -673,8 +673,8 @@ export default function ReadRequest() {
                                         required
                                       />
                                     </Grid>
-                                    <Grid item xs={1} />
-                                    <Grid item xs={2}>
+                                    <Grid size={1} />
+                                    <Grid size={2}>
                                       <ToggleButtonGroupElement
                                         name="ownerOrMember"
                                         enforceAtLeastOneSelected
@@ -694,7 +694,7 @@ export default function ReadRequest() {
                                         ]}
                                       />
                                     </Grid>
-                                    <Grid item xs={1} />
+                                    <Grid size={1} />
                                   </Grid>
                                 </FormControl>
                               ) : null}
@@ -727,6 +727,7 @@ export default function ReadRequest() {
                                   }}
                                 />
                               </FormControl>
+                              <ConstraintsUnavailableAlert constraints={constraints} action="approval" />
                               <FormControl margin="normal" style={{flexDirection: 'row'}}>
                                 <Button
                                   variant="contained"
@@ -735,7 +736,7 @@ export default function ReadRequest() {
                                   type="submit"
                                   startIcon={<ApprovedIcon />}
                                   sx={{mx: 2}}
-                                  disabled={submitting || ownRequest}
+                                  disabled={submitting || ownRequest || constraints.blocked}
                                   onClick={() => setApproved(true)}>
                                   Approve
                                 </Button>
@@ -770,7 +771,11 @@ export default function ReadRequest() {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="text.accent">
+                                      <Typography
+                                        variant="h6"
+                                        sx={{
+                                          color: 'text.accent',
+                                        }}>
                                         {accessRequest.requested_group?.name}{' '}
                                         {accessRequest.requested_group?.type == 'role_group'
                                           ? 'Owners'
@@ -837,7 +842,11 @@ export default function ReadRequest() {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="text.accent">
+                                      <Typography
+                                        variant="h6"
+                                        sx={{
+                                          color: 'text.accent',
+                                        }}>
                                         {((accessRequest.requested_group ?? {}) as AppGroupDetail).app?.name}
                                         {' App Owners'}
                                       </Typography>
@@ -903,7 +912,11 @@ export default function ReadRequest() {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="text.accent">
+                                      <Typography
+                                        variant="h6"
+                                        sx={{
+                                          color: 'text.accent',
+                                        }}>
                                         {ACCESS_APP_RESERVED_NAME}
                                         {' Admins'}
                                       </Typography>

@@ -1,17 +1,17 @@
+import logging
 import random
 import string
-from typing import Optional, TypedDict, cast
+from typing import TypedDict, cast
 
-import logging
-
-from api.context import get_request_context
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import with_polymorphic
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
 from api.models.app_group import app_owners_group_description
 from api.operations.create_group import CreateGroup, GroupDict
+from api.operations.modify_group_details import ModifyGroupDetails
 from api.operations.modify_group_type import ModifyGroupType
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_role_groups import ModifyRoleGroups
@@ -28,11 +28,11 @@ class CreateApp:
         self,
         *,
         app: App | AppDict,
-        tags: list[str] = [],
-        owner_id: Optional[str] = None,
-        owner_role_ids: Optional[list[str]] = None,
-        additional_app_groups: Optional[list[AppGroup] | list[GroupDict]] = None,
-        current_user_id: Optional[str] = None,
+        tags: list[str] | None = None,
+        owner_id: str | None = None,
+        owner_role_ids: list[str] | None = None,
+        additional_app_groups: list[AppGroup] | list[GroupDict] | None = None,
+        current_user_id: str | None = None,
     ):
         id = self.__generate_id()
         if isinstance(app, dict):
@@ -43,7 +43,7 @@ class CreateApp:
             app_model.id = id
             self.app = app_model
 
-        self.tag_ids = tags
+        self.tag_ids = tags or []
         self.owner_id = owner_id
         self.owner_role_ids = owner_role_ids
 
@@ -88,7 +88,7 @@ class CreateApp:
             "id",
             None,
         )
-        owner_role_ids: Optional[list[str]] = None
+        owner_role_ids: list[str] | None = None
         if self.owner_role_ids is not None:
             owner_roles = (
                 await db.session.scalars(
@@ -171,6 +171,22 @@ class CreateApp:
             owner_app_group.app_id = app_id
             owner_app_group.is_owner = True
             await db.session.commit()
+            # A group absorbed by app creation keeps whatever description it already had;
+            # only a group with none is seeded with the default, so an owner group is never
+            # left blank where an operator has REQUIRE_DESCRIPTIONS set. Seeded through
+            # ModifyGroupDetails rather than assigned directly so the value reaches Okta:
+            # under non-authoritative sync Okta is the source of truth for a group's
+            # description, and a blank one there would overwrite the seed on the next run.
+            # No group_updated fire: the description is part of bringing this group under
+            # the app, which the creation and conversion hooks already report, and a group
+            # loaded by id here has no eager-loaded `app` for a hook to read.
+            if not owner_app_group.description:
+                await ModifyGroupDetails(
+                    group=owner_app_group,
+                    description=app_owners_group_description(self.app.name),
+                    current_user_id=current_user_id,
+                    fire_lifecycle_hook=False,
+                ).execute()
 
         if owner_id is not None:
             # Add the app owner to the app owner group as members and owners

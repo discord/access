@@ -1,12 +1,10 @@
 import * as React from 'react';
 import dayjs, {Dayjs} from 'dayjs';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
-import {useNavigate} from 'react-router-dom';
+import {Link as RouterLink, useNavigate} from 'react-router-dom';
 import Alert from '@mui/material/Alert';
-import Autocomplete from '@mui/material/Autocomplete';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
@@ -14,17 +12,19 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import FormControl from '@mui/material/FormControl';
 import Grid from '@mui/material/Grid';
+import Link from '@mui/material/Link';
 import GroupRequestIcon from '@mui/icons-material/GroupAdd';
-import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
 import {FormContainer, AutocompleteElement, SelectElement, TextFieldElement} from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
+import {useFormContext, useWatch} from 'react-hook-form';
 
 import {
   useGroupRequestsCreate,
   useApps,
+  useGroups,
   useAppById,
   useTags,
   GroupRequestsCreateError,
@@ -32,6 +32,7 @@ import {
 } from '../../api/apiComponents';
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
+import TagsField, {inheritedAppTags} from './TagsField';
 import {
   AppDetail,
   AppGroupDetail,
@@ -39,8 +40,10 @@ import {
   OktaUserDetail,
   GroupDetail,
   GroupRequestDetail,
-  TagDetail,
+  GroupSummary,
+  TagListItem,
 } from '../../api/apiSchemas';
+import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 
@@ -53,6 +56,53 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
 } as const;
 
 const GROUP_TYPE_OPTIONS = Object.entries(GROUP_TYPE_ID_TO_LABELS).map(([id, label]) => ({id, label}));
+
+// Offers only the durations the tags in force allow, and moves the field off
+// one they do not. A request the constraints forbid is not refused on submit --
+// `ApproveGroupRequest` shortens it on approval instead -- so a duration left
+// on offer here is one the requester is told they asked for and does not get.
+function OwnershipLengthField({
+  timeLimit,
+  blocked,
+  onChange,
+}: {
+  timeLimit: number | null;
+  blocked: boolean;
+  onChange: (value: string) => void;
+}) {
+  const {control, setValue} = useFormContext();
+  const selected = useWatch({control, name: 'ownershipUntil'});
+
+  const [options, defaultId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
+    // While the answer is unknown the limit reads as null. Holding the narrower
+    // list rather than re-offering the full one keeps a duration the tags forbid
+    // from being briefly clickable.
+    if (timeLimit == null) {
+      return blocked ? [[], accessConfig.DEFAULT_ACCESS_TIME] : [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
+    }
+    const [lastId, filtered] = filterUntilLabels(timeLimit);
+    return [filtered, lastId];
+  }, [timeLimit, blocked]);
+
+  React.useEffect(() => {
+    if (timeLimit == null) return;
+    if (!options.some((option) => option.id === selected)) {
+      setValue('ownershipUntil', defaultId);
+      onChange(defaultId);
+    }
+  }, [timeLimit, options, defaultId, selected, setValue, onChange]);
+
+  return (
+    <SelectElement
+      fullWidth
+      label="Requested ownership length"
+      name="ownershipUntil"
+      options={options}
+      onChange={(value) => onChange(value)}
+      required
+    />
+  );
+}
 
 const APP_GROUP_PREFIX = 'App-';
 const APP_NAME_APP_GROUP_SEPARATOR = '-';
@@ -69,6 +119,47 @@ const UNTIL_ID_TO_LABELS: Record<string, string> = {
 } as const;
 
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id, label}));
+
+const UNTIL_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
+);
+
+// The durations still on offer under `timeLimit`, and the longest of them.
+// Indefinite is not among them, and neither is any duration over the limit;
+// Custom stays, since its own picker is bounded separately.
+function filterUntilLabels(timeLimit: number): [string, Array<{id: string; label: string}>] {
+  const withinLimit = Object.entries(UNTIL_NUMERIC_ID_TO_LABELS).filter(([key]) => Number(key) <= timeLimit);
+  const labels = [...withinLimit, ['custom', 'Custom']].map(([id, label]) => ({id, label}));
+  return [withinLimit.at(-1)?.[0] ?? 'custom', labels];
+}
+
+/**
+ * The full name a request would ask for: the typed name with the prefix its type
+ * implies. An okta_group name typed as "App-<app>-…" takes the matched app's
+ * canonical spelling, since such a request is filed as an app group. One typed as
+ * "Role-…" is filed as a role group and is already the full role name, so it is
+ * returned as typed.
+ */
+function requestedGroupName(
+  type: CreateGroupRequestForm['type'],
+  name: string,
+  selectedApp: AppDetail | null,
+  detectedApp: AppSummary | null,
+): string {
+  if (type === 'okta_group' && name.startsWith(APP_GROUP_PREFIX) && detectedApp != null) {
+    const withoutPrefix = name.slice(APP_GROUP_PREFIX.length);
+    const sepIdx = withoutPrefix.indexOf(APP_NAME_APP_GROUP_SEPARATOR);
+    const rest = withoutPrefix.slice(sepIdx + APP_NAME_APP_GROUP_SEPARATOR.length);
+    return APP_GROUP_PREFIX + detectedApp.name + APP_NAME_APP_GROUP_SEPARATOR + rest;
+  }
+  if (type === 'app_group') {
+    return APP_GROUP_PREFIX + (selectedApp?.name ?? '') + APP_NAME_APP_GROUP_SEPARATOR + name;
+  }
+  if (type === 'role_group') {
+    return ROLE_GROUP_PREFIX + name;
+  }
+  return name;
+}
 
 interface CreateGroupRequestForm {
   type: 'okta_group' | 'app_group' | 'role_group';
@@ -109,7 +200,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const [appSearchInput, setAppSearchInput] = React.useState('');
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [nameInput, setNameInput] = React.useState('');
-  const [selectedTags, setSelectedTags] = React.useState<Array<TagDetail>>([]);
+  const [selectedTags, setSelectedTags] = React.useState<Array<TagListItem>>([]);
   const [ownershipUntil, setOwnershipUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
@@ -162,6 +253,42 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   );
   const requestPluginId = pluginIdForApp(effectiveAppDetail);
 
+  // `effectiveAppId` already covers both ways a request lands under an app, so a
+  // name typed with an "App-...-" prefix inherits that app's tags too.
+  const inheritedTags = React.useMemo(
+    () =>
+      inheritedAppTags(
+        effectiveAppDetail,
+        selectedTags.map((tag) => tag.id),
+      ),
+    [effectiveAppDetail, selectedTags],
+  );
+
+  // The group does not exist yet, so its constraints come from the tags it
+  // would be created with rather than from an id.
+  const constraints = useConstraintsForTags([
+    ...selectedTags.map((tag) => tag.id),
+    ...(inheritedTags?.tags ?? []).map((tag) => tag.id),
+  ]);
+  const ownershipTimeLimit = constraints.timeLimit(true);
+
+  // Look up the requested name so a taken one is flagged before submitting.
+  // The search matches substrings of names and descriptions, so compare the
+  // results exactly; names are unique ignoring case.
+  const candidateName =
+    nameInput === '' || (groupType === 'app_group' && selectedApp == null)
+      ? ''
+      : requestedGroupName(groupType, nameInput, selectedApp, detectedApp);
+  const {data: sameNameGroupData} = useGroups(
+    {queryParams: {page: 1, size: 50, q: candidateName}},
+    {enabled: candidateName !== ''},
+  );
+  const nameTaken =
+    candidateName !== '' &&
+    (sameNameGroupData?.items ?? []).some(
+      (group: GroupSummary) => group.name.toLowerCase() === candidateName.toLowerCase(),
+    );
+
   const {data: tagSearchData} = useTags({
     queryParams: {page: 1, size: 10, q: tagSearchInput},
   });
@@ -171,7 +298,6 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     setSubmitting(true);
 
     let effectiveType = formData.type;
-    let groupName = formData.name;
     let appId: string | undefined = undefined;
 
     if (formData.type === 'okta_group' && formData.name.startsWith(APP_GROUP_PREFIX) && detectedAppName === '') {
@@ -189,19 +315,12 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     } else if (formData.type === 'okta_group' && formData.name.startsWith(APP_GROUP_PREFIX) && detectedApp != null) {
       effectiveType = 'app_group';
       appId = detectedApp.id;
-      const withoutPrefix = formData.name.slice(APP_GROUP_PREFIX.length);
-      const sepIdx = withoutPrefix.indexOf(APP_NAME_APP_GROUP_SEPARATOR);
-      const rest = withoutPrefix.slice(sepIdx + APP_NAME_APP_GROUP_SEPARATOR.length);
-      groupName = APP_GROUP_PREFIX + detectedApp.name + APP_NAME_APP_GROUP_SEPARATOR + rest;
     } else if (formData.type === 'okta_group' && formData.name.startsWith(ROLE_GROUP_PREFIX)) {
       effectiveType = 'role_group';
-      groupName = ROLE_GROUP_PREFIX + formData.name.slice(ROLE_GROUP_PREFIX.length);
     } else if (formData.type === 'app_group') {
-      groupName = APP_GROUP_PREFIX + (selectedApp?.name ?? '') + APP_NAME_APP_GROUP_SEPARATOR + formData.name;
       appId = selectedApp?.id;
-    } else if (formData.type === 'role_group') {
-      groupName = ROLE_GROUP_PREFIX + formData.name;
     }
+    const groupName = requestedGroupName(formData.type, formData.name, selectedApp, detectedApp);
 
     const requestedPluginData = extractRequestedPluginData(formData as any);
 
@@ -243,7 +362,11 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       <DialogTitle> Create Group Request</DialogTitle>
       <DialogContent>
         {requestError !== '' && <Alert severity="error">{requestError}</Alert>}
-        <Typography variant="subtitle1" color="text.accent">
+        <Typography
+          variant="subtitle1"
+          sx={{
+            color: 'text.accent',
+          }}>
           If this request is approved, you will be added as the group owner.
         </Typography>
         <FormControl size="small" margin="normal" fullWidth>
@@ -264,6 +387,10 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               name="app"
               options={appSearchOptions}
               required
+              // Show the app the form holds. rhf-mui otherwise displays the entry of `options`
+              // matching the form value, and `options` is a search this field's input drives: an
+              // in-flight search empties it, so the selection blanks and the input resets.
+              transform={{input: (app) => app ?? null}}
               autocompleteProps={{
                 getOptionLabel: (option) => option.name,
                 isOptionEqualToValue: (option, value) => option.id === value?.id,
@@ -313,6 +440,15 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               />
             </Box>
           </Box>
+          {nameTaken && (
+            <Alert severity="error" sx={{mt: 1}}>
+              A group named "{candidateName}" already exists. To join it,{' '}
+              <Link component={RouterLink} to="/requests" color="inherit" onClick={() => props.setOpen(false)}>
+                request access to it
+              </Link>{' '}
+              instead.
+            </Alert>
+          )}
         </FormControl>
         <FormControl margin="normal" fullWidth>
           <TextFieldElement
@@ -330,34 +466,39 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
           />
         </FormControl>
         <FormControl margin="normal" fullWidth>
-          <Autocomplete
-            multiple
+          <TagsField
             options={tagSearchOptions}
-            value={selectedTags}
-            getOptionLabel={(option) => option.name}
-            onInputChange={(_event, newVal) => setTagSearchInput(newVal)}
-            onChange={(_event, newVal) => setSelectedTags(newVal)}
-            renderTags={(value: TagDetail[], getTagProps) =>
-              value.map((option: TagDetail, index: number) => (
-                <Chip variant="outlined" label={option.name} {...getTagProps({index})} />
-              ))
-            }
-            renderInput={(params) => <TextField {...params} label="Tags" placeholder="Tags" />}
+            selected={selectedTags}
+            inherited={inheritedTags}
+            onSelectedChange={setSelectedTags}
+            onSearchChange={setTagSearchInput}
           />
         </FormControl>
         <FormControl margin="normal" fullWidth>
-          <Grid container alignItems="center" spacing={2}>
-            <Grid item xs={6}>
-              <SelectElement
-                fullWidth
-                label="Requested ownership length"
-                name="ownershipUntil"
-                options={UNTIL_OPTIONS}
-                onChange={(value) => setOwnershipUntil(value)}
-                required
+          {ownershipTimeLimit != null && (
+            <Typography
+              variant="subtitle2"
+              sx={{
+                color: 'text.accent',
+                marginBottom: '12px',
+              }}>
+              {'Ownership is limited to ' + timeLimitLabel(ownershipTimeLimit) + ' by a tag constraint.'}
+            </Typography>
+          )}
+          <Grid
+            container
+            spacing={2}
+            sx={{
+              alignItems: 'flex-start',
+            }}>
+            <Grid size={6}>
+              <OwnershipLengthField
+                timeLimit={ownershipTimeLimit}
+                blocked={constraints.blocked}
+                onChange={setOwnershipUntil}
               />
             </Grid>
-            <Grid item xs={6}>
+            <Grid size={6}>
               {ownershipUntil === 'custom' && (
                 <DatePickerElement
                   label="Custom End Date"
@@ -391,7 +532,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       </DialogContent>
       <DialogActions>
         <Button onClick={() => props.setOpen(false)}>Cancel</Button>
-        <Button type="submit" disabled={submitting}>
+        <Button type="submit" disabled={submitting || nameTaken}>
           {submitting ? <CircularProgress size={24} /> : 'Submit'}
         </Button>
       </DialogActions>

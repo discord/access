@@ -1,5 +1,3 @@
-from typing import List
-
 from pytest_mock import MockerFixture
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -241,14 +239,14 @@ async def test_user_sync_ends_memberships_for_previously_deleted_user(
     assert delete_ownership_spy.call_count == 1
 
 
-async def seed_db(db: Db, users: List[User]) -> List[OktaUser]:
+async def seed_db(db: Db, users: list[User]) -> list[OktaUser]:
     async with AsyncSession(db.engine) as session:
         session.add_all([User(u).update_okta_user(OktaUser(), {}) for u in users])
         await session.commit()
         return list((await session.scalars(select(OktaUser))).all())
 
 
-async def run_sync(db: Db, mocker: MockerFixture, okta_users: List[User]) -> List[OktaUser]:
+async def run_sync(db: Db, mocker: MockerFixture, okta_users: list[User]) -> list[OktaUser]:
     schema = UserSchemaFactory.create()
     async with AsyncSession(db.engine) as session:
         mocker.patch.object(okta, "list_users", return_value=[User(u) for u in okta_users])
@@ -257,7 +255,7 @@ async def run_sync(db: Db, mocker: MockerFixture, okta_users: List[User]) -> Lis
         return list((await session.scalars(select(OktaUser))).all())
 
 
-def get_user_by_id(user_list: List[OktaUser], user_id: str) -> OktaUser:
+def get_user_by_id(user_list: list[OktaUser], user_id: str) -> OktaUser:
     ret = None
     for x in user_list:
         if x.id == user_id:

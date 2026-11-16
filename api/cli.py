@@ -1,85 +1,113 @@
 """Click-based CLI for Access management commands.
 
-Each command runs inside a per-invocation database scope set up by
-`_with_app_context`.
+`app_context` bootstraps the database engine, plugins, and session scope that
+every command (and the `shell` REPL) runs inside.
 
 Run via:
     access init <admin_email>
     access sync
     access notify
+    access shell
     python -m api.cli <command>
 """
 
 from __future__ import annotations
 
+import ast
 import asyncio
+import code
 import functools
+import types
 import uuid
-from typing import Any, Callable, TypeVar, cast
+from collections.abc import AsyncGenerator, Callable
+from contextlib import AsyncExitStack, asynccontextmanager
+from datetime import datetime
+from typing import Any, cast
 
 import click
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import joinedload
 
-F = TypeVar("F", bound=Callable[..., Any])
+
+@asynccontextmanager
+async def app_context(*, scope: str | None = None, log_source: str = "cli") -> AsyncGenerator[None]:
+    """Bootstrap the application context an out-of-request entrypoint needs.
+
+    Binds the SQLAlchemy async engine, mirrors `create_app()`'s logging /
+    Sentry / Okta configuration, and eagerly loads every plugin type, so that
+    `db.session`, the operation classes, and the plugin hooks all work the way
+    they do under the API server. On exit it commits the session, closes it,
+    and disposes the engine if it created one.
+
+    Must be entered from inside a running event loop: the async engine, and
+    the asyncpg/aiosqlite connections it opens, have to be created and
+    disposed on the loop that uses them.
+
+    Args:
+        scope: Session scope to bind for the duration, isolating this
+            entrypoint's `db.session` from any other. Omit to leave the
+            ambient scope in place, which for an ad-hoc caller is the
+            process-global default (see `_session_scope`).
+        log_source: Entrypoint name stamped on log lines and audit entries,
+            e.g. `cli:sync`.
+
+    Yields:
+        None. Callers reach the session through `api.extensions.db`.
+    """
+    from api.app import _configure_logging, _configure_okta, _configure_sentry
+    from api.database import build_async_engine
+    from api.extensions import _session_scope, db
+    from api.plugins import load_plugins
+
+    # Without _configure_okta() in particular, the module-level `okta`
+    # singleton is missing `okta_client` and anything that touches Okta
+    # raises AttributeError.
+    _configure_logging(source=log_source)
+    _configure_sentry()
+    _configure_okta()
+
+    created_engine = False
+    if db._engine is None:
+        db.init_app(engine=build_async_engine())
+        created_engine = True
+    # Every `get_*_hook()` is memoized, so this is cheap for the entrypoints
+    # (the `init` family) that never fire a hook.
+    load_plugins()
+    token = _session_scope.set(scope) if scope is not None else None
+    try:
+        yield
+    finally:
+        try:
+            await db.session.commit()
+        except Exception:  # noqa: BLE001 - teardown must still close the session and dispose the engine
+            await db.session.rollback()
+        await db.remove()
+        if token is not None:
+            _session_scope.reset(token)
+        # Connections opened by the async drivers must be closed on the loop
+        # that created them. Only dispose an engine this context created — a
+        # borrowed one (tests) belongs to its owner.
+        if created_engine:
+            await db.engine.dispose()
 
 
-def _with_app_context(func: F) -> F:
-    """Establish a per-invocation app context for a Click command: bind the
-    SQLAlchemy engine, eagerly load every plugin type, and set up a
-    request-scoped session keyed to the CLI run. Mirrors the spirit of the
-    pre-migration `with app.app_context()` block.
+def _with_app_context[F: Callable[..., Any]](func: F) -> F:
+    """Run a Click command body inside its own `app_context`.
 
     This decorator is the sync/async boundary for the CLI: Click commands
     stay synchronous entry points, while the decorated command body is an
-    `async def` driven by a single `asyncio.run` per invocation."""
+    `async def` driven by a single `asyncio.run` per invocation. Each run
+    gets its own session scope so concurrent invocations never share a
+    session."""
 
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        from api.app import _configure_logging, _configure_okta, _configure_sentry
-        from api.database import build_async_engine
-        from api.extensions import _session_scope, db
-        from api.plugins import load_plugins
-
-        # Mirror create_app()'s bootstrap so CLI runs get the same
-        # token-redacting log filter, Sentry wiring, and OktaService
-        # initialization. Without _configure_okta() in particular, the
-        # module-level `okta` singleton is missing `okta_client` and any
-        # command that touches Okta (sync, notify) raises AttributeError.
-        _configure_logging()
-        _configure_sentry()
-        _configure_okta()
+        click_ctx = click.get_current_context(silent=True)
+        log_source = f"cli:{click_ctx.info_name}" if click_ctx is not None else "cli"
 
         async def _run() -> Any:
-            # The async engine (and any asyncpg/aiosqlite connections it
-            # creates) must be created and disposed on the event loop that
-            # uses it, so engine binding happens inside asyncio.run.
-            created_engine = False
-            if db._engine is None:
-                db.init_app(engine=build_async_engine())
-                created_engine = True
-            # Trigger plugin discovery once per CLI run. Notification,
-            # conditional access, and app-group-lifecycle hooks are all
-            # consumed by the `sync` / `notify` / `sync-app-groups`
-            # commands; the `init` family doesn't need them but the call is
-            # cheap (memoized).
-            load_plugins()
-            token = _session_scope.set(f"cli-{uuid.uuid4().hex}")
-            try:
+            async with app_context(scope=f"cli-{uuid.uuid4().hex}", log_source=log_source):
                 return await func(*args, **kwargs)
-            finally:
-                try:
-                    await db.session.commit()
-                except Exception:
-                    await db.session.rollback()
-                await db.remove()
-                _session_scope.reset(token)
-                # Connections opened by the async drivers must be closed on
-                # the loop that created them. Only dispose when this
-                # invocation created the engine — if it was already bound
-                # (tests), the owner is responsible for disposal.
-                if created_engine:
-                    await db.engine.dispose()
 
         return asyncio.run(_run())
 
@@ -114,7 +142,7 @@ def _load_plugin_commands() -> None:
     for ep in eps:
         try:
             command = ep.load()
-        except Exception:
+        except Exception:  # noqa: BLE001, S112 - a plugin command that fails to load must not break the CLI
             continue
         if isinstance(command, click.Command):
             cli.add_command(command, name=ep.name)
@@ -353,6 +381,23 @@ async def fix_role_memberships(dry_run: bool) -> None:
     await verify_and_fix_role_memberships(dry_run=dry_run)
 
 
+@cli.command("cap-role-memberships")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="If set will run as dry run and not make any changes",
+)
+@_with_app_context
+async def cap_role_memberships_command(dry_run: bool) -> None:
+    """Cap existing role memberships against time limits propagated from tagged groups."""
+    from api.integrity import cap_role_memberships
+
+    capped = await cap_role_memberships(dry_run=dry_run)
+    click.echo(f"{'Would cap' if dry_run else 'Capped'} {capped} role membership(s)")
+
+
 @cli.command("notify")
 @click.option(
     "--owner",
@@ -486,6 +531,236 @@ async def sync_app_groups() -> None:
         # Every group is attempted regardless, but the command must still exit non-zero:
         # this runs as a periodic job, so a run that left groups unreconciled has to be
         # visible as a failed run rather than only as stderr output.
+        raise SystemExit(1)
+
+
+def _shell_namespace() -> dict[str, Any]:
+    """Build the names an `access shell` session starts with: the session
+    facade, every ORM model and operation class, and the query and eager-load
+    helpers those need.
+
+    Returns:
+        A fresh namespace dict, used as the console's globals so that names
+        bound at the prompt persist across statements.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import and_, delete, update
+    from sqlalchemy.orm import selectin_polymorphic, selectinload, with_polymorphic
+
+    from api import models, operations
+    from api.config import settings
+    from api.extensions import db
+    from api.services import okta
+
+    namespace: dict[str, Any] = {
+        "asyncio": asyncio,
+        "db": db,
+        "settings": settings,
+        "okta": okta,
+        "models": models,
+        "operations": operations,
+        # Query building. The loader options are here rather than left to an
+        # import because `lazy="raise_on_sql"` makes reading an un-eager-loaded
+        # relationship raise, so a session spent exploring needs them at hand.
+        "select": select,
+        "update": update,
+        "delete": delete,
+        "func": func,
+        "or_": or_,
+        "and_": and_,
+        "joinedload": joinedload,
+        "selectinload": selectinload,
+        "selectin_polymorphic": selectin_polymorphic,
+        "with_polymorphic": with_polymorphic,
+        "UTC": UTC,
+        "datetime": datetime,
+        "timedelta": timedelta,
+    }
+    namespace.update({name: getattr(models, name) for name in models.__all__})
+    namespace.update({name: getattr(operations, name) for name in operations.__all__})
+    return namespace
+
+
+class _AsyncConsole(code.InteractiveConsole):
+    """An interactive console whose statements may use top-level `await`.
+
+    Statements compile with `PyCF_ALLOW_TOP_LEVEL_AWAIT` and any resulting
+    coroutine is driven by `runner`. Reusing one `asyncio.Runner` for the
+    console's whole life is what makes the session coherent: a Runner keeps a
+    single `contextvars.Context` across `run()` calls, so the session scope
+    bound during bootstrap is the one each statement sees, and every statement
+    shares the engine's event loop.
+    """
+
+    def __init__(self, namespace: dict[str, Any], runner: asyncio.Runner) -> None:
+        super().__init__(locals=namespace)
+        self.compile.compiler.flags |= ast.PyCF_ALLOW_TOP_LEVEL_AWAIT
+        self._runner = runner
+
+    def runcode(self, code: types.CodeType) -> None:
+        # Called rather than exec'd so a code object compiled with the
+        # top-level-await flag yields its coroutine instead of running to
+        # completion. The code object is module-level, so its name
+        # assignments still land in `self.locals` and persist across
+        # statements.
+        try:
+            result = types.FunctionType(code, self.locals)()
+            if asyncio.iscoroutine(result):
+                self._runner.run(result)
+        except SystemExit:
+            raise
+        except BaseException:  # noqa: BLE001 - an interactive console reports every error and keeps reading
+            self.showtraceback()
+
+
+def _enable_readline(namespace: dict[str, Any]) -> None:
+    """Turn on history, line editing, and tab completion against `namespace`.
+
+    A no-op where `readline` is unavailable; the console still works without
+    it."""
+    try:
+        import readline
+        import rlcompleter
+    except ImportError:
+        return
+    readline.set_completer(rlcompleter.Completer(namespace).complete)
+    # macOS ships libedit under the readline name, which does not understand
+    # GNU readline's binding syntax.
+    if "libedit" in (readline.__doc__ or ""):
+        readline.parse_and_bind("bind ^I rl_complete")
+    else:
+        readline.parse_and_bind("tab: complete")
+
+
+@cli.command("shell")
+def shell() -> None:
+    """Start an interactive REPL with the app context bootstrapped.
+
+    Statements may use top-level `await`, which they need to: the session, the
+    operation classes, and the Okta service are all async. Work is committed
+    when the session ends.
+    """
+    from api.extensions import db
+
+    namespace = _shell_namespace()
+    _enable_readline(namespace)
+
+    with asyncio.Runner() as runner:
+        # `app_context` is entered and exited through an exit stack rather
+        # than `async with`, because the console that runs in between is
+        # synchronous and drives the loop one statement at a time.
+        stack = AsyncExitStack()
+        runner.run(stack.enter_async_context(app_context(log_source="cli:shell")))
+        try:
+            banner = (
+                f"Access shell — {db.engine.url.render_as_string(hide_password=True)}\n"
+                "Statements may use top-level `await`; writes commit on exit.\n"
+                "In scope: db, models, operations, select/func/joinedload, okta, settings."
+            )
+            _AsyncConsole(namespace, runner).interact(banner=banner, exitmsg="")
+        finally:
+            runner.run(stack.aclose())
+
+
+def _format_ended_at(ended_at: datetime | None) -> str:
+    """Render an end date for the report, naming the indefinite case.
+
+    Includes the time of day: two grants ending on the same date but at different
+    times both render as that date at day precision, which makes a SKIP decision
+    from the strict `>` guard look identical to a REMOVE decision.
+    """
+    if ended_at is None:
+        return "indefinite"
+    return ended_at.strftime("%Y-%m-%d %H:%M")
+
+
+@cli.command("prune-redundant-direct-access")
+@click.option(
+    "--target",
+    type=click.Choice(["members", "owners", "both"]),
+    default="both",
+    show_default=True,
+    help="Which direct grants to prune: memberships, ownerships, or both.",
+)
+@click.option(
+    "--apply",
+    "apply_changes",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Commit the removals. Without this flag the command reports what it would do and changes nothing.",
+)
+@click.option(
+    "--allow-shortening",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Also remove direct grants that outlive their role-based access, ending that access sooner.",
+)
+@click.option("--group", "groups", multiple=True, help="Limit to this group, by id or exact name. Repeatable.")
+@click.option("--user", "users", multiple=True, help="Limit to this user, by id or email. Repeatable.")
+@click.option("--app", "apps", multiple=True, help="Limit to this app's groups, by id or exact name. Repeatable.")
+@_with_app_context
+async def prune_redundant_direct_access_command(
+    target: str,
+    apply_changes: bool,
+    allow_shortening: bool,
+    groups: tuple[str, ...],
+    users: tuple[str, ...],
+    apps: tuple[str, ...],
+) -> None:
+    """Remove direct group access that a role already grants the same user."""
+    from api.operations import AccessTarget, PruneRedundantDirectAccess
+    from api.operations.prune_redundant_direct_access import FilterResolutionError, PruneOutcome
+
+    try:
+        summary = await PruneRedundantDirectAccess(
+            target=AccessTarget(target),
+            allow_shortening=allow_shortening,
+            group_filters=groups,
+            user_filters=users,
+            app_filters=apps,
+        ).execute(dry_run=not apply_changes)
+    except FilterResolutionError as error:
+        raise click.ClickException(str(error)) from error
+
+    if summary.candidates == 0:
+        click.echo("No redundant direct access found")
+        return
+
+    if not apply_changes:
+        click.echo("Reporting only (dry run) -- re-run with --apply to commit these removals")
+
+    for decision in summary.decisions:
+        grant = decision.grant
+        click.echo(
+            f"{grant.user_email}  {grant.group_name}  "
+            f"{'owners' if grant.is_owner else 'members'}  "
+            f"direct {_format_ended_at(grant.latest_direct_ended_at)}, "
+            f"role {_format_ended_at(grant.latest_role_ended_at)}  "
+            f"{decision.outcome.value}",
+            err=decision.outcome is PruneOutcome.FAILED,
+        )
+
+    if apply_changes:
+        click.echo(
+            f"Found {summary.candidates} redundant direct grant(s): "
+            f"{summary.removed} removed, {summary.skipped} skipped, {summary.failed} failed"
+        )
+    else:
+        # A dry run never removes or fails anything -- `summary.removed` counts what
+        # an applying run would remove, so word it as a projection, not a report of
+        # what happened.
+        click.echo(
+            f"Found {summary.candidates} redundant direct grant(s): "
+            f"{summary.removed} would be removed, {summary.skipped} would be skipped"
+        )
+
+    if summary.failed:
+        # Every group is attempted regardless, but a run that left grants
+        # unpruned has to be visible as a failed run rather than only as stderr
+        # output -- this runs as a periodic job.
         raise SystemExit(1)
 
 

@@ -7,9 +7,13 @@ export default function NotFound() {
   return (
     <React.Fragment>
       <Grid container spacing={2} sx={{padding: 2}}>
-        <Grid item xs={12}>
-          <Grid container justifyContent="center">
-            <Grid item>
+        <Grid size={12}>
+          <Grid
+            container
+            sx={{
+              justifyContent: 'center',
+            }}>
+            <Grid>
               <Box
                 component="img"
                 src="/logo.png"
@@ -21,10 +25,19 @@ export default function NotFound() {
             </Grid>
           </Grid>
         </Grid>
-        <Grid item xs={12}>
-          <Grid container justifyContent="center">
-            <Grid item>
-              <Typography component="h2" variant="h3" color="text.accent">
+        <Grid size={12}>
+          <Grid
+            container
+            sx={{
+              justifyContent: 'center',
+            }}>
+            <Grid>
+              <Typography
+                component="h2"
+                variant="h3"
+                sx={{
+                  color: 'text.accent',
+                }}>
                 An Unrecoverable Error Occurred
               </Typography>
             </Grid>

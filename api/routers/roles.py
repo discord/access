@@ -8,10 +8,11 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-
 from fastapi.responses import RedirectResponse
+from fastapi_pagination.ext.sqlalchemy import apaginate
 from pydantic import TypeAdapter
 from sqlalchemy import func, nullsfirst, or_, select
+from sqlalchemy.orm import selectinload
 from starlette.requests import Request
 
 from api.auth import permissions as _perms
@@ -19,16 +20,12 @@ from api.auth.dependencies import CurrentUserId
 from api.database import DbSession
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
 from api.operations import ModifyRoleGroups
-from fastapi_pagination.ext.sqlalchemy import apaginate
-
-from sqlalchemy.orm import selectinload
-
 from api.pagination import Page, validated
 from api.routers._eager import group_tag_map_options, role_group_map_options
 from api.routers._fan_out import defer_fan_out
 from api.schemas import (
-    RoleGroupListItem,
     GroupDetail,
+    RoleGroupListItem,
     RoleMembersSummary,
     SearchRoleQuery,
 )

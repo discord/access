@@ -1,14 +1,14 @@
+import logging
 import random
 import string
-from typing import Any, Optional, TypedDict, cast
+from typing import Any, TypedDict, cast
 
-import logging
-
-from api.context import get_request_context
 from sqlalchemy import func, select
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import OktaUser, Tag
+from api.models.tag import validate_constraint_propagation
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -19,7 +19,7 @@ class TagDict(TypedDict):
 
 
 class CreateTag:
-    def __init__(self, *, tag: Tag | TagDict, current_user_id: Optional[str] = None):
+    def __init__(self, *, tag: Tag | TagDict, current_user_id: str | None = None):
         id = self.__generate_id()
         if isinstance(tag, dict):
             tag_dict = cast(TagDict, tag)
@@ -33,6 +33,12 @@ class CreateTag:
             tag_model = cast(Tag, tag)
             tag_model.id = id
             self.tag = tag_model
+
+        # Reject an incoherent tag before it reaches the DB, so CLI and seed
+        # callers are held to the same invariant as the router. Reads the
+        # attributes off the constructed instance rather than the input, which
+        # may be either a dict or a model.
+        validate_constraint_propagation(self.tag.constraints, self.tag.propagate_to_roles)
 
         self.current_user_id = current_user_id
 
