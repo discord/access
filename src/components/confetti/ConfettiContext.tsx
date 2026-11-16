@@ -65,7 +65,7 @@ export function ConfettiProvider({children}: {children: React.ReactNode}) {
   const setEnabled = React.useCallback((next: boolean, origin?: Point) => {
     setEnabledState(next);
     localStorage.setItem(ENABLED_STORAGE_KEY, String(next));
-    setLaunchFrom(next ? origin ?? null : null);
+    setLaunchFrom(next ? (origin ?? null) : null);
   }, []);
 
   const value = React.useMemo(

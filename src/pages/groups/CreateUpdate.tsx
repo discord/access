@@ -95,7 +95,7 @@ const ROLE_GROUP_PREFIX = 'Role-';
 function GroupDialog(props: GroupDialogProps) {
   const navigate = useNavigate();
 
-  const defaultGroupType = props.app != null ? 'app_group' : props.group?.type ?? props.defaultGroupType;
+  const defaultGroupType = props.app != null ? 'app_group' : (props.group?.type ?? props.defaultGroupType);
   const [groupType, setGroupType] = React.useState(defaultGroupType);
   const defaultTags =
     props.group && props.group.active_group_tags && props.group.active_group_tags.length > 0
@@ -120,8 +120,8 @@ function GroupDialog(props: GroupDialogProps) {
   const {data: pickedAppDetail} = useAppById({pathParams: {appId: pickedAppId ?? ''}}, {enabled: pickedAppId != null});
   const appGroupLifecyclePluginId =
     groupType === 'app_group'
-      ? (pickedAppId != null ? pickedAppDetail : (selectedApp as AppDetail | AppIdRef | null))
-          ?.app_group_lifecycle_plugin ?? null
+      ? ((pickedAppId != null ? pickedAppDetail : (selectedApp as AppDetail | AppIdRef | null))
+          ?.app_group_lifecycle_plugin ?? null)
       : null;
 
   const isAllowedToConfigureAppGroupLifecyclePlugin =
@@ -244,7 +244,7 @@ function GroupDialog(props: GroupDialogProps) {
                 name:
                   props.group?.type == 'role_group'
                     ? props.group?.name.substring(ROLE_GROUP_PREFIX.length)
-                    : props.group?.name ?? '',
+                    : (props.group?.name ?? ''),
                 description: props.group?.description ?? '',
               }
         }
