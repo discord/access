@@ -79,7 +79,7 @@ export default function ReadTag() {
   const tag = data ?? ({} as TagDetail);
 
   const removeTagFromApp = (appToRemove: AppDetail, tagId: string) => {
-    let app: UpdateAppBody = {
+    const app: UpdateAppBody = {
       name: appToRemove.name,
       description: appToRemove.description,
       tags_to_remove: [tagId],
@@ -92,7 +92,7 @@ export default function ReadTag() {
   };
 
   const removeTagFromGroup = (groupToRemove: GroupDetail, tagId: string) => {
-    let group = {
+    const group = {
       name: groupToRemove.name,
       description: groupToRemove.description,
       type: groupToRemove.type,
@@ -104,10 +104,11 @@ export default function ReadTag() {
         break;
       case 'role_group':
         break;
-      case 'app_group':
+      case 'app_group': {
         const appGroup = group as AppGroupDetail;
         appGroup.app_id = (groupToRemove as AppGroupDetail).app?.id ?? '';
         break;
+      }
     }
 
     updateGroup.mutate({

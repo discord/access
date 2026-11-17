@@ -76,9 +76,10 @@ class UnmanageGroup:
                 {"user_id": active_access_via_role.user_id, "group_id": active_access_via_role.group_id}
             )
             logger.info(
-                f"User {active_access_via_role.user_id} has invalid "
-                f"{'ownership' if active_access_via_role.is_owner else 'membership'} "
-                f"to unmanaged group {group.id} via role"
+                "User %s has invalid %s to unmanaged group %s via role",
+                active_access_via_role.user_id,
+                "ownership" if active_access_via_role.is_owner else "membership",
+                group.id,
             )
 
         if not dry_run:
@@ -111,9 +112,10 @@ class UnmanageGroup:
                 {"role_group_id": active_role_assignment.role_group_id, "group_id": active_role_assignment.group_id}
             )
             logger.info(
-                f"Role {active_role_assignment.role_group_id} has invalid "
-                f"{'ownership' if active_role_assignment.is_owner else 'membership'} "
-                f"to unmanaged group {group.id}"
+                "Role %s has invalid %s to unmanaged group %s",
+                active_role_assignment.role_group_id,
+                "ownership" if active_role_assignment.is_owner else "membership",
+                group.id,
             )
 
         if not dry_run:
@@ -162,7 +164,7 @@ class UnmanageGroup:
         ).all()
         for obsolete_access_request in obsolete_access_requests:
             logger.info(
-                f"Rejecting obsolete access request {obsolete_access_request.id} for unmanaged group {group.id}"
+                "Rejecting obsolete access request %s for unmanaged group %s", obsolete_access_request.id, group.id
             )
             if not dry_run:
                 await RejectAccessRequest(
@@ -187,7 +189,7 @@ class UnmanageGroup:
             )
         ).all()
         for obsolete_role_request in obsolete_role_requests:
-            logger.info(f"Rejecting obsolete role request {obsolete_role_request.id} for unmanaged group {group.id}")
+            logger.info("Rejecting obsolete role request %s for unmanaged group %s", obsolete_role_request.id, group.id)
             if not dry_run:
                 await RejectRoleRequest(
                     role_request=obsolete_role_request,

@@ -72,13 +72,9 @@ function ButtonField(props: ButtonFieldProps) {
   const pickerContext = usePickerContext();
   const ref = useForkRef(pickerContext.triggerRef, pickerContext.rootRef);
   const theme = useTheme();
-  let displayString = '';
-
-  if (rangeSelected) {
-    displayString = startDate?.format('MM/DD/YYYY') + ' - ' + endDate?.format('MM/DD/YYYY');
-  } else {
-    displayString = tmpStartDate?.format('MM/DD/YYYY') + ' - MM/DD/YYYY';
-  }
+  const displayString = rangeSelected
+    ? startDate?.format('MM/DD/YYYY') + ' - ' + endDate?.format('MM/DD/YYYY')
+    : tmpStartDate?.format('MM/DD/YYYY') + ' - MM/DD/YYYY';
 
   return (
     <Box component={'div'} sx={{position: 'relative'}}>
@@ -133,8 +129,6 @@ interface DateRangeProps extends DatePickerProps {
 }
 
 export default function DateRangePicker(props: DateRangeProps) {
-  const {startDate, endDate, setDateRange, datesPicked, setDatesPicked, value, onChange, ...rest} = props;
-
   const [open, setOpen] = React.useState(false);
   const [tmpStartDate, setTmpStartDate] = React.useState<Dayjs | null>(null);
 
@@ -146,7 +140,7 @@ export default function DateRangePicker(props: DateRangeProps) {
         onClose={() => setOpen(false)}
         onOpen={() => setOpen(true)}
         closeOnSelect={false}
-        onChange={(date: any) => {
+        onChange={(date: Dayjs | null) => {
           props.setDatesPicked(props.datesPicked + 1);
           if (props.datesPicked % 2 !== 0) {
             props.setDateRange(tmpStartDate, date);
@@ -155,22 +149,24 @@ export default function DateRangePicker(props: DateRangeProps) {
           }
         }}
         minDate={tmpStartDate && props.datesPicked % 2 != 0 ? tmpStartDate : undefined}
+        // The picker types its slots against its own props, so the range props the
+        // custom day and field read are cast through the slot types it accepts.
         slots={{
-          day: HighlightDay as any,
-          field: ButtonField as any,
+          day: HighlightDay as React.ElementType<PickerDayProps>,
+          field: ButtonField as React.ElementType<DatePickerFieldProps>,
         }}
         slotProps={{
           day: {
             startDate: props.startDate,
             endDate: props.endDate,
             rangeSelected: props.datesPicked % 2 == 0,
-          } as any,
+          } as Partial<PickerDayProps>,
           field: {
             startDate: props.startDate,
             tmpStartDate: tmpStartDate,
             endDate: props.endDate,
             rangeSelected: props.datesPicked % 2 == 0,
-          } as any,
+          } as Partial<DatePickerFieldProps>,
         }}
       />
     </Box>

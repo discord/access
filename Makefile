@@ -50,6 +50,7 @@ help:
 	@echo "  make ruff               ruff check + ruff format --check"
 	@echo "  make ty                 ty check"
 	@echo "  make test-backend       ruff + ty + pytest"
+	@echo "  make diff-cover         coverage of lines changed vs origin/main (the CI gate)"
 	@echo "  make test-frontend      vitest (frontend unit tests, single run)"
 	@echo "  make test               test-backend + test-frontend (everything)"
 	@echo ""
@@ -72,6 +73,8 @@ clean:
 	rm -rf \
 		.pytest_cache \
 		.ruff_cache \
+		.coverage \
+		coverage.xml \
 		**/__pycache__ \
 		dist/ \
 		build/ \
@@ -262,6 +265,17 @@ pytest-postgres-up:
 .PHONY: pytest-postgres-down
 pytest-postgres-down:
 	@docker rm -f $(PG_TEST_CONTAINER) >/dev/null 2>&1 || :
+
+# The changed-line coverage check CI runs on pull requests, against the sqlite
+# suite only; the threshold lives in pyproject.toml under [tool.diff_cover].
+# Includes uncommitted changes. COMPARE_BRANCH overrides the base.
+COMPARE_BRANCH ?= origin/main
+
+.PHONY: diff-cover
+diff-cover: dev
+	uv run pytest --cov --cov-report=xml
+	uv run diff-cover coverage.xml --config-file pyproject.toml \
+	  --compare-branch '$(COMPARE_BRANCH)' --show-uncovered
 
 .PHONY: ty
 ty: dev

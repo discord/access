@@ -6,10 +6,9 @@ import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogTitle from '@mui/material/DialogTitle';
-import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import {GroupMembersByIdPutError, GroupMembersByIdPutVariables, useGroupMembersByIdPut} from '../../api/apiComponents';
+import {GroupMembersByIdPutError, useGroupMembersByIdPut} from '../../api/apiComponents';
 import {GroupMember, GroupMembersSummary, GroupDetail} from '../../api/apiSchemas';
 
 export interface RemoveOwnDirectAccessDialogParameters {
@@ -19,21 +18,16 @@ export interface RemoveOwnDirectAccessDialogParameters {
 }
 
 interface RemoveOwnDirectAccesssDialogProps extends RemoveOwnDirectAccessDialogParameters {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
 }
 
 export default function RemoveOwnDirectAccessDialog(props: RemoveOwnDirectAccesssDialogProps) {
   const navigate = useNavigate();
 
-  const [requestError, setRequestError] = React.useState('');
+  const [, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
-  const complete = (
-    completedUsersChange: GroupMembersSummary | undefined,
-    error: GroupMembersByIdPutError | null,
-    variables: GroupMembersByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedUsersChange: GroupMembersSummary | undefined, error: GroupMembersByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
       setRequestError(error.payload.toString());

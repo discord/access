@@ -4,7 +4,8 @@ import {useNavigate} from 'react-router-dom';
 import {RoleGroupMapDetail} from '../api/apiSchemas';
 
 interface AccessMethodChipProps {
-  roleGroupMapping?: RoleGroupMapDetail | null;
+  // Only the role's name is read, so any mapping shape that carries it will do.
+  roleGroupMapping?: Pick<RoleGroupMapDetail, 'role_group'> | null;
 }
 
 export default function AccessMethodChip({roleGroupMapping}: AccessMethodChipProps) {

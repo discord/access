@@ -59,7 +59,6 @@ const PENDING_APP_GROUP_REQUEST = {
 } as unknown as GroupRequestDetail;
 
 vi.mock('react-router-dom', async () => {
-  const React = await import('react');
   return {
     useNavigate: () => vi.fn(),
     useParams: () => ({id: PENDING_APP_GROUP_REQUEST.id}),

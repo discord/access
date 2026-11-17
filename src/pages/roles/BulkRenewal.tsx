@@ -36,7 +36,7 @@ import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailable
 
 import {useCurrentUser} from '../../authentication';
 
-import {useRoleMembersByIdPut, RoleMembersByIdPutError, RoleMembersByIdPutVariables} from '../../api/apiComponents';
+import {useRoleMembersByIdPut, RoleMembersByIdPutError} from '../../api/apiComponents';
 import {
   GroupRefForMembership,
   OktaUserGroupMemberDetail,
@@ -95,10 +95,10 @@ const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABE
 const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
   Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
 );
-const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
+const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id: id, label: label}));
 
 interface BulkRenewalDialogProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   rows: RoleGroupMapDetail[];
   select?: number;
 }
@@ -152,7 +152,9 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const role_memberships = React.useMemo(
     () =>
       currentUser.active_group_memberships?.reduce((out: Set<string>, curr: OktaUserGroupMemberDetail) => {
-        curr.active_group?.type == 'role_group' ? out.add(curr.active_group!.name!) : null;
+        if (curr.active_group?.type == 'role_group') {
+          out.add(curr.active_group!.name!);
+        }
         return out;
       }, new Set<string>()) ?? new Set<string>(),
     [currentUser],
@@ -267,7 +269,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     () =>
       !isAccessAdmin(currentUser) &&
       props.rows.some(
-        (row) => role_memberships.has(row.role_group?.name!) && rowDisallowsSelfAdd(row.group, row.is_owner!),
+        (row) => role_memberships.has(row.role_group?.name as string) && rowDisallowsSelfAdd(row.group, row.is_owner!),
       ),
     [currentUser, props.rows, role_memberships, rowDisallowsSelfAdd],
   );
@@ -352,12 +354,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeLimit, constraintsBlocked]);
 
-  const complete = (
-    completedUsersChange: RoleMembersSummary | undefined,
-    error: RoleMembersByIdPutError | null,
-    variables: RoleMembersByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedUsersChange: RoleMembersSummary | undefined, error: RoleMembersByIdPutError | null) => {
     if (error != null) {
       setRequestError(error.payload.toString());
       setGroupUpdatesErrored((prevValue) => prevValue + 1);
@@ -387,7 +384,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   });
 
   const submit = (rolesForm: CreateRequestForm) => {
-    let blockedRoles: Array<BlockedPair> = [];
+    const blockedRoles: Array<BlockedPair> = [];
     const blockedRoleSelected = selectedYes.reduce((out, roleGroupMap) => {
       const blockedOwner =
         role_memberships.has(roleGroupMap.role_group!.name) &&
@@ -398,12 +395,12 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
         groups_cant_add_self_member.has(roleGroupMap.group!.name) &&
         !roleGroupMap.is_owner!;
 
-      blockedOwner
-        ? blockedRoles.push([roleGroupMap.role_group!.name, ' ownership of ', roleGroupMap.group!.name])
-        : null;
-      blockedMember
-        ? blockedRoles.push([roleGroupMap.role_group!.name, ' membership to ', roleGroupMap.group!.name])
-        : null;
+      if (blockedOwner) {
+        blockedRoles.push([roleGroupMap.role_group!.name, ' ownership of ', roleGroupMap.group!.name]);
+      }
+      if (blockedMember) {
+        blockedRoles.push([roleGroupMap.role_group!.name, ' membership to ', roleGroupMap.group!.name]);
+      }
       return out || blockedOwner || blockedMember;
     }, false);
 
@@ -622,7 +619,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 }
 
 interface BulkRenewalButtonProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   bulk: boolean;
   rereview?: boolean;
 }
