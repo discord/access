@@ -15,6 +15,6 @@ rules:
       - pattern: import flask.$SUBMODULE
       - pattern: from flask import $NAME
       - pattern: abort(...)
-      - pattern: $MODULE.abort(...)
+      - pattern: flask.abort(...)
       - pattern: flask.g
       - pattern: $APP.before_request

@@ -20,6 +20,9 @@ def get_group(group_id):
     if group_id == "":
         # ruleid: flask-patterns
         flask.abort(400)
+    if group_id == "cancelled":
+        # ok: flask-patterns
+        task.abort()
     if group_id == "gone":
         # ok: flask-patterns
         raise HTTPException(404, "Group not found")

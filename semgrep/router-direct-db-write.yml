@@ -6,7 +6,10 @@ rules:
       Move this write into an operation class in api/operations/ and call its `execute()` from
       the router. Operations own every DB write so that validation, audit logging, plugin hooks,
       and the post-commit fan-out happen the same way for every caller (HTTP, CLI, syncer, MCP).
-      Reads (`db.scalars`, `db.execute(select(...))`) are fine in a router.
+      Reads (`db.scalars`, `db.execute(select(...))`) are fine in a router. This rule sees only
+      explicit session writes (`add`, `delete`, `merge`, `flush`, `commit`, `rollback`, and
+      `execute` of an insert/update/delete); it does not see ORM attribute assignments in a
+      router that a later `commit()` or operation `execute()` persists, so review those by hand.
     paths:
       include:
         - /api/routers/
