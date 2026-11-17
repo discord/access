@@ -372,11 +372,11 @@ export default function App() {
   const systemTheme = useMediaQuery('(prefers-color-scheme: dark)') ? 'dark' : 'light';
   const initialMode = storedTheme ?? systemTheme;
   const [mode, setMode] = React.useState<PaletteMode>(initialMode);
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const source = searchParams.get('source') ?? undefined;
 
   // See https://discord.com/branding
-  let theme = React.useMemo(() => {
+  const theme = React.useMemo(() => {
     const base = createTheme({
       palette: {
         mode,

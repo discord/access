@@ -2,7 +2,6 @@ import React from 'react';
 
 import {Link as RouterLink} from 'react-router-dom';
 
-import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
@@ -18,7 +17,7 @@ import {GroupDetail} from '../../api/apiSchemas';
 import AvatarButton from '../../components/AvatarButton';
 
 interface ExternallyManagedButtonProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
 }
 
 function ExternallyManagedButton(props: ExternallyManagedButtonProps) {
@@ -71,8 +70,8 @@ function RuleFormatting(props: RuleFormattingProps) {
     margin: '5px 5px 5px 8px',
   };
 
-  const regexp = /(?:isMemberOfAnyGroup|isMemberOfGroup)\(([^\)]+?)\)/g.exec(props.rule);
-  var matches = null;
+  const regexp = /(?:isMemberOfAnyGroup|isMemberOfGroup)\(([^)]+?)\)/g.exec(props.rule);
+  let matches = null;
 
   if (regexp) {
     matches = Array.from(regexp[1].matchAll(/([0-9A-Za-z]+)/g), (m) => m[0]);
@@ -104,7 +103,7 @@ function RuleFormatting(props: RuleFormattingProps) {
 
 interface ExternallyManagedDialogProps {
   group: GroupDetail;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
 }
 
 function ExternallyManagedDialog(props: ExternallyManagedDialogProps) {

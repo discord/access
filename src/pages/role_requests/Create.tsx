@@ -7,11 +7,6 @@ import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
-import InputLabel from '@mui/material/InputLabel';
-import List from '@mui/material/List';
-import ListItem from '@mui/material/ListItem';
-import ListItemText from '@mui/material/ListItemText';
-import Divider from '@mui/material/Divider';
 import RoleRequestIcon from '@mui/icons-material/WorkHistory';
 import Alert from '@mui/material/Alert';
 import FormControl from '@mui/material/FormControl';
@@ -30,26 +25,16 @@ import {
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 import {useForm} from 'react-hook-form';
 
-import {
-  useRoleRequestsCreate,
-  useGroups,
-  useRoles,
-  RoleRequestsCreateError,
-  RoleRequestsCreateVariables,
-} from '../../api/apiComponents';
+import {useRoleRequestsCreate, useGroups, useRoles, RoleRequestsCreateError} from '../../api/apiComponents';
 import {
   GroupDetail,
   CreateRoleRequestBody,
-  OktaUserGroupMemberDetail,
   OktaUserDetail,
   OktaGroupDetail,
   AppGroupDetail,
-  RoleRequestDetail,
   RoleRequestSummary,
   RoleGroupDetail,
-  RoleGroupMapDetail,
 } from '../../api/apiSchemas';
-import {useCurrentUser} from '../../authentication';
 import {canManageGroup} from '../../authorization';
 import {timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
@@ -60,7 +45,7 @@ dayjs.extend(IsSameOrBefore);
 
 interface CreateRequestButtonProps {
   enabled: boolean;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   role?: RoleGroupDetail;
   group?: GroupDetail;
   owner?: boolean;
@@ -94,13 +79,9 @@ function CreateRequestButton(props: CreateRequestButtonProps) {
   );
 }
 
-function filterManagedRoleGroupMap(roleGroupMap: RoleGroupMapDetail): boolean {
-  return roleGroupMap.active_role_group?.is_managed ?? false;
-}
-
 interface CreateRequestContainerProps {
   currentUser: OktaUserDetail;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   role?: RoleGroupDetail;
   group?: GroupDetail;
   owner?: boolean;
@@ -139,7 +120,7 @@ const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = {
   '7776000': '90 Days',
 } as const;
 
-const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
+const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id: id, label: label}));
 
 function filterUntilLabels(timeLimit: number): [string, Array<Record<string, string>>] {
   const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
@@ -152,30 +133,16 @@ function filterUntilLabels(timeLimit: number): [string, Array<Record<string, str
       {} as Record<string, string>,
     );
 
-  const filteredLabeles = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(
-    ([id, label], index) => ({
-      id: id,
-      label: label,
-    }),
-  );
+  const filteredLabeles = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label]) => ({
+    id: id,
+    label: label,
+  }));
 
   return [Object.keys(filteredUntil).at(-1)!, filteredLabeles];
 }
 
-// Given an array of OktaUserGroupMembers, returns an array of group ids
-function getGroupIds(groups: Array<OktaUserGroupMemberDetail>): Array<string> {
-  return groups.reduce((ids, userGroupMember) => {
-    if (userGroupMember.active_group?.id) {
-      ids.push(userGroupMember.active_group.id);
-    }
-    return ids;
-  }, new Array<string>());
-}
-
 function CreateRequestContainer(props: CreateRequestContainerProps) {
   const navigate = useNavigate();
-  // Get array of ids of groups owned by the current user
-  const ownedGroups = getGroupIds(useCurrentUser()?.active_group_ownerships ?? []);
 
   // If a group is already selected by default and it has constraints limiting ownership or membership time,
   // find the shortest time (max allowed access time) and set that as the time limit. This value is used to
@@ -205,12 +172,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     },
   });
 
-  const complete = (
-    completedRequest: RoleRequestSummary | undefined,
-    error: RoleRequestsCreateError | null,
-    variables: RoleRequestsCreateVariables,
-    context: any,
-  ) => {
+  const complete = (completedRequest: RoleRequestSummary | undefined, error: RoleRequestsCreateError | null) => {
     setSubmitting(false);
     if (error != null) {
       setRequestError(error.payload.toString());
@@ -232,7 +194,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       owner_id: '@me',
     },
   });
-  let roleSearchOptions = roleSearchData?.items ?? [];
+  const roleSearchOptions = roleSearchData?.items ?? [];
 
   const {data: groupSearchData} = useGroups({
     queryParams: {
@@ -272,7 +234,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     // renders blank and a submit sends a length the backend then shortens
     // without saying so.
     formContext.setValue('until', filteredUntil);
-  }, [timeLimit, constraints.blocked]);
+  }, [timeLimit, constraints.blocked, formContext]);
 
   const submit = (requestForm: CreateRequestForm) => {
     setSubmitting(true);
@@ -347,7 +309,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               // disabling this would submit the group as `undefined`. readOnly fixes the value
               // without dropping it.
               readOnly: props.group != null,
-              renderOption: (props, option, state) => {
+              renderOption: (props, option) => {
                 return (
                   <li {...props}>
                     <Grid
@@ -400,7 +362,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               // disabling this would submit the group as `undefined`. readOnly fixes the value
               // without dropping it.
               readOnly: props.group != null,
-              renderOption: (props, option, state) => {
+              renderOption: (props, option) => {
                 return (
                   <li {...props}>
                     <Grid
@@ -519,15 +481,15 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
 
 interface CreateRequestDialogProps {
   currentUser: OktaUserDetail;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
 }
 
 function CreateRequestDialog(props: CreateRequestDialogProps) {
-  const [group, setGroup] = React.useState<GroupDetail | undefined>(props.group);
-  const [owner, setOwner] = React.useState<boolean | undefined>(props.owner);
+  const [group] = React.useState<GroupDetail | undefined>(props.group);
+  const [owner] = React.useState<boolean | undefined>(props.owner);
 
   return (
     <Dialog open onClose={() => props.setOpen(false)}>

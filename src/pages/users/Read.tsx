@@ -15,7 +15,6 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
 import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
@@ -55,16 +54,16 @@ import Loading from '../../components/Loading';
 import RemoveGroupsDialog, {RemoveGroupsDialogParameters} from '../roles/RemoveGroups';
 import RemoveOwnDirectAccessDialog, {RemoveOwnDirectAccessDialogParameters} from '../groups/RemoveOwnDirectAccess';
 import {groupBy, displayUserName} from '../../helpers';
-import {canManageGroup, isGroupOwner, isAccessAdmin} from '../../authorization';
+import {isAccessAdmin} from '../../authorization';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
 import MembershipChip from '../../components/MembershipChip';
 
 function sortUserGroups(
-  [aGroupId, aGroups]: [string, Array<OktaUserGroupMemberDetail>],
-  [bGroupId, bGroups]: [string, Array<OktaUserGroupMemberDetail>],
+  [, aGroups]: [string, Array<OktaUserGroupMemberDetail>],
+  [, bGroups]: [string, Array<OktaUserGroupMemberDetail>],
 ): number {
-  let aName = aGroups[0].active_group?.name ?? '';
-  let bName = bGroups[0].active_group?.name ?? '';
+  const aName = aGroups[0].active_group?.name ?? '';
+  const bName = bGroups[0].active_group?.name ?? '';
   return aName.localeCompare(bName);
 }
 
