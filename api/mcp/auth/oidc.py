@@ -118,10 +118,10 @@ async def resolve_identity(scope: Scope) -> MCPIdentity | None:
     try:
         signing_key = jwks_client.get_signing_key_from_jwt(token).key
     except jwt.PyJWKClientError as e:
-        logger.debug(f"OIDC JWKS lookup failed: {e}")
+        logger.debug("OIDC JWKS lookup failed: %s", e)
         return None
     except jwt.PyJWTError as e:
-        logger.debug(f"OIDC token header malformed: {e}")
+        logger.debug("OIDC token header malformed: %s", e)
         return None
 
     algorithms = md.get("id_token_signing_alg_values_supported") or ["RS256"]
@@ -135,7 +135,7 @@ async def resolve_identity(scope: Scope) -> MCPIdentity | None:
             leeway=settings.OIDC_CLOCK_SKEW,
         )
     except jwt.PyJWTError as e:
-        logger.debug(f"OIDC token verification failed: {e}")
+        logger.debug("OIDC token verification failed: %s", e)
         return None
 
     email = payload.get("email")
@@ -150,7 +150,7 @@ async def resolve_identity(scope: Scope) -> MCPIdentity | None:
         )
     ).first()
     if user is None:
-        logger.warning(f"OIDC token verified for email={email!r} but no matching active OktaUser exists")
+        logger.warning("OIDC token verified for email=%r but no matching active OktaUser exists", email)
         return None
 
     scopes = _parse_scopes(payload.get("scope") or payload.get("scp"))
