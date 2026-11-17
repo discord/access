@@ -27,11 +27,16 @@ updates:
       interval: "weekly"
     ignore:
       - dependency-name: "@rollup/rollup-*"
-      # @sentry/vite-plugin 5.4+ depends on the Sentry CLI, which is licensed
-      # under the source-available FSL from 3.0 on. Stay on 4.x until that
-      # license is approved for use.
+      # The Sentry CLI is licensed under the source-available FSL from 2.58.3
+      # on. @sentry/vite-plugin accepts any 2.x, so package.json pins the CLI
+      # to 2.58.2, the last BSD-3-Clause release, through `overrides`. Stay
+      # there until the FSL is approved for use.
+      - dependency-name: "@sentry/cli"
+        versions: [">=2.58.3"]
+      # @sentry/vite-plugin 5.2+ requires an FSL release of the CLI (2.58.5 or
+      # later), which the pin above excludes.
       - dependency-name: "@sentry/vite-plugin"
-        versions: [">=5"]
+        versions: [">=5.2"]
       # TypeScript 7's npm package doesn't ship the compiler API that
       # @openapi-codegen reaches through tsutils, so `npm run codegen` hangs.
       # Stay below 7 until the codegen stops depending on that API.
