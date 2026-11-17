@@ -119,9 +119,9 @@ export default function TagsField<T extends {id: string; name: string}>({
             .filter((tag): tag is T => tag != null),
         )
       }
-      renderTags={(tags, getTagProps) =>
+      renderValue={(tags, getItemProps) =>
         tags.map((tag, index) => {
-          const {key, onDelete, ...chipProps} = getTagProps({index});
+          const {key, onDelete, ...chipProps} = getItemProps({index});
           return (
             <Chip
               key={key}

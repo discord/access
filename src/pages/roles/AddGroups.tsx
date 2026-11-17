@@ -24,15 +24,10 @@ import CircularProgress from '@mui/material/CircularProgress';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 
-import {FormContainer, SelectElement, AutocompleteElement, TextFieldElement} from 'react-hook-form-mui';
+import {FormContainer, AutocompleteElement, TextFieldElement} from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 
-import {
-  useGroups,
-  useRoleMembersByIdPut,
-  RoleMembersByIdPutError,
-  RoleMembersByIdPutVariables,
-} from '../../api/apiComponents';
+import {useGroups, useRoleMembersByIdPut, RoleMembersByIdPutError} from '../../api/apiComponents';
 import {
   GroupDetail,
   GroupSummary,
@@ -53,7 +48,7 @@ dayjs.extend(IsSameOrBefore);
 
 interface AddGroupsButtonProps {
   owner: boolean;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
 }
 
 function AddGroupsButton(props: AddGroupsButtonProps) {
@@ -68,7 +63,7 @@ interface AddGroupsDialogProps {
   currentUser: OktaUserDetail;
   owner: boolean;
   group: GroupDetail;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
 }
 
 interface AddGroupsForm {
@@ -86,7 +81,7 @@ const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABE
 const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
   Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
 );
-const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
+const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id: id, label: label}));
 
 function AddGroupsDialog(props: AddGroupsDialogProps) {
   const navigate = useNavigate();
@@ -114,12 +109,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
   const [timeLimit, setTimeLimit] = React.useState<number | null>(null);
   const [requiredReason, setRequiredReason] = React.useState<boolean>(false);
 
-  const complete = (
-    completedUsersChange: RoleMembersSummary | undefined,
-    error: RoleMembersByIdPutError | null,
-    variables: RoleMembersByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedUsersChange: RoleMembersSummary | undefined, error: RoleMembersByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
       setRequestError(error.payload.toString());
@@ -175,7 +165,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
       setUntil(Object.keys(filteredUntil).at(-1)!);
 
       setLabels(
-        Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label], index) => ({
+        Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label]) => ({
           id: id,
           label: label,
         })),
@@ -240,7 +230,11 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
               group, please create a role request.
             </Alert>
           ) : null}
-          <Typography variant="subtitle1" color="text.accent">
+          <Typography
+            variant="subtitle1"
+            sx={{
+              color: 'text.accent',
+            }}>
             {timeLimit
               ? (props.owner ? 'Ownership of ' : 'Membership to ') +
                 'one or more selected groups is limited to ' +
@@ -344,13 +338,21 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
                   }
                 },
                 inputValue: groupSearchInput,
-                renderOption: (props, option, state) => {
+                renderOption: (props, option) => {
                   return (
                     <li {...props}>
-                      <Grid container alignItems="center">
-                        <Grid item>
+                      <Grid
+                        container
+                        sx={{
+                          alignItems: 'center',
+                        }}>
+                        <Grid>
                           <Box>{option.name}</Box>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: 'text.secondary',
+                            }}>
                             {GROUP_TYPE_ID_TO_LABELS[option.type]}
                           </Typography>
                         </Grid>

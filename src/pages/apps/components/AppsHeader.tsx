@@ -1,4 +1,4 @@
-import {Grid, Paper, Typography, Box, Chip, Stack, Tooltip, Divider} from '@mui/material';
+import {Grid, Paper, Typography, Box, Chip, Stack, Divider} from '@mui/material';
 import ActionTooltip from '../../../components/ActionTooltip';
 import CreateUpdateApp from '../CreateUpdate';
 import DeleteApp from '../Delete';
@@ -41,11 +41,25 @@ export const AppsHeader: React.FC<AppsHeaderProps> = React.memo(({app, currentUs
   }, [app.active_app_tags, navigate]);
 
   return (
-    <Grid item xs={12}>
+    <Grid size={12}>
       <Paper sx={{p: 2}}>
-        <Stack direction="column" gap={2}>
-          <Stack alignItems="center" direction="column" gap={1} sx={{wordBreak: 'break-word'}}>
-            <Typography variant="h3" textAlign={'center'}>
+        <Stack
+          direction="column"
+          sx={{
+            gap: 2,
+          }}>
+          <Stack
+            direction="column"
+            sx={{
+              alignItems: 'center',
+              gap: 1,
+              wordBreak: 'break-word',
+            }}>
+            <Typography
+              variant="h3"
+              sx={{
+                textAlign: 'center',
+              }}>
               {app.name}
             </Typography>
             <MarkdownDescription description={app.description} />
@@ -54,7 +68,11 @@ export const AppsHeader: React.FC<AppsHeaderProps> = React.memo(({app, currentUs
           {hasActions && (
             <>
               <Divider />
-              <Stack direction="row" justifyContent="center">
+              <Stack
+                direction="row"
+                sx={{
+                  justifyContent: 'center',
+                }}>
                 <ActionTooltip title="Edit">
                   <CreateUpdateApp currentUser={currentUser} app={app} />
                 </ActionTooltip>

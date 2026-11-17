@@ -44,6 +44,48 @@ container. CI runs the suite twice — SQLite then Postgres.
 Test data is created via factories in `tests/factories.py`. Don't write raw ORM inserts in
 tests — use factories.
 
+## Changed-line coverage gate
+
+Every PR must cover at least **90%** of the Python lines it changes, or the `python-test` job in
+`ci.yml` fails. The gate measures only the lines the PR touches, not the repo total, so it never
+asks an author to backfill tests for code they didn't change.
+
+How it works: both pytest runs (SQLite, then Postgres) record coverage with `pytest-cov` into one
+data file, so a line exercised on only one engine counts. `diff-cover` then compares that against
+`git diff origin/<base>...HEAD` (the PR's own changes since it branched).
+
+- **What is measured** — `api/` and `examples/plugins/` (`[tool.coverage.run] source` in
+  `pyproject.toml`). The example plugins count because they run in the default pytest scope and are
+  the code operators copy. Tests, `migrations/` (covered by the `db-migrations.yml` workflow, not
+  pytest), and every non-Python file are ignored, so a PR touching none of `api/` or
+  `examples/plugins/` passes with "No lines with coverage information in this diff."
+- **Renames and moves** — `git diff` detects renames, so a pure rename or a file move adds no
+  changed lines. Whitespace-only changes (re-indenting a block) are ignored too. Code moved *within
+  or between files* still shows as added lines, so moving an untested function makes it count.
+- **Threshold** — `[tool.diff_cover] fail_under` in `pyproject.toml`. 90 rather than 100 leaves room
+  for the odd defensive branch that's not worth a test; anything lower lets a PR land with a whole
+  untested branch. `if TYPE_CHECKING:`, `@overload`, and `raise NotImplementedError` are excluded
+  (`[tool.coverage.report] exclude_also`).
+- **Escape hatch** — a `# pragma: no cover` comment excludes a line or block. Use it for genuinely
+  unreachable code, not to dodge a test; it shows up in review either way.
+
+**Reading the report.** The job summary of the `python-test` run (the run's **Summary** page)
+carries a "Diff Coverage" table: one row per changed measured file, with its percentage and the
+line numbers that never ran. The same uncovered lines are annotated as warnings on the PR's
+**Files changed** tab, and the step log prints them too. A line listed there is one no test
+executed; write a test that reaches it, or remove the line if nothing can.
+
+To check before pushing (against the SQLite suite only; includes uncommitted changes):
+
+```bash
+make diff-cover                                   # compares against origin/main
+make diff-cover COMPARE_BRANCH=origin/my-base     # a stacked branch's base
+```
+
+The frontend has no coverage gate. Its vitest suites cover a handful of helpers and forms, not page
+rendering, so a changed-line gate there would block most UI PRs on scaffolding the suite doesn't
+have yet (query-client, router, and theme providers for component tests).
+
 Frontend tests are vitest + React Testing Library: `npm test` watches, `npx vitest run` is the
 one-shot CI form. Coverage is partial — a handful of suites under `src/`, concentrated on pure
 helpers and form logic rather than page rendering — so treat an untested component as normal here

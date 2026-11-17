@@ -1,7 +1,6 @@
 {
-  "extends": "./tsconfig.paths.json",
   "compilerOptions": {
-    "target": "es5",
+    "target": "es2022",
     "module": "esnext",
     "jsx": "react-jsx",
     "noEmit": true,
@@ -12,7 +11,7 @@
     "allowJs": true,
     "allowSyntheticDefaultImports": true,
     "noFallthroughCasesInSwitch": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "skipLibCheck": true,
@@ -27,12 +26,7 @@
     "typeRoots": [
       "./node_modules/@types",
       "./src/globals.d.ts"
-    ],
-    "paths": {
-      // `moduleResolution: node` predates `exports` maps, and react-hook-form-mui only
-      // publishes this subpath through one. Vite and Node resolve it natively.
-      "react-hook-form-mui/date-pickers": ["./node_modules/react-hook-form-mui/dist/date-pickers.d.ts"]
-    }
+    ]
   },
   "include": [
     "src/**/*",

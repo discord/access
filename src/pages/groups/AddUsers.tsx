@@ -25,12 +25,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import {FormContainer, SelectElement, AutocompleteElement, TextFieldElement} from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 
-import {
-  useUsers,
-  useGroupMembersByIdPut,
-  GroupMembersByIdPutError,
-  GroupMembersByIdPutVariables,
-} from '../../api/apiComponents';
+import {useUsers, useGroupMembersByIdPut, GroupMembersByIdPutError} from '../../api/apiComponents';
 import {GroupDetail, GroupMember, GroupMembersSummary, OktaUserDetail} from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin} from '../../authorization';
 import {displayUserName} from '../../helpers';
@@ -41,7 +36,7 @@ dayjs.extend(IsSameOrBefore);
 
 interface AddUsersButtonProps {
   owner: boolean;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
 }
 
 function AddUsersButton(props: AddUsersButtonProps) {
@@ -56,7 +51,7 @@ interface AddUsersDialogProps {
   currentUser: OktaUserDetail;
   owner: boolean;
   group: GroupDetail;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
 }
 
 interface AddUsersForm {
@@ -69,7 +64,7 @@ const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABE
 const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
   Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
 );
-const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
+const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id: id, label: label}));
 
 function AddUsersDialog(props: AddUsersDialogProps) {
   const navigate = useNavigate();
@@ -107,18 +102,13 @@ function AddUsersDialog(props: AddUsersDialogProps) {
         ? accessConfig.DEFAULT_ACCESS_TIME
         : Object.keys(filteredUntil).at(-1)!;
 
-    labels = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label], index) => ({
+    labels = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label]) => ({
       id: id,
       label: label,
     }));
   }
 
-  const complete = (
-    completedUsersChange: GroupMembersSummary | undefined,
-    error: GroupMembersByIdPutError | null,
-    variables: GroupMembersByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedUsersChange: GroupMembersSummary | undefined, error: GroupMembersByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
       setRequestError(error.payload.toString());
@@ -192,7 +182,11 @@ function AddUsersDialog(props: AddUsersDialogProps) {
         onSuccess={(formData) => submit(formData)}>
         <DialogTitle>Add {addUsersText}</DialogTitle>
         <DialogContent>
-          <Typography variant="subtitle1" color="text.accent">
+          <Typography
+            variant="subtitle1"
+            sx={{
+              color: 'text.accent',
+            }}>
             {timeLimit
               ? (props.owner ? 'Ownership of ' : 'Membership to ') +
                 'this group is limited to ' +
@@ -200,7 +194,11 @@ function AddUsersDialog(props: AddUsersDialogProps) {
                 '.'
               : null}
           </Typography>
-          <Typography variant="subtitle1" color="text.accent">
+          <Typography
+            variant="subtitle1"
+            sx={{
+              color: 'text.accent',
+            }}>
             {selfAddDisallowed && !isAccessAdmin(props.currentUser) ? (
               <>
                 You cannot add yourself to this group due to the{' '}
@@ -279,13 +277,21 @@ function AddUsersDialog(props: AddUsersDialogProps) {
                   }
                 },
                 inputValue: userSearchInput,
-                renderOption: (props, option, state) => {
+                renderOption: (props, option) => {
                   return (
                     <li {...props}>
-                      <Grid container alignItems="center">
-                        <Grid item>
+                      <Grid
+                        container
+                        sx={{
+                          alignItems: 'center',
+                        }}>
+                        <Grid>
                           <Box>{displayUserName(option)}</Box>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: 'text.secondary',
+                            }}>
                             {option.email.toLowerCase()}
                           </Typography>
                         </Grid>

@@ -1,7 +1,0 @@
-{
-  "compilerOptions": {
-    "paths": {
-      "react-hook-form-mui/date-pickers": ["./node_modules/react-hook-form-mui/dist/date-pickers.d.ts"]
-    }
-  }
-}

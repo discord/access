@@ -288,8 +288,14 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
               component="h1"
               variant="h5"
               noWrap
-              sx={{px: 2, maxWidth: 125, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}
-              color="text.accent">
+              sx={{
+                color: 'text.accent',
+                px: 2,
+                maxWidth: 125,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}>
               {appName.toUpperCase()}
             </Typography>
           </Link>
@@ -301,7 +307,14 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
         <List component="nav">
           <NavItems open={open} />
         </List>
-        <Stack marginTop="auto" p={2} direction={open ? 'row' : 'column'} spacing={1} alignItems="center">
+        <Stack
+          direction={open ? 'row' : 'column'}
+          spacing={1}
+          sx={{
+            marginTop: 'auto',
+            p: 2,
+            alignItems: 'center',
+          }}>
           <ThemeToggle setThemeMode={setThemeMode} condensed={!open} />
           <ConfettiToggleButton />
         </Stack>
@@ -359,11 +372,11 @@ export default function App() {
   const systemTheme = useMediaQuery('(prefers-color-scheme: dark)') ? 'dark' : 'light';
   const initialMode = storedTheme ?? systemTheme;
   const [mode, setMode] = React.useState<PaletteMode>(initialMode);
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const source = searchParams.get('source') ?? undefined;
 
   // See https://discord.com/branding
-  let theme = React.useMemo(() => {
+  const theme = React.useMemo(() => {
     const base = createTheme({
       palette: {
         mode,
@@ -392,6 +405,12 @@ export default function App() {
         },
       },
       components: {
+        // MUI 9 defaults this to 36px; 56px keeps the nav labels in one column clear of their icons.
+        MuiListItemIcon: {
+          styleOverrides: {
+            root: {minWidth: 56},
+          },
+        },
         MuiChip: {
           styleOverrides: {
             colorPrimary: ({ownerState, theme}) => ({

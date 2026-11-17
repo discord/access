@@ -33,13 +33,13 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.m
     isExpandedRef.current = isExpanded;
 
     const handleToggleExpand = React.useCallback(() => {
-      if (!!onToggleExpandRef.current) {
+      if (onToggleExpandRef.current) {
         onToggleExpandRef.current(!isExpandedRef.current);
       }
     }, []);
 
     return (
-      <Grid item xs={12} className={'app-detail app-detail-admin-action-group'}>
+      <Grid className={'app-detail app-detail-admin-action-group'} size={12}>
         <Paper sx={{p: 2}}>
           <Box
             sx={{

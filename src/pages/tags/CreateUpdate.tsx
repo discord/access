@@ -21,14 +21,7 @@ import Typography from '@mui/material/Typography';
 import {CheckboxElement, FormContainer, RadioButtonGroup, TextFieldElement} from 'react-hook-form-mui';
 import {useWatch} from 'react-hook-form';
 
-import {
-  useTagsCreate,
-  useTagByIdPut,
-  TagsCreateError,
-  TagByIdPutError,
-  TagsCreateVariables,
-  TagByIdPutVariables,
-} from '../../api/apiComponents';
+import {useTagsCreate, useTagByIdPut, TagsCreateError, TagByIdPutError} from '../../api/apiComponents';
 import NumberInput from '../../components/NumberInput';
 import {ConstraintHelpButton, ConstraintHelpRegion, useHelpRegionId} from '../../components/ConstraintHelp';
 import {
@@ -52,7 +45,7 @@ import {isAccessAdmin} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 
 interface TagButtonProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   tag?: TagDetail;
 }
 
@@ -85,7 +78,7 @@ interface CreateTagForm {
 
 interface TagDialogProps {
   currentUser: OktaUserDetail;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   tag?: TagDetail;
 }
 
@@ -188,7 +181,13 @@ function ConstraintCell({
           regionId={regionId}
         />
       </Box>
-      <Typography variant="caption" color="text.secondary" sx={{display: 'block', marginTop: '2px'}}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: 'text.secondary',
+          display: 'block',
+          marginTop: '2px',
+        }}>
         {constraintSummary(constraint, propagates)}
       </Typography>
     </>
@@ -217,7 +216,7 @@ function ConstraintCheckbox({
       name={name}
       label="Yes"
       disabled={disabled}
-      inputProps={{'aria-label': constraintLabel(constraint)}}
+      slotProps={{input: {'aria-label': constraintLabel(constraint)}}}
     />
   );
 }
@@ -252,10 +251,10 @@ function ConstraintRow({
   const regionId = useHelpRegionId();
   return (
     <>
-      <Grid item xs={3} sx={{paddingTop: '20px !important'}}>
+      <Grid sx={{paddingTop: '4px'}} size={3}>
         <Typography variant="body2">{label}</Typography>
       </Grid>
-      <Grid item xs={4.5}>
+      <Grid size={4.5}>
         <ConstraintCell
           constraint={memberConstraint}
           propagates={propagates}
@@ -265,7 +264,7 @@ function ConstraintRow({
           {memberControl}
         </ConstraintCell>
       </Grid>
-      <Grid item xs={4.5}>
+      <Grid size={4.5}>
         <ConstraintCell
           constraint={ownerConstraint}
           propagates={propagates}
@@ -276,7 +275,7 @@ function ConstraintRow({
         </ConstraintCell>
       </Grid>
       {openSide != null && (
-        <Grid item xs={12} sx={{paddingTop: '0 !important'}}>
+        <Grid sx={{marginTop: -2}} size={12}>
           <ConstraintHelpRegion
             expanded
             regionId={regionId(openSide)}
@@ -307,15 +306,23 @@ function ConstraintMatrix({
   const selfAddAvailable = selfAddRestrictionAvailable(propagates ? SCOPE_ROLES : SCOPE_GROUPS_ONLY);
 
   return (
-    <Grid container columnSpacing={2} rowSpacing={2} sx={{marginTop: '4px'}}>
-      <Grid item xs={3} />
-      <Grid item xs={4.5}>
-        <Typography variant="caption" color="text.secondary">
+    <Grid container columnSpacing={2} rowSpacing={2} sx={{marginTop: '20px'}}>
+      <Grid size={3} />
+      <Grid size={4.5}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}>
           Membership
         </Typography>
       </Grid>
-      <Grid item xs={4.5}>
-        <Typography variant="caption" color="text.secondary">
+      <Grid size={4.5}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: 'text.secondary',
+          }}>
           Ownership
         </Typography>
       </Grid>
@@ -470,12 +477,7 @@ function TagDialog(props: TagDialogProps) {
       : undefined;
   const [daysOwner, setDaysOwner] = React.useState<number | undefined>(defaultDaysOwner);
 
-  const complete = (
-    completedTag: TagDetail | undefined,
-    error: TagsCreateError | TagByIdPutError | null,
-    variables: TagsCreateVariables | TagByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedTag: TagDetail | undefined, error: TagsCreateError | TagByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
       setRequestError(error.payload.toString());
@@ -559,7 +561,7 @@ function TagDialog(props: TagDialogProps) {
         <DialogContent>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
           <Grid container spacing={1}>
-            <Grid item xs={8}>
+            <Grid size={8}>
               <FormControl fullWidth sx={{marginTop: '14px'}}>
                 <TextFieldElement
                   fullWidth
@@ -589,7 +591,7 @@ function TagDialog(props: TagDialogProps) {
                 />
               </FormControl>
             </Grid>
-            <Grid item xs={4}>
+            <Grid size={4}>
               <FormControl fullWidth sx={{marginTop: '14px'}}>
                 <RadioButtonGroup
                   name="enabled"
@@ -626,7 +628,11 @@ function TagDialog(props: TagDialogProps) {
           <Typography variant="h6" sx={{fontSize: 18}}>
             Constraints
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+            }}>
             Leave a box unchecked or a limit blank to impose nothing.
           </Typography>
 

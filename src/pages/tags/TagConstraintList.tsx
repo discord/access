@@ -65,11 +65,21 @@ function ConstraintEntry({
             />
           )}
         </Box>
-        <Typography variant="body2" color="text.secondary" sx={{whiteSpace: 'nowrap'}}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'text.secondary',
+            whiteSpace: 'nowrap',
+          }}>
           {constraintValue(constraint, value)}
         </Typography>
       </Box>
-      <Typography variant="caption" color="text.secondary" sx={{display: 'block'}}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: 'text.secondary',
+          display: 'block',
+        }}>
         {constraintSummary(constraint, propagateToRoles)}
       </Typography>
       <ConstraintHelpRegion sections={[{paragraphs}]} expanded={help.expanded} regionId={help.regionId} />
@@ -96,7 +106,7 @@ export default function TagConstraintList({
   propagateToRoles,
 }: {
   constraintKeys: string[];
-  constraints: Record<string, any>;
+  constraints: Record<string, number | boolean>;
   propagateToRoles: boolean;
 }) {
   return (

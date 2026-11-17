@@ -79,7 +79,7 @@ export default function ReadTag() {
   const tag = data ?? ({} as TagDetail);
 
   const removeTagFromApp = (appToRemove: AppDetail, tagId: string) => {
-    let app: UpdateAppBody = {
+    const app: UpdateAppBody = {
       name: appToRemove.name,
       description: appToRemove.description,
       tags_to_remove: [tagId],
@@ -92,7 +92,7 @@ export default function ReadTag() {
   };
 
   const removeTagFromGroup = (groupToRemove: GroupDetail, tagId: string) => {
-    let group = {
+    const group = {
       name: groupToRemove.name,
       description: groupToRemove.description,
       type: groupToRemove.type,
@@ -104,10 +104,11 @@ export default function ReadTag() {
         break;
       case 'role_group':
         break;
-      case 'app_group':
+      case 'app_group': {
         const appGroup = group as AppGroupDetail;
         appGroup.app_id = (groupToRemove as AppGroupDetail).app?.id ?? '';
         break;
+      }
     }
 
     updateGroup.mutate({
@@ -137,11 +138,25 @@ export default function ReadTag() {
       <ChangeTitle title={`${tag.name} Tag`} />
       <Container maxWidth="lg" sx={{my: 4}}>
         <Grid container spacing={3}>
-          <Grid item xs={12}>
+          <Grid size={12}>
             <Paper sx={{p: 2}}>
-              <Stack direction="column" gap={2}>
-                <Stack alignItems="center" direction="column" sx={{wordBreak: 'break-word'}} gap={1}>
-                  <Typography variant="h3" textAlign="center">
+              <Stack
+                direction="column"
+                sx={{
+                  gap: 2,
+                }}>
+                <Stack
+                  direction="column"
+                  sx={{
+                    alignItems: 'center',
+                    gap: 1,
+                    wordBreak: 'break-word',
+                  }}>
+                  <Typography
+                    variant="h3"
+                    sx={{
+                      textAlign: 'center',
+                    }}>
                     {tag.name}
                   </Typography>
                   <MarkdownDescription description={tag.description} />
@@ -165,7 +180,11 @@ export default function ReadTag() {
                 {hasActions && (
                   <>
                     <Divider />
-                    <Stack direction="row" justifyContent="center">
+                    <Stack
+                      direction="row"
+                      sx={{
+                        justifyContent: 'center',
+                      }}>
                       <ActionTooltip title="Edit">
                         <CreateUpdateTag currentUser={currentUser} tag={tag} />
                       </ActionTooltip>
@@ -178,10 +197,19 @@ export default function ReadTag() {
               </Stack>
             </Paper>
           </Grid>
-          <Grid item xs={12}>
+          <Grid size={12}>
             <Paper sx={{p: 2}}>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Typography variant="h6" color="text.accent">
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{
+                  alignItems: 'center',
+                }}>
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: 'text.accent',
+                  }}>
                   Constraints
                 </Typography>
                 {constraintsInForce.length > 0 && (
@@ -207,20 +235,29 @@ export default function ReadTag() {
               )}
             </Paper>
           </Grid>
-          <Grid item xs={12}>
+          <Grid size={12}>
             <TableContainer component={Paper}>
               <Table sx={{minWidth: 650}} size="small" aria-label="apps with tag">
                 <TableHead>
                   <TableRow>
                     <TableCell colSpan={2}>
                       <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="text.accent">
+                        <Typography
+                          variant="h6"
+                          sx={{
+                            color: 'text.accent',
+                          }}>
                           Apps with Tag
                         </Typography>
                       </Stack>
                     </TableCell>
                     <TableCell align="right">
-                      <Stack direction="row" spacing={1} justifyContent={'flex-end'}>
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{
+                          justifyContent: 'flex-end',
+                        }}>
                         <AddApps currentUser={currentUser} tag={tag} />
                       </Stack>
                     </TableCell>
@@ -229,7 +266,7 @@ export default function ReadTag() {
                     <TableCell>Name</TableCell>
                     <TableCell colSpan={2}>
                       <Grid container>
-                        <Grid item xs={12}>
+                        <Grid size={12}>
                           <Box
                             sx={{
                               display: 'flex',
@@ -278,20 +315,29 @@ export default function ReadTag() {
               </Table>
             </TableContainer>
           </Grid>
-          <Grid item xs={12}>
+          <Grid size={12}>
             <TableContainer component={Paper}>
               <Table sx={{minWidth: 650}} size="small" aria-label="group owners">
                 <TableHead>
                   <TableRow>
                     <TableCell colSpan={3}>
                       <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="text.accent">
+                        <Typography
+                          variant="h6"
+                          sx={{
+                            color: 'text.accent',
+                          }}>
                           Groups with Tag
                         </Typography>
                       </Stack>
                     </TableCell>
                     <TableCell align="right">
-                      <Stack direction="row" spacing={1} justifyContent={'flex-end'}>
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{
+                          justifyContent: 'flex-end',
+                        }}>
                         <AddGroups currentUser={currentUser} tag={tag} />
                       </Stack>
                     </TableCell>
@@ -301,10 +347,8 @@ export default function ReadTag() {
                     <TableCell>Group Type</TableCell>
                     <TableCell colSpan={2}>
                       <Grid container>
-                        <Grid item xs={3}>
-                          Direct or via App
-                        </Grid>
-                        <Grid item xs={9}>
+                        <Grid size={3}>Direct or via App</Grid>
+                        <Grid size={9}>
                           <Box
                             sx={{
                               display: 'flex',

@@ -30,7 +30,7 @@ import {
 import {PluginConfigProp, PluginStatusProp, PluginInfo} from '../api/apiSchemas';
 
 type PluginData = {
-  [propertyId: string]: any;
+  [propertyId: string]: unknown;
 };
 
 interface AppGroupLifecyclePluginDataProps {
@@ -79,7 +79,7 @@ function PluginDataPropertiesTable({
                 switch (property.type) {
                   case 'date':
                     try {
-                      displayValue = new Date(value).toLocaleString();
+                      displayValue = new Date(value as string | number).toLocaleString();
                     } catch {
                       displayValue = String(value);
                     }
@@ -177,10 +177,14 @@ export default function AppGroupLifecyclePluginData({
               sx={{
                 flexGrow: 0.95,
               }}>
-              <Typography variant="h6" color="text.accent">
+              <Typography
+                variant="h6"
+                sx={{
+                  color: 'text.accent',
+                }}>
                 Associated App Group Lifecycle Plugin: {selectedPlugin.display_name}
               </Typography>
-              <Typography variant="body1" color="grey">
+              <Typography variant="body1" sx={{color: 'grey'}}>
                 {selectedPlugin.description}
               </Typography>
             </Stack>
@@ -196,7 +200,14 @@ export default function AppGroupLifecyclePluginData({
                       <CircularProgress size={24} />
                     </Box>
                   ) : hasConfig || hasStatus ? (
-                    <Stack direction="row" useFlexGap flexWrap={'wrap'} justifyContent={'space-between'} gap={'2rem'}>
+                    <Stack
+                      direction="row"
+                      useFlexGap
+                      sx={{
+                        flexWrap: 'wrap',
+                        justifyContent: 'space-between',
+                        gap: '2rem',
+                      }}>
                       {hasConfig && (
                         <PluginDataPropertiesTable
                           type="Configuration"
@@ -209,7 +220,11 @@ export default function AppGroupLifecyclePluginData({
                       )}
                     </Stack>
                   ) : (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: 'text.secondary',
+                      }}>
                       No configuration or status information available for this plugin.
                     </Typography>
                   )}

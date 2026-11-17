@@ -14,10 +14,8 @@ import TableRow from '@mui/material/TableRow';
 import TableFooter from '@mui/material/TableFooter';
 import TablePagination from '@mui/material/TablePagination';
 import Typography from '@mui/material/Typography';
-import TextField from '@mui/material/TextField';
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
-import Autocomplete from '@mui/material/Autocomplete';
 import {SelectChangeEvent} from '@mui/material/Select';
 
 import dayjs from 'dayjs';
@@ -65,7 +63,7 @@ export default function ListRequests() {
     setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
   }, [searchParams]);
 
-  const {data, error, isLoading} = useAccessRequests({
+  const {data} = useAccessRequests({
     queryParams: Object.assign(
       {page: page + 1, size: rowsPerPage},
       searchQuery == null ? null : {q: searchQuery},
@@ -177,16 +175,24 @@ export default function ListRequests() {
               setSearchInput(newInputValue?.split(';')[0] ?? '');
             }}
             defaultValue={searchQuery}
-            renderOption={(props, option, state) => {
+            renderOption={(props, option) => {
               const [id, displayName, ownership, group, status, resolver] = option.split(';');
               return (
                 <li {...props} key={id}>
-                  <Grid container alignItems="center">
-                    <Grid item>
+                  <Grid
+                    container
+                    sx={{
+                      alignItems: 'center',
+                    }}>
+                    <Grid>
                       <Box>
                         {displayName} {ownership == 'true' ? 'ownership of' : 'membership to'} {group}
                       </Box>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: 'text.secondary',
+                        }}>
                         {status} {status == 'PENDING' || resolver == '' ? '' : 'by ' + resolver}
                       </Typography>
                     </Grid>
@@ -309,15 +315,17 @@ export default function ListRequests() {
                 count={totalRows}
                 rowsPerPage={rowsPerPage}
                 page={page}
-                SelectProps={{
-                  inputProps: {
-                    'aria-label': 'rows per page',
-                  },
-                  native: true,
-                }}
                 onPageChange={handleChangePage}
                 onRowsPerPageChange={handleChangeRowsPerPage}
                 ActionsComponent={TablePaginationActions}
+                slotProps={{
+                  select: {
+                    inputProps: {
+                      'aria-label': 'rows per page',
+                    },
+                    native: true,
+                  },
+                }}
               />
             </TableRow>
           </TableFooter>

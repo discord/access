@@ -5,16 +5,18 @@ import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 
 import {useTheme} from '@mui/material';
+import {useForkRef} from '@mui/material/utils';
 import EventIcon from '@mui/icons-material/Event';
 
 import {Dayjs} from 'dayjs';
 
-import {DatePicker, DatePickerProps} from '@mui/x-date-pickers/DatePicker';
-import {PickersDay, PickersDayProps} from '@mui/x-date-pickers/PickersDay';
-import {UseDateFieldProps} from '@mui/x-date-pickers/DateField';
-import {BaseSingleInputFieldProps, DateValidationError, FieldSection} from '@mui/x-date-pickers/models';
+import {DatePicker, DatePickerFieldProps, DatePickerProps} from '@mui/x-date-pickers/DatePicker';
+import {PickerDay, PickerDayProps} from '@mui/x-date-pickers/PickerDay';
+import {usePickerContext} from '@mui/x-date-pickers/hooks';
 
-function HighlightDay(props: PickersDayProps<Dayjs> & {startDate?: Dayjs; endDate?: Dayjs; rangeSelected: boolean}) {
+function HighlightDay(
+  props: PickerDayProps & {day: Dayjs; startDate?: Dayjs; endDate?: Dayjs; rangeSelected: boolean},
+) {
   const {startDate, endDate, rangeSelected, ...rest} = props;
 
   const theme = useTheme();
@@ -28,16 +30,15 @@ function HighlightDay(props: PickersDayProps<Dayjs> & {startDate?: Dayjs; endDat
 
   // Make sure right start day is selected
   const start = !props.outsideCurrentMonth && props.day.isSame(startDate!, 'day') && rangeSelected;
-  // Get the end day so that the class 'Mui-selected' can be applied (adds the circle around the day)
+  // Get the end day so the range highlight can be drawn up to it
   const end = !props.outsideCurrentMonth && props.day.isSame(endDate!, 'day') && rangeSelected;
 
-  let selectedClass = '';
+  // The picker's own value is the start date, so the end date is marked selected here to draw
+  // the same circle around it.
+  const selected = rest.selected || (rangeSelected && props.day.isSame(endDate!, 'day'));
+
   let style = {};
   let dayStyle = {};
-
-  if (rangeSelected && props.day.isSame(endDate!, 'day')) {
-    selectedClass = 'Mui-selected';
-  }
 
   if (isSelected) {
     style = {backgroundColor: theme.palette.primary.light};
@@ -52,18 +53,12 @@ function HighlightDay(props: PickersDayProps<Dayjs> & {startDate?: Dayjs; endDat
 
   return (
     <Box component={'div'} sx={style} key={props.day.toString()}>
-      <PickersDay className={selectedClass} sx={dayStyle} {...rest} />
+      <PickerDay sx={dayStyle} {...rest} selected={selected} />
     </Box>
   );
 }
 
-// The `false` type argument selects the text-field DOM structure the picker uses by default,
-// which is the one that forwards the `InputProps`/`inputProps` that ButtonField reads below.
-interface ButtonFieldProps
-  extends
-    UseDateFieldProps<Dayjs, false>,
-    BaseSingleInputFieldProps<Dayjs | null, Dayjs, FieldSection, false, DateValidationError> {
-  setOpen?: React.Dispatch<React.SetStateAction<boolean>>;
+interface ButtonFieldProps extends DatePickerFieldProps {
   startDate: Dayjs | null;
   tmpStartDate: Dayjs | null;
   endDate: Dayjs | null;
@@ -71,26 +66,15 @@ interface ButtonFieldProps
 }
 
 function ButtonField(props: ButtonFieldProps) {
-  const {
-    setOpen,
-    startDate,
-    tmpStartDate,
-    endDate,
-    rangeSelected,
-    id,
-    disabled,
-    InputProps: {ref} = {},
-    inputProps: {'aria-label': ariaLabel} = {},
-  } = props;
+  const {startDate, tmpStartDate, endDate, rangeSelected, id} = props;
 
+  // The picker anchors its popper to the element bound to `triggerRef`.
+  const pickerContext = usePickerContext();
+  const ref = useForkRef(pickerContext.triggerRef, pickerContext.rootRef);
   const theme = useTheme();
-  let displayString = '';
-
-  if (rangeSelected) {
-    displayString = startDate?.format('MM/DD/YYYY') + ' - ' + endDate?.format('MM/DD/YYYY');
-  } else {
-    displayString = tmpStartDate?.format('MM/DD/YYYY') + ' - MM/DD/YYYY';
-  }
+  const displayString = rangeSelected
+    ? startDate?.format('MM/DD/YYYY') + ' - ' + endDate?.format('MM/DD/YYYY')
+    : tmpStartDate?.format('MM/DD/YYYY') + ' - MM/DD/YYYY';
 
   return (
     <Box component={'div'} sx={{position: 'relative'}}>
@@ -98,10 +82,9 @@ function ButtonField(props: ButtonFieldProps) {
         variant="outlined"
         size="medium"
         id={id}
-        disabled={disabled}
+        disabled={pickerContext.disabled}
         ref={ref}
-        aria-label={ariaLabel}
-        onClick={() => setOpen?.((prev) => !prev)}
+        onClick={() => pickerContext.setOpen((prev) => !prev)}
         sx={{
           color: theme.palette.text.secondary,
           borderColor: theme.palette.action.disabled,
@@ -133,7 +116,7 @@ function ButtonField(props: ButtonFieldProps) {
   );
 }
 
-interface DateRangeProps extends DatePickerProps<Dayjs> {
+interface DateRangeProps extends DatePickerProps {
   startDate: Dayjs | null;
   endDate: Dayjs | null;
   // Both ends of a completed range are committed in a single call. Callers store the range in
@@ -146,8 +129,6 @@ interface DateRangeProps extends DatePickerProps<Dayjs> {
 }
 
 export default function DateRangePicker(props: DateRangeProps) {
-  const {startDate, endDate, setDateRange, datesPicked, setDatesPicked, value, onChange, ...rest} = props;
-
   const [open, setOpen] = React.useState(false);
   const [tmpStartDate, setTmpStartDate] = React.useState<Dayjs | null>(null);
 
@@ -159,7 +140,7 @@ export default function DateRangePicker(props: DateRangeProps) {
         onClose={() => setOpen(false)}
         onOpen={() => setOpen(true)}
         closeOnSelect={false}
-        onChange={(date: any) => {
+        onChange={(date: Dayjs | null) => {
           props.setDatesPicked(props.datesPicked + 1);
           if (props.datesPicked % 2 !== 0) {
             props.setDateRange(tmpStartDate, date);
@@ -168,23 +149,24 @@ export default function DateRangePicker(props: DateRangeProps) {
           }
         }}
         minDate={tmpStartDate && props.datesPicked % 2 != 0 ? tmpStartDate : undefined}
+        // The picker types its slots against its own props, so the range props the
+        // custom day and field read are cast through the slot types it accepts.
         slots={{
-          day: HighlightDay as any,
-          field: ButtonField as any,
+          day: HighlightDay as React.ElementType<PickerDayProps>,
+          field: ButtonField as React.ElementType<DatePickerFieldProps>,
         }}
         slotProps={{
           day: {
             startDate: props.startDate,
             endDate: props.endDate,
             rangeSelected: props.datesPicked % 2 == 0,
-          } as any,
+          } as Partial<PickerDayProps>,
           field: {
-            setOpen: setOpen,
             startDate: props.startDate,
             tmpStartDate: tmpStartDate,
             endDate: props.endDate,
             rangeSelected: props.datesPicked % 2 == 0,
-          } as any,
+          } as Partial<DatePickerFieldProps>,
         }}
       />
     </Box>
