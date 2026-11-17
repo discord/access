@@ -1,10 +1,7 @@
 import React from 'react';
 
-import {Link as RouterLink, useSearchParams, useNavigate} from 'react-router-dom';
-import Link from '@mui/material/Link';
+import {useSearchParams, useNavigate} from 'react-router-dom';
 
-import Autocomplete from '@mui/material/Autocomplete';
-import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import TagIcon from '@mui/icons-material/Sell';
@@ -16,8 +13,6 @@ import TableFooter from '@mui/material/TableFooter';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
-import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
 
 import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
@@ -51,7 +46,7 @@ export default function ListApps() {
     setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
   }, [searchParams]);
 
-  const {data, error, isLoading} = useApps({
+  const {data} = useApps({
     queryParams: Object.assign({page: page + 1, size: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
   });
 

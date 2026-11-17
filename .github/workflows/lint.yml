@@ -29,6 +29,8 @@ jobs:
         run: npx prettier --check .
       - name: Type check
         run: npm run typecheck
+      - name: Lint
+        run: npm run lint
   python-lint:
     runs-on: ubuntu-22.04
     strategy:

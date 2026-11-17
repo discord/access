@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import {MemoryRouter} from 'react-router-dom';
 import {describe, expect, it} from 'vitest';
 
+import {ConstraintOrigin, EffectiveConstraintDetail} from '../api/apiSchemas';
 import EffectiveConstraints from './EffectiveConstraints';
 import {constraintLabel} from '../constraintCopy';
 
@@ -18,7 +19,7 @@ const timeLimit = {
     {
       tag_id: 't1',
       tag_name: 'SOX',
-      origin: 'member_association',
+      origin: 'member_association' as const,
       source_id: 'g1',
       source_name: 'App-Foo-Admin',
     },
@@ -28,10 +29,10 @@ const timeLimit = {
 const flag = {
   constraint: 'require_member_reason',
   value: true,
-  sources: [{tag_id: 't1', tag_name: 'SOX', origin: 'direct', source_id: null, source_name: null}],
+  sources: [{tag_id: 't1', tag_name: 'SOX', origin: 'direct' as const, source_id: null, source_name: null}],
 };
 
-const renderPanel = (constraints: any[]) =>
+const renderPanel = (constraints: EffectiveConstraintDetail[]) =>
   render(
     <MemoryRouter>
       <EffectiveConstraints constraints={constraints} />
@@ -41,7 +42,7 @@ const renderPanel = (constraints: any[]) =>
 // The panel starts collapsed, and a collapsed accordion keeps its contents out
 // of the accessibility tree. Anything asserted about a row has to be revealed
 // the way a reader reveals it.
-const openPanel = async (constraints: any[]) => {
+const openPanel = async (constraints: EffectiveConstraintDetail[]) => {
   const result = renderPanel(constraints);
   await userEvent.click(screen.getByRole('button', {name: /Effective constraints/}));
   return result;
@@ -79,7 +80,7 @@ describe('EffectiveConstraints', () => {
     await openPanel([
       {
         ...timeLimit,
-        sources: [{...timeLimit.sources[0], origin: 'owner_association', source_name: 'Payments-Config'}],
+        sources: [{...timeLimit.sources[0], origin: 'owner_association' as const, source_name: 'Payments-Config'}],
       },
     ]);
     expect(screen.getByText(/via ownership of/)).toBeInTheDocument();
@@ -90,7 +91,10 @@ describe('EffectiveConstraints', () => {
     // The "source" of an app origin is an App, which lives at a different
     // route; hence the origin-agnostic field names on the API side.
     await openPanel([
-      {...timeLimit, sources: [{...timeLimit.sources[0], origin: 'app', source_id: 'a1', source_name: 'Ledger'}]},
+      {
+        ...timeLimit,
+        sources: [{...timeLimit.sources[0], origin: 'app' as const, source_id: 'a1', source_name: 'Ledger'}],
+      },
     ]);
     expect(screen.getByText(/via app/)).toBeInTheDocument();
     expect(screen.getByRole('link', {name: 'Ledger'})).toHaveAttribute('href', '/apps/Ledger');
@@ -100,7 +104,7 @@ describe('EffectiveConstraints', () => {
     // `active_app` filters soft-deleted apps, so an inherited tag can outlive
     // the app's record. Linking to a name we do not have would be a dead link.
     await openPanel([
-      {...timeLimit, sources: [{...timeLimit.sources[0], origin: 'app', source_id: null, source_name: null}]},
+      {...timeLimit, sources: [{...timeLimit.sources[0], origin: 'app' as const, source_id: null, source_name: null}]},
     ]);
     expect(screen.getByText(/via app/)).toBeInTheDocument();
     expect(screen.queryAllByRole('link')).toHaveLength(1); // the tag only
@@ -134,7 +138,16 @@ describe('EffectiveConstraints', () => {
     await openPanel([
       {
         ...timeLimit,
-        sources: [{tag_id: 't1', tag_name: 'SOX', origin: 'some_future_origin', source_id: null, source_name: null}],
+        sources: [
+          {
+            tag_id: 't1',
+            tag_name: 'SOX',
+            // An origin a newer backend could send that this client's types don't know.
+            origin: 'some_future_origin' as ConstraintOrigin,
+            source_id: null,
+            source_name: null,
+          },
+        ],
       },
     ]);
     expect(screen.getByText(/some_future_origin/)).toBeInTheDocument();

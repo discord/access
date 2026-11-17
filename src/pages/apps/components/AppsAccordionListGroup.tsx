@@ -35,7 +35,7 @@ const OWNER_FETCH_SIZE = 100;
 const MEMBER_PAGE_SIZE = 100;
 
 interface GroupDetailListProps {
-  member_list: any[];
+  member_list: OktaUserGroupMemberDetail[];
   title?: string;
   loading?: boolean;
 }

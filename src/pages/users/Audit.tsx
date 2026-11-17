@@ -14,10 +14,7 @@ import TableRow from '@mui/material/TableRow';
 import TableFooter from '@mui/material/TableFooter';
 import TablePagination from '@mui/material/TablePagination';
 import TableSortLabel from '@mui/material/TableSortLabel';
-import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
-import TextField from '@mui/material/TextField';
-import Autocomplete from '@mui/material/Autocomplete';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import ToggleButton from '@mui/material/ToggleButton';
 
@@ -76,11 +73,7 @@ export default function AuditUser() {
     pathParams: {userId: id ?? ''},
   });
 
-  const {
-    data,
-    error,
-    isLoading: userAuditIsLoading,
-  } = useUsersAndGroups({
+  const {data, isLoading: userAuditIsLoading} = useUsersAndGroups({
     queryParams: Object.assign(
       {user_id: id ?? '', page: page + 1, size: rowsPerPage},
       orderBy == null ? null : {order_by: orderBy},
@@ -113,7 +106,7 @@ export default function AuditUser() {
 
   const searchRows = searchData?.items ?? [];
 
-  const handleSortChange = (property: OrderBy) => (event: React.MouseEvent<unknown>) => {
+  const handleSortChange = (property: OrderBy) => () => {
     const isAsc = orderBy === property && orderDirection === 'asc';
     setSearchParams((params) => {
       params.set('order_by', property);

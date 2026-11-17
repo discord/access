@@ -22,13 +22,7 @@ interface AccessHistoryProps {
   alternativeRoleMappings?: AuditGroupRoleRow[];
 }
 
-export default function AccessHistory({
-  subjectType,
-  subjectName,
-  groupName,
-  auditHistory,
-  alternativeRoleMappings,
-}: AccessHistoryProps) {
+export default function AccessHistory({subjectType, subjectName, groupName, auditHistory}: AccessHistoryProps) {
   const currentAccess = auditHistory.filter(
     (audit) => audit.ended_at == null || (audit.ended_at && new Date(audit.ended_at) > new Date()),
   );
@@ -80,7 +74,7 @@ export default function AccessHistory({
             {`Current Access${currentAccess.length > 0 ? ` (${currentAccess.length} active membership${currentAccess.length !== 1 ? 's' : ''})` : ''}`}
           </Typography>
           <AccessHistoryTable
-            accessEntries={currentAccess as any}
+            accessEntries={currentAccess}
             highlightColor="success"
             showEndedBy={false}
             emptyMessage="No current access"
@@ -98,7 +92,7 @@ export default function AccessHistory({
               {`Past Access${pastAccess.length > 0 ? ` (${pastAccess.length} previous membership${pastAccess.length !== 1 ? 's' : ''})` : ''}`}
             </Typography>
             <AccessHistoryTable
-              accessEntries={pastAccess as any}
+              accessEntries={pastAccess}
               highlightColor="danger"
               showEndedBy={true}
               emptyMessage="No previous access"

@@ -11,12 +11,12 @@ import DeleteIcon from '@mui/icons-material/DeleteForever';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import {useAppByIdDelete, AppByIdDeleteError, AppByIdDeleteVariables} from '../../api/apiComponents';
+import {useAppByIdDelete, AppByIdDeleteError} from '../../api/apiComponents';
 import {AppDetail, DeleteMessage, OktaUserDetail} from '../../api/apiSchemas';
 import {isAccessAdmin, isAppOwnerGroupOwner, ACCESS_APP_RESERVED_NAME} from '../../authorization';
 
 interface AppDialogProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   app: AppDetail;
 }
 
@@ -26,12 +26,7 @@ function AppDialog(props: AppDialogProps) {
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
-  const complete = (
-    deletedApp: DeleteMessage | undefined,
-    error: AppByIdDeleteError | null,
-    variables: AppByIdDeleteVariables,
-    context: any,
-  ) => {
+  const complete = (deletedApp: DeleteMessage | undefined, error: AppByIdDeleteError | null) => {
     setSubmitting(false);
     if (error != null) {
       setRequestError(error.payload.toString());

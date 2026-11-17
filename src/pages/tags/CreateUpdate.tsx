@@ -21,14 +21,7 @@ import Typography from '@mui/material/Typography';
 import {CheckboxElement, FormContainer, RadioButtonGroup, TextFieldElement} from 'react-hook-form-mui';
 import {useWatch} from 'react-hook-form';
 
-import {
-  useTagsCreate,
-  useTagByIdPut,
-  TagsCreateError,
-  TagByIdPutError,
-  TagsCreateVariables,
-  TagByIdPutVariables,
-} from '../../api/apiComponents';
+import {useTagsCreate, useTagByIdPut, TagsCreateError, TagByIdPutError} from '../../api/apiComponents';
 import NumberInput from '../../components/NumberInput';
 import {ConstraintHelpButton, ConstraintHelpRegion, useHelpRegionId} from '../../components/ConstraintHelp';
 import {
@@ -52,7 +45,7 @@ import {isAccessAdmin} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 
 interface TagButtonProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   tag?: TagDetail;
 }
 
@@ -85,7 +78,7 @@ interface CreateTagForm {
 
 interface TagDialogProps {
   currentUser: OktaUserDetail;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   tag?: TagDetail;
 }
 
@@ -484,12 +477,7 @@ function TagDialog(props: TagDialogProps) {
       : undefined;
   const [daysOwner, setDaysOwner] = React.useState<number | undefined>(defaultDaysOwner);
 
-  const complete = (
-    completedTag: TagDetail | undefined,
-    error: TagsCreateError | TagByIdPutError | null,
-    variables: TagsCreateVariables | TagByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedTag: TagDetail | undefined, error: TagsCreateError | TagByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
       setRequestError(error.payload.toString());
