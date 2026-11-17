@@ -48,7 +48,8 @@ class DeleteUser:
         # Create a list of okta asyncio tasks to wait to completion on at the end of this function
         okta_tasks = []
 
-        if user.deleted_at is None:
+        newly_deleted = user.deleted_at is None
+        if newly_deleted:
             user.deleted_at = func.now()
 
         # End all user memberships including group memberships via a role
@@ -118,21 +119,25 @@ class DeleteUser:
 
         await db.session.commit()
 
-        _ctx = get_request_context()
-        logging.getLogger("access.audit").info(
-            AuditLogSchema().dumps(
-                {
-                    "event_type": EventType.user_delete,
-                    "user_agent": _ctx.user_agent if _ctx else None,
-                    "ip": _ctx.ip if _ctx else None,
-                    "current_user_id": current_user_id,
-                    "current_user_email": current_user_email,
-                    "user": audited_user,
-                    "memberships_ended": memberships_ended,
-                    "ownerships_ended": ownerships_ended,
-                }
+        # The syncer also runs this operation on users it deleted earlier who
+        # still hold access. That cleanup gets its own event type so it can't be
+        # read as a second deletion, and is skipped when it ends nothing.
+        if newly_deleted or memberships_ended or ownerships_ended:
+            _ctx = get_request_context()
+            logging.getLogger("access.audit").info(
+                AuditLogSchema().dumps(
+                    {
+                        "event_type": EventType.user_delete if newly_deleted else EventType.deleted_user_access_end,
+                        "user_agent": _ctx.user_agent if _ctx else None,
+                        "ip": _ctx.ip if _ctx else None,
+                        "current_user_id": current_user_id,
+                        "current_user_email": current_user_email,
+                        "user": audited_user,
+                        "memberships_ended": memberships_ended,
+                        "ownerships_ended": ownerships_ended,
+                    }
+                )
             )
-        )
 
         obsolete_access_requests = (
             await db.session.scalars(

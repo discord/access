@@ -45,6 +45,7 @@ class EventType(Enum):
     tag_modify = "TAG_MODIFY"
     tag_delete = "TAG_DELETE"
     user_delete = "USER_DELETE"
+    deleted_user_access_end = "DELETED_USER_ACCESS_END"
     group_unmanage = "GROUP_UNMANAGE"
 
 

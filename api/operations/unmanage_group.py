@@ -126,7 +126,10 @@ class UnmanageGroup:
             )
             await db.session.commit()
 
-        if not dry_run:
+        # The integrity check reruns this operation on every unmanaged group, so
+        # log only when this run ended something.
+        ended_anything = memberships_ended or ownerships_ended or role_memberships_ended or role_ownerships_ended
+        if ended_anything and not dry_run:
             _ctx = get_request_context()
             logging.getLogger("access.audit").info(
                 AuditLogSchema().dumps(
