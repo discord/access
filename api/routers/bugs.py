@@ -18,6 +18,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from starlette.requests import Request
 
+from api.auth.dependencies import CurrentUserId
 from api.config import settings
 
 logger = logging.getLogger(__name__)
@@ -27,8 +28,11 @@ _PLACEHOLDER_DSN = "https://user@example.ingest.sentry.io/1234567"
 
 
 @router.post("/sentry", name="sentry_bug")
-async def post_sentry(request: Request) -> dict[str, str]:
+async def post_sentry(request: Request, _current_user_id: CurrentUserId) -> dict[str, str]:
     """Forwards a Sentry envelope to the configured DSN's tunnel endpoint."""
+    # `_current_user_id` is unused: declaring it makes the route resolve the
+    # caller itself, so it rejects unauthenticated requests even if the
+    # app-wide `require_authenticated` gate is overridden or skipped.
     if settings.ENV in ("development", "test") or not settings.REACT_SENTRY_DSN:
         return {}
 
