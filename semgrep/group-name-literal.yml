@@ -1,0 +1,20 @@
+rules:
+  - id: group-name-literal
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Build group names from the class constants instead of re-typing the literal:
+      `AppGroup.APP_GROUP_NAME_PREFIX`, `AppGroup.APP_NAME_GROUP_NAME_SEPARATOR`,
+      `AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX`, and `RoleGroup.ROLE_GROUP_NAME_PREFIX` in
+      api/models/core_models.py are the single source of truth for the reserved group-name
+      prefixes and suffixes.
+    paths:
+      include:
+        - /api/
+      exclude:
+        - /api/models/core_models.py
+    patterns:
+      - pattern: '"$NAME"'
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: ^(App-|Role-|-?Owners$|.*-Owners$)
