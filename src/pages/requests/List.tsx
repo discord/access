@@ -30,6 +30,7 @@ import TablePaginationActions from '../../components/actions/TablePaginationActi
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import StatusFilter, {StatusFilterValue} from '../../components/StatusFilter';
 import {AccessRequestSummary} from '../../api/apiSchemas';
+import {useSearchInput} from '../../useSearchInput';
 
 dayjs.extend(RelativeTime);
 
@@ -45,7 +46,7 @@ export default function ListRequests() {
   const [statusFilter, setStatusFilter] = React.useState<StatusFilterValue>('ALL');
 
   const [searchQuery, setSearchQuery] = React.useState<string | null>(null);
-  const [searchInput, setSearchInput] = React.useState('');
+  const [searchInput, setSearchInput] = useSearchInput(searchParams);
 
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(20);
@@ -56,9 +57,6 @@ export default function ListRequests() {
     setResolverUserId(searchParams.get('resolver_user_id') ?? null);
     setStatusFilter((searchParams.get('status') as StatusFilterValue) ?? 'ALL');
     setSearchQuery(searchParams.get('q') ?? null);
-    if (searchInput == '') {
-      setSearchInput(searchParams.get('q') ?? '');
-    }
     setPage(parseInt(searchParams.get('page') ?? '0', 10));
     setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
   }, [searchParams]);

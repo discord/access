@@ -127,6 +127,15 @@ function stableIds(ids: (string | undefined | null)[]): string[] {
   return Array.from(new Set(ids.filter((id): id is string => !!id))).sort();
 }
 
+/**
+ * `stableIds(ids)`, memoized on its content so the array keeps its identity
+ * across renders until the set of ids itself changes.
+ */
+function useStableIds(ids: (string | undefined | null)[]): string[] {
+  const key = stableIds(ids).join(',');
+  return React.useMemo(() => (key === '' ? [] : key.split(',')), [key]);
+}
+
 function chunked(ids: string[]): string[][] {
   if (ids.length === 0) return [];
   const out: string[][] = [];
@@ -240,8 +249,9 @@ export function carriedConstraints(constraints: Constraints): EffectiveConstrain
   return reader(constraints ?? undefined, {}, false, null);
 }
 
+/** Fetches constraints for `ids` in capped batches; `ids` must come from `useStableIds`. */
 function useSplitQuery(ids: string[], mode: 'group_ids' | 'tag_ids'): EffectiveConstraintsReader {
-  const batches = React.useMemo(() => chunked(ids), [ids.join(',')]);
+  const batches = React.useMemo(() => chunked(ids), [ids]);
   const results = useQueries({
     queries: batches.map((batch) => effectiveConstraintsQuery({queryParams: {[mode]: batch}})),
   });
@@ -268,7 +278,7 @@ function useSplitQuery(ids: string[], mode: 'group_ids' | 'tag_ids'): EffectiveC
  * larger than the endpoint's cap across several.
  */
 export function useConstraintsForGroups(groupIds: (string | undefined | null)[]): EffectiveConstraintsReader {
-  const ids = React.useMemo(() => stableIds(groupIds), [groupIds.join(',')]);
+  const ids = useStableIds(groupIds);
   return useSplitQuery(ids, 'group_ids');
 }
 
@@ -277,6 +287,6 @@ export function useConstraintsForGroups(groupIds: (string | undefined | null)[])
  * exists yet to ask about — approving a group request.
  */
 export function useConstraintsForTags(tagIds: (string | undefined | null)[]): EffectiveConstraintsReader {
-  const ids = React.useMemo(() => stableIds(tagIds), [tagIds.join(',')]);
+  const ids = useStableIds(tagIds);
   return useSplitQuery(ids, 'tag_ids');
 }

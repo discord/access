@@ -16,6 +16,10 @@ import {deepMerge} from './apiUtils';
  */
 export function useInfiniteAppGroups(appId: string, owner: boolean, q = '', enabled = true) {
   const {fetcherOptions} = useApiContext();
+  // Keyed like the generated hooks' `queryKeyFn`: on the request's path and
+  // query params only. `fetcherOptions` carries transport options (headers),
+  // not anything that selects which data comes back.
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps
   return useInfiniteQuery({
     queryKey: ['appGroups', appId, {owner, q}],
     initialPageParam: 1,

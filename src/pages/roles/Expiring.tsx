@@ -34,6 +34,7 @@ import Started from '../../components/Started';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import {emptyTableRows, displayUserName, perPage} from '../../helpers';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
+import {useSearchInput} from '../../useSearchInput';
 
 type OrderBy = 'moniker' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -47,7 +48,7 @@ export default function ExpiringRoless() {
   const [ownerId, setOwnerId] = React.useState<string | null>(null);
   const [roleOwnerId, setRoleOwnerId] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState<string | null>(null);
-  const [searchInput, setSearchInput] = React.useState('');
+  const [searchInput, setSearchInput] = useSearchInput(searchParams);
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(20);
   const [filterNeedsReview, setFilterNeedsReview] = React.useState<boolean>(true);
@@ -63,9 +64,6 @@ export default function ExpiringRoless() {
     setOwnerId(searchParams.get('owner_id') ?? null);
     setRoleOwnerId(searchParams.get('role_owner_id') ?? null);
     setSearchQuery(searchParams.get('q') ?? null);
-    if (searchInput == '') {
-      setSearchInput(searchParams.get('q') ?? '');
-    }
     setPage(parseInt(searchParams.get('page') ?? '0', 10));
     setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
     setFilterNeedsReview(searchParams.get('needs_review') !== 'false');
