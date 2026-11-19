@@ -21,6 +21,7 @@ from api.services.okta_service import (
     UserSchema,
     _WrapperClient,
     is_managed_group,
+    new_group_profile,
 )
 from tests.factories import UserFactory
 
@@ -88,6 +89,53 @@ def test_is_managed_group_with_allow_discord_access_undefined() -> None:
         # Call the function and assert the expected result
         result = is_managed_group(group, group_ids_with_group_rules, OKTA_GROUP_PROFILE_CUSTOM_ATTR)
         assert result is True
+
+
+def _okta_group_with_type(group_type: str, attr: Any = "unset") -> OktaGroupType:
+    profile: dict[str, Any] = {"name": "n", "description": "d"}
+    if attr != "unset":
+        profile["accessManaged"] = attr
+    group = OktaGroupType.from_dict({"id": "123456789", "type": group_type, "profile": profile})
+    assert group is not None
+    return group
+
+
+@pytest.mark.parametrize(
+    ("attr", "has_rules", "expected"),
+    [
+        ("unset", False, False),  # untagged: unmanaged in opt-in mode
+        (None, False, False),  # attribute present but null
+        (False, False, False),
+        (True, False, True),
+        (True, True, True),  # explicit opt-in overrides group rules, as in opt-out mode
+    ],
+)
+def test_is_managed_group_opt_in(attr: Any, has_rules: bool, expected: bool) -> None:
+    group = _okta_group_with_type("OKTA_GROUP", attr)
+    rules: dict[str, list[OktaGroupRuleType]] = {"123456789": []} if has_rules else {}
+    assert is_managed_group(group, rules, "accessManaged", managed_by_default=False) is expected
+
+
+def test_is_managed_group_opt_in_never_manages_non_okta_groups() -> None:
+    group = _okta_group_with_type("APP_GROUP", True)
+    assert is_managed_group(group, {}, "accessManaged", managed_by_default=False) is False
+
+
+def test_is_managed_group_opt_out_default_unchanged() -> None:
+    group = _okta_group_with_type("OKTA_GROUP")
+    assert is_managed_group(group, {}, "accessManaged", managed_by_default=True) is True
+
+
+def test_new_group_profile_tags_group_in_opt_in_mode() -> None:
+    profile = new_group_profile("g", "d", custom_attr="accessManaged", managed_by_default=False)
+    assert profile.to_dict()["accessManaged"] is True
+
+
+@pytest.mark.parametrize("custom_attr", [None, "accessManaged"])
+def test_new_group_profile_untagged_in_opt_out_mode(custom_attr: str | None) -> None:
+    profile = new_group_profile("g", "d", custom_attr=custom_attr, managed_by_default=True)
+    assert "accessManaged" not in profile.to_dict()
+    assert profile.to_dict()["name"] == "g"
 
 
 async def test_update_group_preserves_custom_attributes() -> None:
