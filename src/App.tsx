@@ -45,6 +45,7 @@ import ListGroupRequests from './pages/group_requests/List';
 import ListRequests from './pages/requests/List';
 import ListRoles from './pages/roles/List';
 import ListRoleRequests from './pages/role_requests/List';
+import ListServicePrincipals from './pages/service_principals/List';
 import ListTags from './pages/tags/List';
 import ListUsers from './pages/users/List';
 import NavItems from './components/NavItems';
@@ -54,6 +55,7 @@ import NotFound from './pages/NotFound';
 import ReadApp from './pages/apps/Read';
 import ReadGroup from './pages/groups/Read';
 import ReadGroupRequest from './pages/group_requests/Read';
+import ReadServicePrincipal from './pages/service_principals/Read';
 import ReadTag from './pages/tags/Read';
 import ReadUser from './pages/users/Read';
 import {useCurrentUser} from './authentication';
@@ -349,6 +351,8 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
             <Route path="/expiring-roles" element={<ExpiringRoles />} />
             <Route path="/tags" element={<ListTags />} />
             <Route path="/tags/:id" element={<ReadTag />} />
+            <Route path="/service-principals" element={<ListServicePrincipals />} />
+            <Route path="/service-principals/:id" element={<ReadServicePrincipal />} />
             <Route path="/role-requests" element={<ListRoleRequests />} />
             <Route path="/role-requests/:id" element={<ReadRoleRequest />} />
             <Route path="/group-requests" element={<ListGroupRequests />} />

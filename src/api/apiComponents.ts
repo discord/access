@@ -3180,6 +3180,327 @@ export const useRoleMembersByIdPut = (
   });
 };
 
+export type ServicePrincipalsQueryParams = {
+  q?: string | null;
+  /**
+   * Page number
+   *
+   * @minimum 1
+   * @default 1
+   */
+  page?: number;
+  /**
+   * Items per page
+   *
+   * @maximum 1000
+   * @minimum 1
+   * @default 50
+   */
+  size?: number;
+};
+
+export type ServicePrincipalsError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type ServicePrincipalsVariables = {
+  queryParams?: ServicePrincipalsQueryParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchServicePrincipals = (variables: ServicePrincipalsVariables, signal?: AbortSignal) =>
+  apiFetch<
+    Schemas.PageTypeVarCustomizedServicePrincipalDetail,
+    ServicePrincipalsError,
+    undefined,
+    {},
+    ServicePrincipalsQueryParams,
+    {}
+  >({url: '/api/service-principals', method: 'get', ...variables, signal});
+
+export function servicePrincipalsQuery(variables: ServicePrincipalsVariables): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedServicePrincipalDetail>;
+};
+
+export function servicePrincipalsQuery(variables: ServicePrincipalsVariables | reactQuery.SkipToken): {
+  queryKey: reactQuery.QueryKey;
+  queryFn:
+    ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedServicePrincipalDetail>) | reactQuery.SkipToken;
+};
+
+export function servicePrincipalsQuery(variables: ServicePrincipalsVariables | reactQuery.SkipToken) {
+  return {
+    queryKey: queryKeyFn({
+      path: '/api/service-principals',
+      operationId: 'servicePrincipals',
+      variables,
+    }),
+    queryFn:
+      variables === reactQuery.skipToken
+        ? reactQuery.skipToken
+        : ({signal}: QueryFnOptions) => fetchServicePrincipals(variables, signal),
+  };
+}
+
+export const useSuspenseServicePrincipals = <TData = Schemas.PageTypeVarCustomizedServicePrincipalDetail>(
+  variables: ServicePrincipalsVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedServicePrincipalDetail, ServicePrincipalsError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useSuspenseQuery<
+    Schemas.PageTypeVarCustomizedServicePrincipalDetail,
+    ServicePrincipalsError,
+    TData
+  >({
+    ...servicePrincipalsQuery(deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export const useServicePrincipals = <TData = Schemas.PageTypeVarCustomizedServicePrincipalDetail>(
+  variables: ServicePrincipalsVariables | reactQuery.SkipToken,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedServicePrincipalDetail, ServicePrincipalsError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.PageTypeVarCustomizedServicePrincipalDetail, ServicePrincipalsError, TData>({
+    ...servicePrincipalsQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export type ServicePrincipalsCreateError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 201>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type ServicePrincipalsCreateVariables = {
+  body: Schemas.CreateServicePrincipalBody;
+} & ApiContext['fetcherOptions'];
+
+export const fetchServicePrincipalsCreate = (variables: ServicePrincipalsCreateVariables, signal?: AbortSignal) =>
+  apiFetch<
+    Schemas.ServicePrincipalDetail,
+    ServicePrincipalsCreateError,
+    Schemas.CreateServicePrincipalBody,
+    {},
+    {},
+    {}
+  >({url: '/api/service-principals', method: 'post', ...variables, signal});
+
+export const useServicePrincipalsCreate = (
+  options?: Omit<
+    reactQuery.UseMutationOptions<
+      Schemas.ServicePrincipalDetail,
+      ServicePrincipalsCreateError,
+      ServicePrincipalsCreateVariables
+    >,
+    'mutationFn'
+  >,
+) => {
+  const {fetcherOptions} = useApiContext();
+  return reactQuery.useMutation<
+    Schemas.ServicePrincipalDetail,
+    ServicePrincipalsCreateError,
+    ServicePrincipalsCreateVariables
+  >({
+    mutationFn: (variables: ServicePrincipalsCreateVariables) =>
+      fetchServicePrincipalsCreate(deepMerge(fetcherOptions, variables)),
+    ...options,
+  });
+};
+
+export type ServicePrincipalByIdPathParams = {
+  servicePrincipalId: string;
+};
+
+export type ServicePrincipalByIdError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type ServicePrincipalByIdVariables = {
+  pathParams: ServicePrincipalByIdPathParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchServicePrincipalById = (variables: ServicePrincipalByIdVariables, signal?: AbortSignal) =>
+  apiFetch<
+    Schemas.ServicePrincipalDetail,
+    ServicePrincipalByIdError,
+    undefined,
+    {},
+    {},
+    ServicePrincipalByIdPathParams
+  >({
+    url: '/api/service-principals/{servicePrincipalId}',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+export function servicePrincipalByIdQuery(variables: ServicePrincipalByIdVariables): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.ServicePrincipalDetail>;
+};
+
+export function servicePrincipalByIdQuery(variables: ServicePrincipalByIdVariables | reactQuery.SkipToken): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.ServicePrincipalDetail>) | reactQuery.SkipToken;
+};
+
+export function servicePrincipalByIdQuery(variables: ServicePrincipalByIdVariables | reactQuery.SkipToken) {
+  return {
+    queryKey: queryKeyFn({
+      path: '/api/service-principals/{servicePrincipalId}',
+      operationId: 'servicePrincipalById',
+      variables,
+    }),
+    queryFn:
+      variables === reactQuery.skipToken
+        ? reactQuery.skipToken
+        : ({signal}: QueryFnOptions) => fetchServicePrincipalById(variables, signal),
+  };
+}
+
+export const useSuspenseServicePrincipalById = <TData = Schemas.ServicePrincipalDetail>(
+  variables: ServicePrincipalByIdVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.ServicePrincipalDetail, ServicePrincipalByIdError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useSuspenseQuery<Schemas.ServicePrincipalDetail, ServicePrincipalByIdError, TData>({
+    ...servicePrincipalByIdQuery(deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export const useServicePrincipalById = <TData = Schemas.ServicePrincipalDetail>(
+  variables: ServicePrincipalByIdVariables | reactQuery.SkipToken,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.ServicePrincipalDetail, ServicePrincipalByIdError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.ServicePrincipalDetail, ServicePrincipalByIdError, TData>({
+    ...servicePrincipalByIdQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export type ServicePrincipalByIdPutPathParams = {
+  servicePrincipalId: string;
+};
+
+export type ServicePrincipalByIdPutError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type ServicePrincipalByIdPutVariables = {
+  body?: Schemas.UpdateServicePrincipalBody;
+  pathParams: ServicePrincipalByIdPutPathParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchServicePrincipalByIdPut = (variables: ServicePrincipalByIdPutVariables, signal?: AbortSignal) =>
+  apiFetch<
+    Schemas.ServicePrincipalDetail,
+    ServicePrincipalByIdPutError,
+    Schemas.UpdateServicePrincipalBody,
+    {},
+    {},
+    ServicePrincipalByIdPutPathParams
+  >({
+    url: '/api/service-principals/{servicePrincipalId}',
+    method: 'put',
+    ...variables,
+    signal,
+  });
+
+export const useServicePrincipalByIdPut = (
+  options?: Omit<
+    reactQuery.UseMutationOptions<
+      Schemas.ServicePrincipalDetail,
+      ServicePrincipalByIdPutError,
+      ServicePrincipalByIdPutVariables
+    >,
+    'mutationFn'
+  >,
+) => {
+  const {fetcherOptions} = useApiContext();
+  return reactQuery.useMutation<
+    Schemas.ServicePrincipalDetail,
+    ServicePrincipalByIdPutError,
+    ServicePrincipalByIdPutVariables
+  >({
+    mutationFn: (variables: ServicePrincipalByIdPutVariables) =>
+      fetchServicePrincipalByIdPut(deepMerge(fetcherOptions, variables)),
+    ...options,
+  });
+};
+
+export type ServicePrincipalByIdDeletePathParams = {
+  servicePrincipalId: string;
+};
+
+export type ServicePrincipalByIdDeleteError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type ServicePrincipalByIdDeleteVariables = {
+  pathParams: ServicePrincipalByIdDeletePathParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchServicePrincipalByIdDelete = (variables: ServicePrincipalByIdDeleteVariables, signal?: AbortSignal) =>
+  apiFetch<
+    Schemas.DeleteMessage,
+    ServicePrincipalByIdDeleteError,
+    undefined,
+    {},
+    {},
+    ServicePrincipalByIdDeletePathParams
+  >({
+    url: '/api/service-principals/{servicePrincipalId}',
+    method: 'delete',
+    ...variables,
+    signal,
+  });
+
+export const useServicePrincipalByIdDelete = (
+  options?: Omit<
+    reactQuery.UseMutationOptions<
+      Schemas.DeleteMessage,
+      ServicePrincipalByIdDeleteError,
+      ServicePrincipalByIdDeleteVariables
+    >,
+    'mutationFn'
+  >,
+) => {
+  const {fetcherOptions} = useApiContext();
+  return reactQuery.useMutation<
+    Schemas.DeleteMessage,
+    ServicePrincipalByIdDeleteError,
+    ServicePrincipalByIdDeleteVariables
+  >({
+    mutationFn: (variables: ServicePrincipalByIdDeleteVariables) =>
+      fetchServicePrincipalByIdDelete(deepMerge(fetcherOptions, variables)),
+    ...options,
+  });
+};
+
 export type TagsQueryParams = {
   q?: string | null;
   /**
@@ -3807,6 +4128,16 @@ export type QueryOperation =
       path: '/api/roles/{roleId}/members';
       operationId: 'roleMembersById';
       variables: RoleMembersByIdVariables | reactQuery.SkipToken;
+    }
+  | {
+      path: '/api/service-principals';
+      operationId: 'servicePrincipals';
+      variables: ServicePrincipalsVariables | reactQuery.SkipToken;
+    }
+  | {
+      path: '/api/service-principals/{servicePrincipalId}';
+      operationId: 'servicePrincipalById';
+      variables: ServicePrincipalByIdVariables | reactQuery.SkipToken;
     }
   | {
       path: '/api/tags';

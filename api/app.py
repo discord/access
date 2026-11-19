@@ -475,6 +475,7 @@ def create_app(testing: bool | None = False) -> FastAPI:
         plugins,
         role_requests,
         roles,
+        service_principals,
         tags,
         users,
     )
@@ -490,6 +491,7 @@ def create_app(testing: bool | None = False) -> FastAPI:
     app.include_router(plugins.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(role_requests.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(roles.router, responses=DEFAULT_ERROR_RESPONSES)
+    app.include_router(service_principals.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(tags.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(users.router, responses=DEFAULT_ERROR_RESPONSES)
 
