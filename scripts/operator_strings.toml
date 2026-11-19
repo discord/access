@@ -56,7 +56,7 @@ reason = "Test fixtures exercise the patterns"
 [[allow]]
 paths = ["*"]
 patterns = ["operator-name"]
-match = 'discord/access\b'
+match = 'discord/access(?![\w-])'
 reason = "The repository's own GitHub slug, used in links and issue references"
 
 [[allow]]

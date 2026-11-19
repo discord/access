@@ -27,7 +27,7 @@ reason = "sanctioned"
 [[allow]]
 paths = ["*"]
 patterns = ["operator-name"]
-match = 'discord/access\\b'
+match = 'discord/access(?![\\w-])'
 reason = "repo slug"
 """
 
@@ -67,6 +67,11 @@ def test_allowlist_covers_only_its_own_span() -> None:
     hits, _ = scan({"README.md": "see github.com/discord/access and discord-access-prd\n"})
     assert sorted(h.pattern_id for h in hits) == ["operator-name", "release-pipeline"]
     assert all("discord-access-prd" in h.text for h in hits)
+
+
+def test_repo_slug_allowlist_does_not_cover_longer_repo_names() -> None:
+    hits, _ = scan({"README.md": "github.com/discord/access#1\ngithub.com/discord/access-tools\n"})
+    assert [h.line_number for h in hits] == [2]
 
 
 def test_allowlist_is_scoped_to_its_patterns() -> None:
