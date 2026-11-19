@@ -41,6 +41,7 @@ from api.operations import (
     ModifyGroupType,
     ModifyGroupUsers,
 )
+from api.operations._app_tag_inheritance import inherit_app_tags
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.pagination import Page, validated
 from api.plugins.app_group_lifecycle import validate_group_plugin_config_or_raise
@@ -340,6 +341,10 @@ async def put_group(
     if body.tags_to_remove and len(body.tags_to_remove) > 0 and not await is_access_admin(db, current_user_id):
         raise HTTPException(403, "Current user is not an Access Admin and not allowed to remove tags from this group")
 
+    # The app a same-type rebind moves the group to, so its tags can be inherited once the
+    # rebind is committed.
+    rebound_app_id: str | None = None
+
     # Prevent rebinding an AppGroup to a different app without owning the
     # target app. Access admins can always rebind. Apply the rebind here when
     # the group type isn't also changing — type-change rebinds are wired into
@@ -370,6 +375,7 @@ async def put_group(
             # the same non-null value — assigning it keeps `app_id: Mapped[str]`
             # non-optional.
             group.app_id = target_app.id
+            rebound_app_id = target_app.id
 
     tags_to_add = body.tags_to_add or []
     tags_to_remove = body.tags_to_remove or []
@@ -515,6 +521,9 @@ async def put_group(
         config_changed = plugin_op.config_changed
     else:
         await db.commit()  # nosemgrep: router-direct-db-write
+
+    if rebound_app_id is not None:
+        await inherit_app_tags(group.id, rebound_app_id)
 
     # Fire exactly one app group lifecycle hook for the whole PUT, after every field is applied so
     # the plugin observes the final state. The per-operation fires of ModifyGroupDetails,
