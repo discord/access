@@ -8,7 +8,6 @@ from api.context import get_request_context
 from api.extensions import db
 from api.models import (
     AppGroup,
-    AppTagMap,
     OktaGroup,
     OktaGroupTagMap,
     OktaUser,
@@ -16,9 +15,9 @@ from api.models import (
     RoleGroup,
     RoleGroupMap,
 )
+from api.operations._app_tag_inheritance import inherit_app_tags
 from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.operations.modify_group_users import ModifyGroupUsers
-from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
 from api.operations.modify_role_groups import ModifyRoleGroups
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecycleHook,
@@ -258,34 +257,7 @@ class ModifyGroupType:
 
             # Add all app tags to this new app group, after we've updated the group type
             if type(self.group_changes) is AppGroup:
-                app_tag_maps = (
-                    await db.session.scalars(
-                        select(AppTagMap)
-                        .options(joinedload(AppTagMap.active_tag))
-                        .where(
-                            or_(
-                                AppTagMap.ended_at.is_(None),
-                                AppTagMap.ended_at > func.now(),
-                            )
-                        )
-                        .where(
-                            AppTagMap.app_id == self.group_changes.app_id,
-                        )
-                    )
-                ).all()
-                for app_tag_map in app_tag_maps:
-                    db.session.add(
-                        OktaGroupTagMap(
-                            tag_id=app_tag_map.tag_id,
-                            group_id=group_id,
-                            app_tag_map_id=app_tag_map.id,
-                        )
-                    )
-
-                # Handle group time limit constraints when adding tags with time limit contraints to a group
-                await ModifyGroupsTimeLimit(
-                    groups=[group_id], tags=[tag_map.active_tag.id for tag_map in app_tag_maps]
-                ).execute()
+                await inherit_app_tags(group_id, self.group_changes.app_id)
 
             # Return a new lookup for the group
             group = (
