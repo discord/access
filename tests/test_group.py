@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Protocol, cast
 from unittest.mock import Mock
@@ -40,6 +40,7 @@ from tests.factories import (
     OktaUserFactory,
     OktaUserGroupMemberFactory,
     RoleGroupFactory,
+    TagFactory,
 )
 from tests.helpers import db_count
 from tests.request_factories import (
@@ -474,6 +475,90 @@ async def test_put_app_group_rebind_authorization(
     rep = await client.put(group_url, json=rebind_data)
     assert rep.status_code == 200
     assert rep.json()["app_id"] == target_app_id
+
+
+async def test_put_app_group_rebind_replaces_app_tags(
+    client: AsyncClient,
+    db: Db,
+    mocker: MockerFixture,
+    app_group: AppGroup,
+    user: OktaUser,
+    url_for: Any,
+) -> None:
+    """Rebinding an app group swaps its app-inherited tags and leaves group-level tags alone."""
+    member_time_limit = 86400
+    source_app = AppFactory.build()
+    target_app = AppFactory.build()
+    source_tag = TagFactory.build()
+    target_tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: member_time_limit})
+    group_tag = TagFactory.build()
+    app_group.app_id = source_app.id
+    app_group.name = f"{AppGroup.APP_GROUP_NAME_PREFIX}{source_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Thing"
+    db.session.add_all([source_app, target_app, source_tag, target_tag, group_tag, app_group, user])
+    await db.session.commit()
+
+    source_app_tag_map = AppTagMapFactory.build(app_id=source_app.id, tag_id=source_tag.id)
+    target_app_tag_map = AppTagMapFactory.build(app_id=target_app.id, tag_id=target_tag.id)
+    db.session.add_all([source_app_tag_map, target_app_tag_map])
+    await db.session.commit()
+    db.session.add_all(
+        [
+            OktaGroupTagMapFactory.build(
+                group_id=app_group.id, tag_id=source_tag.id, app_tag_map_id=source_app_tag_map.id
+            ),
+            OktaGroupTagMapFactory.build(group_id=app_group.id, tag_id=group_tag.id),
+        ]
+    )
+    await db.session.commit()
+
+    # Captured because the PUT below commits and expires the shared session.
+    app_group_id = app_group.id
+    user_id = user.id
+    source_tag_id = source_tag.id
+    target_tag_id = target_tag.id
+    group_tag_id = group_tag.id
+    target_app_id = target_app.id
+    target_app_tag_map_id = target_app_tag_map.id
+    target_app_name = target_app.name
+
+    await ModifyGroupUsers(group=app_group_id, members_to_add=[user_id], sync_to_okta=False).execute()
+
+    mocker.patch.object(okta, "update_group")
+    group_url = url_for("api-groups.group_by_id", group_id=app_group_id)
+    rep = await client.put(
+        group_url,
+        json={
+            "type": "app_group",
+            "name": f"{AppGroup.APP_GROUP_NAME_PREFIX}{target_app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Thing",
+            "app_id": target_app_id,
+        },
+    )
+    assert rep.status_code == 200, rep.text
+    assert rep.json()["app_id"] == target_app_id
+
+    active_tag_maps = (
+        await db.session.scalars(
+            select(OktaGroupTagMap)
+            .where(OktaGroupTagMap.group_id == app_group_id)
+            .where(or_(OktaGroupTagMap.ended_at.is_(None), OktaGroupTagMap.ended_at > func.now()))
+        )
+    ).all()
+    tag_map_ids_by_tag = {m.tag_id: m.app_tag_map_id for m in active_tag_maps}
+    assert tag_map_ids_by_tag == {target_tag_id: target_app_tag_map_id, group_tag_id: None}
+    assert source_tag_id not in tag_map_ids_by_tag
+
+    # The new app's member time limit caps the membership granted before the rebind.
+    membership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == app_group_id)
+            .where(OktaUserGroupMember.user_id == user_id)
+            .where(OktaUserGroupMember.is_owner.is_(False))
+            .where(or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > func.now()))
+        )
+    ).one()
+    assert membership.ended_at is not None
+    assert membership.ended_at <= datetime.now(UTC).replace(tzinfo=None) + timedelta(seconds=member_time_limit)
 
 
 async def test_put_group_members(
