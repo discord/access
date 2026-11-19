@@ -4,7 +4,8 @@
 #
 # Needs no secrets and only read access, so it runs the same on forked PRs. It
 # writes its report to the job summary rather than a PR comment, since a
-# forked PR's token cannot comment.
+# forked PR's token cannot comment. On a repository where dependency review is
+# not enabled, the job passes with a notice instead of failing.
 name: Dependency review
 
 on:
@@ -21,7 +22,35 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Dependency review needs the dependency graph, and on a private
+      # repository GitHub Code Security as well. Where it is unavailable the
+      # comparison API answers 403, or 404 on a private repository whose
+      # dependency graph is off, and the action would fail every PR. So ask the
+      # same API first and skip the review there with a notice. A public
+      # repository always has the dependency graph, so a 404 there is a real
+      # error; it and any other error leave the review to run and report it.
+      - name: Check that dependency review is available
+        id: availability
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_IS_PRIVATE: ${{ github.event.repository.private }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          errors="$RUNNER_TEMP/dependency-graph-compare.err"
+          if gh api --silent "repos/$REPOSITORY/dependency-graph/compare/$BASE_SHA...$HEAD_SHA" 2> "$errors"; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          elif grep --quiet "HTTP 403" "$errors" \
+            || { [ "$REPOSITORY_IS_PRIVATE" = "true" ] && grep --quiet "HTTP 404" "$errors"; }; then
+            echo "::notice::Skipping dependency review: it is not enabled for this repository. It needs the dependency graph, and GitHub Code Security on a private repository."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            cat "$errors" >&2
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
       - id: review
+        if: ${{ steps.availability.outputs.available == 'true' }}
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           config-file: ./.github/dependency-review-config.yml
