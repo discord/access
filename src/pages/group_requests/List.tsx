@@ -14,10 +14,8 @@ import TableRow from '@mui/material/TableRow';
 import TableFooter from '@mui/material/TableFooter';
 import TablePagination from '@mui/material/TablePagination';
 import Typography from '@mui/material/Typography';
-import TextField from '@mui/material/TextField';
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
-import Autocomplete from '@mui/material/Autocomplete';
 import {SelectChangeEvent} from '@mui/material/Select';
 
 import dayjs from 'dayjs';
@@ -31,7 +29,8 @@ import {emptyTableRows, displayUserName, perPage} from '../../helpers';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import StatusFilter, {StatusFilterValue} from '../../components/StatusFilter';
-import {OktaUserGroupMemberDetail, GroupRequestDetail} from '../../api/apiSchemas';
+import {GroupRequestDetail} from '../../api/apiSchemas';
+import {useSearchInput} from '../../useSearchInput';
 
 dayjs.extend(RelativeTime);
 
@@ -47,7 +46,7 @@ export default function ListGroupRequests() {
   const [statusFilter, setStatusFilter] = React.useState<StatusFilterValue>('ALL');
 
   const [searchQuery, setSearchQuery] = React.useState<string | null>(null);
-  const [searchInput, setSearchInput] = React.useState('');
+  const [searchInput, setSearchInput] = useSearchInput(searchParams);
 
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(20);
@@ -58,14 +57,11 @@ export default function ListGroupRequests() {
     setResolverUserId(searchParams.get('resolver_user_id') ?? null);
     setStatusFilter((searchParams.get('status') as StatusFilterValue) ?? 'ALL');
     setSearchQuery(searchParams.get('q') ?? null);
-    if (searchInput == '') {
-      setSearchInput(searchParams.get('q') ?? '');
-    }
     setPage(parseInt(searchParams.get('page') ?? '0', 10));
     setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
   }, [searchParams]);
 
-  const {data, error, isLoading} = useGroupRequests({
+  const {data} = useGroupRequests({
     queryParams: Object.assign(
       {page: page + 1, size: rowsPerPage},
       searchQuery == null ? null : {q: searchQuery},
@@ -175,7 +171,7 @@ export default function ListGroupRequests() {
               setSearchInput(newInputValue?.split(';')[0] ?? '');
             }}
             defaultValue={searchQuery}
-            renderOption={(props, option, state) => {
+            renderOption={(props, option) => {
               const [id, displayName, group_name, status, resolver] = option.split(';');
               return (
                 <li {...props} key={id}>

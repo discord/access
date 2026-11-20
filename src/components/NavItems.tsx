@@ -20,12 +20,10 @@ import RequestFromMe from '@mui/icons-material/AssignmentInd';
 import RequestToMe from '@mui/icons-material/AssignmentReturn';
 import RequestAll from '@mui/icons-material/Assignment';
 import ExpiringGroupsIcon from '@mui/icons-material/RunningWithErrors';
-import ExpiringRolesIcon from '@mui/icons-material/HeartBroken';
 import ExpiringMyAccess from '@mui/icons-material/AccountBox';
 import ExpiringOwnedByMe from '@mui/icons-material/AccountTree';
 import ExpiringRolesOwnedByMe from '@mui/icons-material/HowToReg';
 import ExpiringAll from '@mui/icons-material/SwitchAccount';
-import RoleRequestIcon from '@mui/icons-material/WorkHistory';
 import GroupRequestIcon from '@mui/icons-material/GroupAdd';
 
 interface ListItemLinkProps extends ListItemProps {
@@ -55,7 +53,7 @@ function ListItemLink(props: ListItemLinkProps) {
   );
 
   return (
-    <ListItem component={RouterLink as any} to={to} {...other}>
+    <ListItem component={RouterLink} to={to} {...other}>
       {tooltip ? (
         <Tooltip title={tooltip} placement="right" enterDelay={400}>
           {button}

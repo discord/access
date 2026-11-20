@@ -16,9 +16,9 @@ import {pluginConfigRows} from './pluginConfig';
 
 interface PluginConfigDisplayProps {
   pluginId: string;
-  configuration: Record<string, any>;
+  configuration: Record<string, unknown>;
   /** Prior config to diff against (e.g. requested, when showing the applied config). */
-  previousConfiguration?: Record<string, any> | null;
+  previousConfiguration?: Record<string, unknown> | null;
   /** Optional heading rendered above the values (e.g. "Plugin Configuration"). */
   label?: string;
 }

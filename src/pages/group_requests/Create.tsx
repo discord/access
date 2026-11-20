@@ -28,23 +28,19 @@ import {
   useAppById,
   useTags,
   GroupRequestsCreateError,
-  GroupRequestsCreateVariables,
 } from '../../api/apiComponents';
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
 import TagsField, {inheritedAppTags} from './TagsField';
 import {
   AppDetail,
-  AppGroupDetail,
   AppSummary,
   OktaUserDetail,
-  GroupDetail,
   GroupRequestDetail,
   GroupSummary,
   TagListItem,
 } from '../../api/apiSchemas';
 import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
-import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
@@ -205,12 +201,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
-  const complete = (
-    completedRequest: GroupRequestDetail | undefined,
-    error: GroupRequestsCreateError | null,
-    variables: GroupRequestsCreateVariables,
-    context: any,
-  ) => {
+  const complete = (completedRequest: GroupRequestDetail | undefined, error: GroupRequestsCreateError | null) => {
     setSubmitting(false);
     if (error != null) {
       setRequestError(error.payload.toString());
@@ -322,7 +313,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     }
     const groupName = requestedGroupName(formData.type, formData.name, selectedApp, detectedApp);
 
-    const requestedPluginData = extractRequestedPluginData(formData as any);
+    const requestedPluginData = extractRequestedPluginData(formData);
 
     const body = {
       requested_group_name: groupName,

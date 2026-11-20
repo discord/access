@@ -36,6 +36,15 @@ make ty        # uv run ty check .  — don't skip; type annotations are load-be
 Ruff and ty are configured in `pyproject.toml` (`[tool.ruff]`, `[tool.ty.*]`); pytest config is
 in `[tool.pytest.ini_options]` (`asyncio_mode = "auto"`, since the suite is async).
 
+Beyond ruff's defaults, the lint rules enforce several conventions from `.claude/CLAUDE.md`:
+`G004` (parameterized logging, for Sentry grouping), `ASYNC` and `RUF006` (blocking calls in
+`async def`, and unreferenced `asyncio` tasks), `B`, and bandit's `S` checks except `S101`.
+`examples/plugins/ruff.toml` extends the root config and bans plugin imports of
+`api.operations`, `api.services`, `api.database`, and `api.extensions`, which keeps plugins on
+the plugin interface. A suppression is a targeted `# noqa: <code> - <reason>`, never a bare
+`noqa`. Mechanical reformatting commits are listed in `.git-blame-ignore-revs`; to skip them in
+a local `git blame`, run `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
+
 The pytest suite runs against **in-memory SQLite** by default (`sqlite+aiosqlite://`,
 built from the models via `Base.metadata.create_all`, not migrations). To run against Postgres,
 set `TEST_DATABASE_URI`, or use `make pytest-postgres`, which boots a disposable `postgres:16`
@@ -43,6 +52,48 @@ container. CI runs the suite twice — SQLite then Postgres.
 
 Test data is created via factories in `tests/factories.py`. Don't write raw ORM inserts in
 tests — use factories.
+
+## Changed-line coverage gate
+
+Every PR must cover at least **90%** of the Python lines it changes, or the `python-test` job in
+`ci.yml` fails. The gate measures only the lines the PR touches, not the repo total, so it never
+asks an author to backfill tests for code they didn't change.
+
+How it works: both pytest runs (SQLite, then Postgres) record coverage with `pytest-cov` into one
+data file, so a line exercised on only one engine counts. `diff-cover` then compares that against
+`git diff origin/<base>...HEAD` (the PR's own changes since it branched).
+
+- **What is measured** — `api/` and `examples/plugins/` (`[tool.coverage.run] source` in
+  `pyproject.toml`). The example plugins count because they run in the default pytest scope and are
+  the code operators copy. Tests, `migrations/` (covered by the `db-migrations.yml` workflow, not
+  pytest), and every non-Python file are ignored, so a PR touching none of `api/` or
+  `examples/plugins/` passes with "No lines with coverage information in this diff."
+- **Renames and moves** — `git diff` detects renames, so a pure rename or a file move adds no
+  changed lines. Whitespace-only changes (re-indenting a block) are ignored too. Code moved *within
+  or between files* still shows as added lines, so moving an untested function makes it count.
+- **Threshold** — `[tool.diff_cover] fail_under` in `pyproject.toml`. 90 rather than 100 leaves room
+  for the odd defensive branch that's not worth a test; anything lower lets a PR land with a whole
+  untested branch. `if TYPE_CHECKING:`, `@overload`, and `raise NotImplementedError` are excluded
+  (`[tool.coverage.report] exclude_also`).
+- **Escape hatch** — a `# pragma: no cover` comment excludes a line or block. Use it for genuinely
+  unreachable code, not to dodge a test; it shows up in review either way.
+
+**Reading the report.** The job summary of the `python-test` run (the run's **Summary** page)
+carries a "Diff Coverage" table: one row per changed measured file, with its percentage and the
+line numbers that never ran. The same uncovered lines are annotated as warnings on the PR's
+**Files changed** tab, and the step log prints them too. A line listed there is one no test
+executed; write a test that reaches it, or remove the line if nothing can.
+
+To check before pushing (against the SQLite suite only; includes uncommitted changes):
+
+```bash
+make diff-cover                                   # compares against origin/main
+make diff-cover COMPARE_BRANCH=origin/my-base     # a stacked branch's base
+```
+
+The frontend has no coverage gate. Its vitest suites cover a handful of helpers and forms, not page
+rendering, so a changed-line gate there would block most UI PRs on scaffolding the suite doesn't
+have yet (query-client, router, and theme providers for component tests).
 
 Frontend tests are vitest + React Testing Library: `npm test` watches, `npx vitest run` is the
 one-shot CI form. Coverage is partial — a handful of suites under `src/`, concentrated on pure
@@ -53,6 +104,15 @@ and add a suite alongside a change rather than assuming one exists to update.
 package in `package-lock.json` doesn't support; CI runs it in the `node-lint` job. When a
 dependency bump raises its own floor, narrow `engines.node` to the versions every package
 supports, then refresh the lockfile's root metadata with the npm version CI pins.
+
+## Visual diff
+
+tsc and vitest don't render pages. Before opening a PR that upgrades a frontend dependency (MUI,
+MUI X, React, React Router, Emotion) or changes layout, theming, or a shared component, run
+`npm run visual-diff`. It renders every page on the branch and on its merge base with
+`origin/main`, then lists the pages whose screenshots changed and the errors only the branch has.
+`scripts/visual-diff/README.md` covers its output, how it isolates the two sides, and what to
+update when pages or models change.
 
 ## The generated API client must not drift
 
@@ -96,6 +156,21 @@ here), and verifies the newest migration is reversible (`alembic downgrade -1` t
 So a new migration must apply cleanly on both engines and ship a working `downgrade()`.
 Dialect-specific DDL (e.g. Postgres native enum types, which don't exist on SQLite) must guard
 on `op.get_bind().dialect.name`.
+
+On the Postgres leg, CI also renders each migration the PR adds or changes to SQL offline and
+lints it with [squawk](https://squawkhq.com) against `.squawk.toml`. Rules that only guard lock
+duration on large tables, or that restate conventions the models already set, are off, each with
+its reason in that file. What stays on catches DDL that fails against populated tables (which a
+from-empty `upgrade head` never shows) and changes that break the previous release during a
+rolling deploy. To run it locally:
+
+```bash
+uv venv /tmp/squawk && uv pip install --python /tmp/squawk --require-hashes --only-binary :all: --requirement .github/requirements/squawk.txt
+PATH="/tmp/squawk/bin:$PATH" uv run python .github/scripts/squawk_migrations.py --base origin/main
+```
+
+A warning that is understood and accepted is silenced from the migration itself with a
+`# squawk-ignore-file <rule>, ...` comment, so the justification sits beside the code.
 
 ## Okta sandbox
 

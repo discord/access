@@ -1,9 +1,7 @@
 import React from 'react';
 
-import {Link as RouterLink, useSearchParams, useNavigate} from 'react-router-dom';
-import Link from '@mui/material/Link';
+import {useSearchParams, useNavigate} from 'react-router-dom';
 
-import Autocomplete from '@mui/material/Autocomplete';
 import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import TagIcon from '@mui/icons-material/Sell';
@@ -15,7 +13,6 @@ import TableFooter from '@mui/material/TableFooter';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
-import TextField from '@mui/material/TextField';
 
 import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
@@ -27,6 +24,7 @@ import TablePaginationActions from '../../components/actions/TablePaginationActi
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import LinkTableRow from '../../components/LinkTableRow';
 import MarkdownDescription from '../../components/MarkdownDescription';
+import {useSearchInput} from '../../useSearchInput';
 
 export default function ListGroups() {
   const navigate = useNavigate();
@@ -35,21 +33,18 @@ export default function ListGroups() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [searchQuery, setSearchQuery] = React.useState<string | null>(null);
-  const [searchInput, setSearchInput] = React.useState('');
+  const [searchInput, setSearchInput] = useSearchInput(searchParams);
 
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(20);
 
   React.useEffect(() => {
     setSearchQuery(searchParams.get('q') ?? null);
-    if (searchInput == '') {
-      setSearchInput(searchParams.get('q') ?? '');
-    }
     setPage(parseInt(searchParams.get('page') ?? '0', 10));
     setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
   }, [searchParams]);
 
-  const {data, error, isLoading} = useGroups({
+  const {data} = useGroups({
     queryParams: Object.assign({page: page + 1, size: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
   });
 

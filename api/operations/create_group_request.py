@@ -1,5 +1,5 @@
 import logging
-import random
+import secrets
 import string
 from datetime import datetime
 
@@ -97,7 +97,8 @@ class CreateGroupRequest:
 
             if app is None:
                 return None
-            if not self.requested_group_name.startswith(f"App-{app.name}-"):
+            app_group_prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+            if not self.requested_group_name.startswith(app_group_prefix):
                 return None
 
         # Validate tags exist and load them
@@ -249,4 +250,4 @@ class CreateGroupRequest:
 
     def __generate_id(self) -> str:
         """Generate a random 20 character ID like Okta IDs"""
-        return "".join(random.choices(string.ascii_letters + string.digits, k=20))
+        return "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(20))

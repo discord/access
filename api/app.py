@@ -231,7 +231,7 @@ def _configure_sentry() -> None:
     from api.auth.dependencies import OIDCRedirectRequired
 
     sentry_profile_env_var = environ.get("ENABLE_SENTRY_PROFILER", "0")
-    logger.info(f"ENABLE_SENTRY_PROFILER: {sentry_profile_env_var}")
+    logger.info("ENABLE_SENTRY_PROFILER: %s", sentry_profile_env_var)
     sentry_sdk.init(
         dsn=settings.FASTAPI_SENTRY_DSN,
         integrations=[StarletteIntegration(), FastApiIntegration()],
@@ -534,7 +534,7 @@ def create_app(testing: bool | None = False) -> FastAPI:
                 candidate = (BUILD_DIR / spa_path).resolve()
                 candidate.relative_to(build_dir_resolved)
             except (ValueError, OSError):
-                raise HTTPException(status_code=404, detail="Not Found")
+                raise HTTPException(status_code=404, detail="Not Found") from None
             if candidate.is_file():
                 if spa_path.startswith("assets/"):
                     # Vite content-hashes this directory's filenames, so a
