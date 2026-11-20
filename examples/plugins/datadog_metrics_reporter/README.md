@@ -1,6 +1,6 @@
-# Discord Access Datadog Metrics Plugin
+# Access Datadog Metrics Plugin
 
-This plugin integrates Discord access metrics with Datadog, allowing users to track and monitor access request patterns, approval rates, and system health metrics.
+This plugin integrates Access metrics with Datadog, allowing users to track and monitor access request patterns, approval rates, and system health metrics.
 
 ## Installation
 
