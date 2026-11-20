@@ -406,10 +406,11 @@ export default function Home() {
 
   const [openDialog, setOpenDialog] = React.useState<'access' | 'role' | 'group' | null>(null);
 
-  const [now, inOneWeek, inTwoDays] = React.useMemo(() => {
-    const t = Math.floor(Date.now() / 1000);
-    return [t, t + 7 * 24 * 60 * 60, t + 2 * 24 * 60 * 60];
-  }, []);
+  // Read the clock once, on mount, so the expiring-access queries below keep
+  // a stable key across renders.
+  const [now] = React.useState(() => Math.floor(Date.now() / 1000));
+  const inOneWeek = now + 7 * 24 * 60 * 60;
+  const inTwoDays = now + 2 * 24 * 60 * 60;
 
   const {data: accessRequestsData} = useAccessRequests({
     queryParams: {assignee_user_id: '@me', status: 'PENDING', page: 1, size: 1},
@@ -504,24 +505,22 @@ export default function Home() {
 
   const cardRef = React.useRef<HTMLDivElement>(null);
   const [cardWidth, setCardWidth] = React.useState(0);
-  const lockedSectionWidth = React.useRef(0);
+  // The per-section width, locked from the card's first non-zero measurement
+  // of the initial 5-section layout.
+  const [sectionW, setSectionW] = React.useState(0);
 
   React.useEffect(() => {
     const el = cardRef.current;
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       const w = entry.contentRect.width;
-      if (lockedSectionWidth.current === 0 && w > 0) {
-        // Lock the per-section width based on the initial 5-section layout
-        lockedSectionWidth.current = w / INITIAL_SECTIONS;
-      }
+      setSectionW((locked) => (locked === 0 && w > 0 ? w / INITIAL_SECTIONS : locked));
       setCardWidth(w);
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
-  const sectionW = lockedSectionWidth.current;
   // Filter out items with zero counts (action items always show)
   const userOwnsRoles =
     currentUser.active_group_ownerships?.some(
