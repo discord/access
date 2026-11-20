@@ -4,8 +4,8 @@
 #
 # Needs no secrets and only read access, so it runs the same on forked PRs. It
 # writes its report to the job summary rather than a PR comment, since a
-# forked PR's token cannot comment. On a repository where dependency review is
-# not enabled, the job passes with a notice instead of failing.
+# forked PR's token cannot comment. On a private repository where dependency
+# review is not enabled, the job passes with a notice instead of failing.
 name: Dependency review
 
 on:
@@ -23,12 +23,12 @@ jobs:
         with:
           persist-credentials: false
       # Dependency review needs the dependency graph, and on a private
-      # repository GitHub Code Security as well. Where it is unavailable the
-      # comparison API answers 403, or 404 on a private repository whose
-      # dependency graph is off, and the action would fail every PR. So ask the
-      # same API first and skip the review there with a notice. A public
-      # repository always has the dependency graph, so a 404 there is a real
-      # error; it and any other error leave the review to run and report it.
+      # repository GitHub Code Security as well. A private repository without
+      # them gets a 403 or 404 from the comparison API, and the action would
+      # fail every PR, so ask the same API first and skip the review there with
+      # a notice. A public repository always has dependency review, so any
+      # error there (a 403 can also be a rate limit) runs the action, which
+      # fails the check rather than letting the PR through unchecked.
       - name: Check that dependency review is available
         id: availability
         env:
@@ -41,8 +41,7 @@ jobs:
           errors="$RUNNER_TEMP/dependency-graph-compare.err"
           if gh api --silent "repos/$REPOSITORY/dependency-graph/compare/$BASE_SHA...$HEAD_SHA" 2> "$errors"; then
             echo "available=true" >> "$GITHUB_OUTPUT"
-          elif grep --quiet "HTTP 403" "$errors" \
-            || { [ "$REPOSITORY_IS_PRIVATE" = "true" ] && grep --quiet "HTTP 404" "$errors"; }; then
+          elif [ "$REPOSITORY_IS_PRIVATE" = "true" ] && grep --quiet --extended-regexp "HTTP (403|404)" "$errors"; then
             echo "::notice::Skipping dependency review: it is not enabled for this repository. It needs the dependency graph, and GitHub Code Security on a private repository."
             echo "available=false" >> "$GITHUB_OUTPUT"
           else
