@@ -364,7 +364,7 @@ export function parseAgentOutput(provider, stdout, secrets) {
   try {
     parsed = provider.parseOutput(stdout);
   } catch (error) {
-    throw new Error(`agent output was not a valid review: ${error.message}`);
+    throw new Error(`agent output was not a valid review: ${error.message}`, {cause: error});
   }
   if (!parsed.review || typeof parsed.review !== 'object' || Array.isArray(parsed.review)) {
     throw new Error('agent output was not a review object');

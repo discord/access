@@ -175,7 +175,7 @@ describe('validateReview', () => {
     );
     assert.deepEqual(review.riskAreas, ['data-filters', 'migration']);
     assert.equal(review.focus.length, 1);
-    assert.match(review.focus[0].reason, /@​someone/u);
+    assert.match(review.focus[0].reason, /@\u200bsomeone/u);
   });
 
   it('neutralizes HTML comments so output cannot forge the marker', () => {

@@ -139,7 +139,7 @@ export const PROVIDERS = Object.freeze({
     // is the only barrier. Codex also has no system-prompt flag, so the trusted instructions and
     // the untrusted bundle share stdin, separated by the runner. It runs from the input
     // directory rather than the head checkout so it does not load the head's AGENTS.md.
-    agentCommand: ({model}) => [
+    agentCommand: () => [
       'sh',
       '-c',
       [
