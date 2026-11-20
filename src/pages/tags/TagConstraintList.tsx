@@ -106,7 +106,7 @@ export default function TagConstraintList({
   propagateToRoles,
 }: {
   constraintKeys: string[];
-  constraints: Record<string, any>;
+  constraints: Record<string, number | boolean>;
   propagateToRoles: boolean;
 }) {
   return (

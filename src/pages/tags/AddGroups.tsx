@@ -22,18 +22,12 @@ import CircularProgress from '@mui/material/CircularProgress';
 
 import {FormContainer, AutocompleteElement} from 'react-hook-form-mui';
 
-import {
-  useGroups,
-  useGroupByIdPut,
-  GroupByIdPutError,
-  GroupByIdPutVariables,
-  GroupByIdPutRequestBody,
-} from '../../api/apiComponents';
+import {useGroups, useGroupByIdPut, GroupByIdPutError, GroupByIdPutRequestBody} from '../../api/apiComponents';
 import {GroupDetail, OktaUserDetail, TagDetail, AppGroupDetail} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
 
 interface AddGroupsButtonProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
 }
 
 function AddGroupsButton(props: AddGroupsButtonProps) {
@@ -47,7 +41,7 @@ function AddGroupsButton(props: AddGroupsButtonProps) {
 interface AddGroupsDialogProps {
   currentUser: OktaUserDetail;
   tag: TagDetail;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
 }
 
 const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
@@ -78,12 +72,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
   });
   const groupSearchOptions = groupSearchData?.items ?? [];
 
-  const complete = (
-    completedGroup: GroupDetail | undefined,
-    error: GroupByIdPutError | null,
-    variables: GroupByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedGroup: GroupDetail | undefined, error: GroupByIdPutError | null) => {
     if (error != null) {
       setRequestError(error.payload.toString());
       setGroupUpdatesErrored((prevValue) => prevValue + 1);
@@ -92,6 +81,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
     }
   };
 
+  const {setOpen} = props;
   React.useEffect(() => {
     if (submitting) {
       if (numUpdates == groupUpdatesCompleted + groupUpdatesErrored) {
@@ -101,12 +91,12 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
           setGroupUpdatesCompleted(0);
           setGroupUpdatesErrored(0);
         } else {
-          props.setOpen(false);
+          setOpen(false);
           navigate(0);
         }
       }
     }
-  }, [groupUpdatesCompleted, groupUpdatesErrored]);
+  }, [submitting, numUpdates, groupUpdatesCompleted, groupUpdatesErrored, setOpen, navigate]);
 
   const updateGroup = useGroupByIdPut({
     onSettled: complete,
@@ -116,8 +106,8 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
     setSubmitting(true);
     setNumUpdates(groups.length);
 
-    for (var i = 0; i < groups.length; i++) {
-      let group = {
+    for (let i = 0; i < groups.length; i++) {
+      const group = {
         name: groups[i].name,
         description: groups[i].description,
         type: groups[i].type,
@@ -169,7 +159,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
                   }
                 },
                 inputValue: groupSearchInput,
-                renderOption: (props, option, state) => {
+                renderOption: (props, option) => {
                   return (
                     <li {...props}>
                       <Grid
@@ -227,7 +217,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => props.setOpen(false)}>Cancel</Button>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting || groups.length === 0}>
             {submitting ? <CircularProgress size={24} /> : 'Add'}
           </Button>
         </DialogActions>

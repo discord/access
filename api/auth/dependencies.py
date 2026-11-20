@@ -131,13 +131,25 @@ CurrentUser = Annotated[OktaUser, Depends(get_current_user)]
 AUTH_ALLOWLIST_PREFIXES = ("/api/healthz", "/oidc/")
 
 
+def should_allow_unauthenticated_requests(path: str) -> bool:
+    """Return whether `require_authenticated` lets `path` through unauthenticated.
+
+    Args:
+        path: The request URL path, e.g. `/api/healthz`.
+
+    Returns:
+        True when `path` equals an `AUTH_ALLOWLIST_PREFIXES` entry (ignoring a
+        trailing slash) or starts with one.
+    """
+    return any(path == p.rstrip("/") or path.startswith(p) for p in AUTH_ALLOWLIST_PREFIXES)
+
+
 async def require_authenticated(request: Request, db: DbSession) -> None:
     """Enforce authentication on every request except `/api/healthz` and
     the OIDC login endpoints. `/api/docs` and `/api/openapi.json` are
     intentionally inside the gate — they're served in development and,
     when `ENABLE_API_DOCS` is set, in staging/production, but always to
     authenticated users only, as is the catch-all SPA route."""
-    path = request.url.path
-    if any(path == p.rstrip("/") or path.startswith(p) for p in AUTH_ALLOWLIST_PREFIXES):
+    if should_allow_unauthenticated_requests(request.url.path):
         return
     await get_current_user_id(request, db)

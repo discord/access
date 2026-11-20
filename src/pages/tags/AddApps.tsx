@@ -20,14 +20,14 @@ import InputLabel from '@mui/material/InputLabel';
 import DeleteIcon from '@mui/icons-material/Close';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import {FormContainer, SelectElement, AutocompleteElement} from 'react-hook-form-mui';
+import {FormContainer, AutocompleteElement} from 'react-hook-form-mui';
 
-import {useApps, useAppByIdPut, AppByIdPutError, AppByIdPutVariables} from '../../api/apiComponents';
+import {useApps, useAppByIdPut, AppByIdPutError} from '../../api/apiComponents';
 import {AppDetail, OktaUserDetail, TagDetail, UpdateAppBody} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
 
 interface AddAppsButtonProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
 }
 
 function AddAppsButton(props: AddAppsButtonProps) {
@@ -41,7 +41,7 @@ function AddAppsButton(props: AddAppsButtonProps) {
 interface AddAppsDialogProps {
   currentUser: OktaUserDetail;
   tag: TagDetail;
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
 }
 
 function AddAppsDialog(props: AddAppsDialogProps) {
@@ -65,12 +65,7 @@ function AddAppsDialog(props: AddAppsDialogProps) {
   });
   const appSearchOptions = appSearchData?.items ?? [];
 
-  const complete = (
-    completedApp: AppDetail | undefined,
-    error: AppByIdPutError | null,
-    variables: AppByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedApp: AppDetail | undefined, error: AppByIdPutError | null) => {
     if (error != null) {
       setRequestError(error.payload.toString());
       setAppUpdatesErrored((prevValue) => prevValue + 1);
@@ -79,6 +74,7 @@ function AddAppsDialog(props: AddAppsDialogProps) {
     }
   };
 
+  const {setOpen} = props;
   React.useEffect(() => {
     if (submitting) {
       if (numUpdates == appUpdatesCompleted + appUpdatesErrored) {
@@ -88,12 +84,12 @@ function AddAppsDialog(props: AddAppsDialogProps) {
           setAppUpdatesCompleted(0);
           setAppUpdatesErrored(0);
         } else {
-          props.setOpen(false);
+          setOpen(false);
           navigate(0);
         }
       }
     }
-  }, [appUpdatesCompleted, appUpdatesErrored]);
+  }, [submitting, numUpdates, appUpdatesCompleted, appUpdatesErrored, setOpen, navigate]);
 
   const updateApp = useAppByIdPut({
     onSettled: complete,
@@ -103,8 +99,8 @@ function AddAppsDialog(props: AddAppsDialogProps) {
     setSubmitting(true);
     setNumUpdates(apps.length);
 
-    for (var i = 0; i < apps.length; i++) {
-      let app: UpdateAppBody = {
+    for (let i = 0; i < apps.length; i++) {
+      const app: UpdateAppBody = {
         name: apps[i].name,
         description: apps[i].description,
         tags_to_add: [props.tag.id],
@@ -148,7 +144,7 @@ function AddAppsDialog(props: AddAppsDialogProps) {
                   }
                 },
                 inputValue: appSearchInput,
-                renderOption: (props, option, state) => {
+                renderOption: (props, option) => {
                   return (
                     <li {...props}>
                       <Grid
@@ -203,7 +199,7 @@ function AddAppsDialog(props: AddAppsDialogProps) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => props.setOpen(false)}>Cancel</Button>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting || apps.length === 0}>
             {submitting ? <CircularProgress size={24} /> : 'Add'}
           </Button>
         </DialogActions>

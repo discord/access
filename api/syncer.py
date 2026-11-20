@@ -127,7 +127,7 @@ async def sync_users() -> None:
     _ = (await db.session.scalars(select(OktaUser))).all()
 
     for user in users:
-        logger.info(f"Syncing user {user.id}")
+        logger.info("Syncing user %s", user.id)
 
         if user.type.id not in user_type_to_user_attrs_to_titles:
             user_type_to_user_attrs_to_titles[user.type.id] = (
@@ -139,7 +139,7 @@ async def sync_users() -> None:
         db_user = await db.session.get(OktaUser, user.id)
 
         if db_user is None:
-            logger.info(f"Creating user in DB {user.id}")
+            logger.info("Creating user in DB %s", user.id)
             db.session.add(user.update_okta_user(OktaUser(), user_attrs_to_titles))
 
         else:
@@ -158,7 +158,7 @@ async def sync_users() -> None:
     ).all()
 
     for db_user in users_to_delete:
-        logger.info(f"Deleting user in DB {db_user.id} that was suspended/deactivated in Okta")
+        logger.info("Deleting user in DB %s that was suspended/deactivated in Okta", db_user.id)
         await DeleteUser(user=db_user.id).execute()
 
     # Delete users and end all group memberships in the DB for users that are deleted in Okta
@@ -171,7 +171,7 @@ async def sync_users() -> None:
     ).all()
 
     for db_user in more_users_to_delete:
-        logger.info(f"Deleting user in DB {db_user.id} that was deleted in Okta")
+        logger.info("Deleting user in DB %s that was deleted in Okta", db_user.id)
         await DeleteUser(user=db_user.id, sync_to_okta=False).execute()
 
     # End all active group memberships in the DB for users that were previously deleted
@@ -184,7 +184,7 @@ async def sync_users() -> None:
         )
     ).all()
     for user_id in {u.user_id for u in db_deleted_users_with_access}:
-        logger.info(f"Ending active group ownerships/memberships for deleted user in DB {user_id}")
+        logger.info("Ending active group ownerships/memberships for deleted user in DB %s", user_id)
         await DeleteUser(user=user_id).execute()
 
     # Sync manager foreign keys, as Okta only gives us employee numbers
@@ -218,7 +218,7 @@ async def sync_groups(
         group_ids_with_group_rules = await okta.list_groups_with_active_rules()
 
     for group in groups_in_okta:
-        logger.info(f"Syncing group {group.id}")
+        logger.info("Syncing group %s", group.id)
 
         # Remove found groups from deleted group ids
         db_group_ids.discard(group.id)
@@ -228,19 +228,19 @@ async def sync_groups(
         # Handle the case where the group is in okta but not in the DB.
         if db_group is None:
             if act_as_authority:
-                logger.info(f"A new group {group.id} was added directly through okta. Deleting.")
+                logger.info("A new group %s was added directly through okta. Deleting.", group.id)
                 await okta.delete_group(group.id)
             else:
-                logger.info(f"A new group {group.id} was added directly through okta. Adding to DB.")
+                logger.info("A new group %s was added directly through okta. Adding to DB.", group.id)
                 db.session.add(group.update_okta_group(OktaGroup(), group_ids_with_group_rules))
 
         # Handle the case where we've marked the group as deleted, but it still exists in okta
         elif db_group.deleted_at:
             if act_as_authority:
-                logger.info(f"Group {group.id} is marked as deleted, but still exists in okta. Deleting.")
+                logger.info("Group %s is marked as deleted, but still exists in okta. Deleting.", group.id)
                 await DeleteGroup(group=group.id).execute()
             else:
-                logger.info(f"Group {group.id} is marked as deleted, but still exists in okta. Resurrecting.")
+                logger.info("Group %s is marked as deleted, but still exists in okta. Resurrecting.", group.id)
                 db_group.deleted_at = None
 
         # Handle the cases where the group is active in both Okta and our DB.
@@ -255,7 +255,7 @@ async def sync_groups(
     # Any remaining group ids have been deleted from okta's side.
     if len(db_group_ids) > 0:
         logger.info(
-            f"{len(db_group_ids)} groups exist locally but not in Okta. Deleting locally. Group Ids: {db_group_ids}"
+            "%s groups exist locally but not in Okta. Deleting locally. Group Ids: %s", len(db_group_ids), db_group_ids
         )
 
         for group_id in db_group_ids:
@@ -285,16 +285,17 @@ async def sync_group_memberships(
 
     async for group, members in _prefetch_group_okta_lists(groups, okta.list_users_for_group, concurrency):
         if isinstance(members, OktaTransientError):
-            logger.warning(f"Transient Okta error listing members for group {group.id}, skipping.", exc_info=members)
+            logger.warning("Transient Okta error listing members for group %s, skipping.", group.id, exc_info=members)
             continue
         if isinstance(members, OktaResourceNotFoundError):
             logger.warning(
-                f"Group {group.id} no longer exists in Okta (deleted after this run's group "
-                f"snapshot was taken), skipping membership sync."
+                "Group %s no longer exists in Okta (deleted after this run's group "
+                "snapshot was taken), skipping membership sync.",
+                group.id,
             )
             continue
         if isinstance(members, Exception):
-            logger.error(f"Failed to list members for group {group.id}, skipping.", exc_info=members)
+            logger.error("Failed to list members for group %s, skipping.", group.id, exc_info=members)
             continue
 
         try:
@@ -302,9 +303,9 @@ async def sync_group_memberships(
 
             act_authoritatively = act_as_authority and is_managed
 
-            logger.info(f"Syncing group {group.id}. act_authoritatively: {act_authoritatively}")
+            logger.info("Syncing group %s. act_authoritatively: %s", group.id, act_authoritatively)
 
-            logger.info(f"Fetched users list for group {group.id}")
+            logger.info("Fetched users list for group %s", group.id)
 
             db_all_group_members = {
                 row.id: row.user_id
@@ -326,7 +327,7 @@ async def sync_group_memberships(
             for member in members:
                 # User is a member in okta but not in the DB
                 if member.id not in db_all_group_members.values():
-                    logger.info(f"User {member.id} is not in the group in our DB.")
+                    logger.info("User %s is not in the group in our DB.", member.id)
 
                     if act_authoritatively:
                         await okta.remove_user_from_group(group.id, member.id)
@@ -352,7 +353,8 @@ async def sync_group_memberships(
             # But are not valid memberships in okta
             if db_all_group_members:
                 logger.info(
-                    f"Users were marked as members in the DB but not in okta. Updating. User IDs: {db_all_group_members}"
+                    "Users were marked as members in the DB but not in okta. Updating. User IDs: %s",
+                    db_all_group_members,
                 )
 
                 distinct_member_ids = set(db_all_group_members.values())
@@ -369,11 +371,11 @@ async def sync_group_memberships(
 
             await db.session.commit()
         except OktaTransientError:
-            logger.warning(f"Transient Okta error syncing memberships for group {group.id}, skipping.", exc_info=True)
+            logger.warning("Transient Okta error syncing memberships for group %s, skipping.", group.id, exc_info=True)
             await db.session.rollback()
             continue
         except Exception:
-            logger.exception(f"Failed to sync memberships for group {group.id}, skipping.")
+            logger.exception("Failed to sync memberships for group %s, skipping.", group.id)
             await db.session.rollback()
             continue
 
@@ -396,16 +398,17 @@ async def sync_group_ownerships(
 
     async for group, owners in _prefetch_group_okta_lists(groups, okta.list_owners_for_group, concurrency):
         if isinstance(owners, OktaTransientError):
-            logger.warning(f"Transient Okta error listing owners for group {group.id}, skipping.", exc_info=owners)
+            logger.warning("Transient Okta error listing owners for group %s, skipping.", group.id, exc_info=owners)
             continue
         if isinstance(owners, OktaResourceNotFoundError):
             logger.warning(
-                f"Group {group.id} no longer exists in Okta (deleted after this run's group "
-                f"snapshot was taken), skipping ownership sync."
+                "Group %s no longer exists in Okta (deleted after this run's group "
+                "snapshot was taken), skipping ownership sync.",
+                group.id,
             )
             continue
         if isinstance(owners, Exception):
-            logger.error(f"Failed to list owners for group {group.id}, skipping.", exc_info=owners)
+            logger.error("Failed to list owners for group %s, skipping.", group.id, exc_info=owners)
             continue
 
         try:
@@ -413,7 +416,7 @@ async def sync_group_ownerships(
 
             act_authoritatively = act_as_authority and is_managed
 
-            logger.info(f"Syncing group {group.id}. act_authoritatively: {act_authoritatively}")
+            logger.info("Syncing group %s. act_authoritatively: %s", group.id, act_authoritatively)
 
             db_all_group_owners = {
                 row.id: row.user_id
@@ -468,7 +471,7 @@ async def sync_group_ownerships(
             for owner in owners:
                 # User is a owner in okta but not in the DB
                 if owner.id not in db_all_group_owners.values():
-                    logger.info(f"User {owner.id} is not in the group in our DB.")
+                    logger.info("User %s is not in the group in our DB.", owner.id)
 
                     if act_authoritatively:
                         await okta.remove_owner_from_group(group.id, owner.id)
@@ -492,7 +495,7 @@ async def sync_group_ownerships(
             # But are not valid ownerships in okta
             if db_all_group_owners:
                 logger.info(
-                    f"Users were marked as owners in the DB but not in okta. Updating. User IDs: {db_all_group_owners}"
+                    "Users were marked as owners in the DB but not in okta. Updating. User IDs: %s", db_all_group_owners
                 )
 
                 distinct_owner_ids = set(db_all_group_owners.values())
@@ -507,11 +510,11 @@ async def sync_group_ownerships(
 
             await db.session.commit()
         except OktaTransientError:
-            logger.warning(f"Transient Okta error syncing ownerships for group {group.id}, skipping.", exc_info=True)
+            logger.warning("Transient Okta error syncing ownerships for group %s, skipping.", group.id, exc_info=True)
             await db.session.rollback()
             continue
         except Exception:
-            logger.exception(f"Failed to sync ownerships for group {group.id}, skipping.")
+            logger.exception("Failed to sync ownerships for group %s, skipping.", group.id)
             await db.session.rollback()
             continue
 
@@ -550,7 +553,7 @@ async def _expire_each(
         try:
             await reject(request_id)
         except Exception:
-            logger.exception(f"Failed to expire {label} {request_id}, skipping.")
+            logger.exception("Failed to expire %s %s, skipping.", label, request_id)
             await db.session.rollback()
 
 

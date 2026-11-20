@@ -1,23 +1,48 @@
 name: Semgrep
 on:
   workflow_dispatch: {}
+  pull_request: {}
   push:
     branches:
       - main
   schedule:
     # random HH:MM to avoid a load spike on GitHub Actions at 00:00
     - cron: '25 15 * * 1'
+
+permissions:
+  contents: read
+
 jobs:
+  # Repo-local rules in semgrep/ that encode Access's architecture conventions. Secret-free, so it
+  # runs the same on fork PRs as on branches of this repository.
+  rules:
+    name: semgrep/rules
+    runs-on: ubuntu-22.04
+    container:
+      image: semgrep/semgrep:1.182.0@sha256:4a34048c04fef049f71665047f074cffb00cc3d89482f965a5cd151d589237af
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test rules against their fixtures
+        run: semgrep --test --metrics off semgrep/
+      - name: Scan with repo-local rules
+        run: semgrep scan --config semgrep/ --error --metrics off
+
+  # Scan with the policies configured in the Semgrep app. Needs SEMGREP_APP_TOKEN, so it runs only
+  # on main and on the schedule, and skips cleanly where the secret is absent (forks).
   semgrep:
     name: semgrep/ci
+    if: github.event_name != 'pull_request' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-22.04
     env:
       SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
     container:
-      image: returntocorp/semgrep
-    if: (github.actor != 'dependabot[bot]')
+      image: semgrep/semgrep:1.182.0@sha256:4a34048c04fef049f71665047f074cffb00cc3d89482f965a5cd151d589237af
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.SEMGREP_APP_TOKEN != ''
         with:
           persist-credentials: false
-      - run: semgrep ci
+      - if: env.SEMGREP_APP_TOKEN != ''
+        run: semgrep ci

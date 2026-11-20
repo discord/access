@@ -514,7 +514,7 @@ async def put_group(
         await plugin_op.execute()
         config_changed = plugin_op.config_changed
     else:
-        await db.commit()
+        await db.commit()  # nosemgrep: router-direct-db-write
 
     # Fire exactly one app group lifecycle hook for the whole PUT, after every field is applied so
     # the plugin observes the final state. The per-operation fires of ModifyGroupDetails,

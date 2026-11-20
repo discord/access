@@ -330,7 +330,7 @@ class AuditLoggerPlugin:
         level_str: str = ctx.get_config(app, "log_level", "INFO")
         level: int = getattr(logging, level_str)
         custom_tag = ctx.get_config(group, "custom_tag") if group else ""
-        logger.log(level, f"[AUDIT_LOGGER]{f'[{custom_tag}]' if custom_tag else ''} {message}")
+        logger.log(level, "[AUDIT_LOGGER]%s %s", f"[{custom_tag}]" if custom_tag else "", message)
 
     def _is_enabled(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> bool:
         """Check whether audit logging is enabled for a group.

@@ -1,4 +1,4 @@
-import React, {useMemo} from 'react';
+import React from 'react';
 
 import {Link as RouterLink, useParams, useSearchParams, useNavigate} from 'react-router-dom';
 import Link from '@mui/material/Link';
@@ -14,12 +14,7 @@ import TableRow from '@mui/material/TableRow';
 import TableFooter from '@mui/material/TableFooter';
 import TablePagination from '@mui/material/TablePagination';
 import TableSortLabel from '@mui/material/TableSortLabel';
-import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
-import Grid from '@mui/material/Grid';
-import Box from '@mui/material/Box';
-import TextField from '@mui/material/TextField';
-import Autocomplete from '@mui/material/Autocomplete';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import ToggleButton from '@mui/material/ToggleButton';
 
@@ -36,6 +31,7 @@ import Started from '../../components/Started';
 import Ending from '../../components/Ending';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {renderUserOption, TableTopBarAutocomplete} from '../../components/TableTopBar';
+import {useSearchInput} from '../../useSearchInput';
 
 type OrderBy = 'moniker' | 'created_at' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -49,7 +45,7 @@ export default function AuditGroup() {
   const [orderBy, setOrderBy] = React.useState<OrderBy>('created_at');
   const [orderDirection, setOrderDirection] = React.useState<OrderDirection>('desc');
   const [searchQuery, setSearchQuery] = React.useState<string | null>(null);
-  const [searchInput, setSearchInput] = React.useState('');
+  const [searchInput, setSearchInput] = useSearchInput(searchParams);
 
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(20);
@@ -61,9 +57,6 @@ export default function AuditGroup() {
     setOrderBy((searchParams.get('order_by') as OrderBy) ?? 'created_at');
     setOrderDirection((searchParams.get('order_desc') ?? 'true') === 'true' ? 'desc' : 'asc');
     setSearchQuery(searchParams.get('q') ?? null);
-    if (searchInput == '') {
-      setSearchInput(searchParams.get('q') ?? '');
-    }
     setFilterActive(searchParams.get('active') == null ? null : searchParams.get('active') == 'true');
     setFilterOwner(searchParams.get('owner') == null ? null : searchParams.get('owner') == 'true');
     setPage(parseInt(searchParams.get('page') ?? '0', 10));
@@ -78,11 +71,7 @@ export default function AuditGroup() {
     pathParams: {groupId: id ?? ''},
   });
 
-  const {
-    data,
-    error,
-    isLoading: userAuditIsLoading,
-  } = useUsersAndGroups({
+  const {data, isLoading: userAuditIsLoading} = useUsersAndGroups({
     queryParams: Object.assign(
       {group_id: id ?? '', page: page + 1, size: rowsPerPage},
       orderBy == null ? null : {order_by: orderBy},
@@ -115,7 +104,7 @@ export default function AuditGroup() {
 
   const searchRows = searchData?.items ?? [];
 
-  const handleSortChange = (property: OrderBy) => (event: React.MouseEvent<unknown>) => {
+  const handleSortChange = (property: OrderBy) => () => {
     const isAsc = orderBy === property && orderDirection === 'asc';
     setSearchParams((params) => {
       params.set('order_by', property);

@@ -138,7 +138,7 @@ async def access_request_created(
     )
 
     # Send the message to the approvers
-    logger.info(f"Approver message: {approver_message}")
+    logger.info("Approver message: %s", approver_message)
 
 
 @notification_hook_impl
@@ -158,7 +158,7 @@ async def access_request_completed(
     )
 
     # Send the message to the requester and optionally update the approvers message
-    logger.info(f"Requester message: {requester_message}")
+    logger.info("Requester message: %s", requester_message)
 
 
 @notification_hook_impl
@@ -176,7 +176,7 @@ async def access_role_request_created(
     )
 
     # Send the message to the approvers
-    logger.info(f"Approver message: {approver_message}")
+    logger.info("Approver message: %s", approver_message)
 
 
 @notification_hook_impl
@@ -197,7 +197,7 @@ async def access_expiring_user(
     )
 
     # Send the message to the individual user with expiring access
-    logger.info(f"User message: {message}")
+    logger.info("User message: %s", message)
 
 
 @notification_hook_impl
@@ -224,7 +224,7 @@ async def access_expiring_owner(
         )
 
         # Send the message to the group owner about the users with expiring access
-        logger.info(f"Owner message: {message}")
+        logger.info("Owner message: %s", message)
 
     if role_group_associations is not None and len(role_group_associations) > 0:
         expiring_access_url = get_base_url() + "/expiring-roles?owner_id=@me"
@@ -243,7 +243,7 @@ async def access_expiring_owner(
         )
 
         # Send the message to the group owner about the roles with expiring access
-        logger.info(f"Owner message: {message}")
+        logger.info("Owner message: %s", message)
 
 
 @notification_hook_impl
@@ -261,4 +261,4 @@ async def access_expiring_role_owner(owner: OktaUser, roles: list[RoleGroupMap],
     )
 
     # Send the message to the role owner about the roles with expiring access
-    logger.info(f"Owner message: {message}")
+    logger.info("Owner message: %s", message)

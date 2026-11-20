@@ -40,7 +40,6 @@ import RelativeTime from 'dayjs/plugin/relativeTime';
 
 import {
   GroupRequestByIdPutError,
-  GroupRequestByIdPutVariables,
   useAppById,
   tagByIdQuery,
   useApps,
@@ -48,15 +47,7 @@ import {
   useTags,
   useGroupRequestByIdPut,
 } from '../../api/apiComponents';
-import {
-  AppDetail,
-  AppGroupForAppDetail,
-  GroupRequestDetail,
-  OktaUserGroupMemberDetail,
-  ResolveGroupRequestBody,
-  TagDetail,
-  TagListItem,
-} from '../../api/apiSchemas';
+import {AppDetail, GroupRequestDetail, ResolveGroupRequestBody, TagDetail, TagListItem} from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import {displayUserName} from '../../helpers';
@@ -231,13 +222,16 @@ export default function ReadGroupRequest() {
     pathParams: {groupRequestId: id ?? ''},
   });
 
-  const groupRequest: GroupRequestDetail = data ?? ({} as GroupRequestDetail);
+  const groupRequest = React.useMemo(() => data ?? ({} as GroupRequestDetail), [data]);
 
   const ownRequest = groupRequest.requester?.id == currentUser.id;
 
   const requestedGroupType = groupRequest.requested_group_type ?? 'okta_group';
   const requestedAppId = groupRequest.requested_app_id ?? null;
-  const requestedTagNames: string[] = groupRequest.requested_group_tags ?? [];
+  const requestedTagNames = React.useMemo(
+    () => groupRequest.requested_group_tags ?? [],
+    [groupRequest.requested_group_tags],
+  );
 
   const [typesSeeded, setTypesSeeded] = React.useState(false);
   React.useEffect(() => {
@@ -360,19 +354,17 @@ export default function ReadGroupRequest() {
     }
   }, [requested.settled, requestedTags, tagsSeeded, requestedTagNames.length]);
 
-  const resolvedTagIds: string[] =
-    Array.isArray(groupRequest.resolved_group_tags) && groupRequest.resolved_group_tags.length > 0
-      ? groupRequest.resolved_group_tags
-      : [];
+  const resolvedTagIds = React.useMemo(
+    () =>
+      Array.isArray(groupRequest.resolved_group_tags) && groupRequest.resolved_group_tags.length > 0
+        ? groupRequest.resolved_group_tags
+        : [],
+    [groupRequest.resolved_group_tags],
+  );
   // Only an approved request has resolved tags to show.
   const resolvedTags = useTagsByIds(groupRequest.status === 'APPROVED' ? resolvedTagIds : []).tags;
 
-  const complete = (
-    completedRequest: GroupRequestDetail | undefined,
-    error: GroupRequestByIdPutError | null,
-    variables: GroupRequestByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedRequest: GroupRequestDetail | undefined, error: GroupRequestByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
       setRequestError(error.payload.toString());
@@ -534,7 +526,7 @@ export default function ReadGroupRequest() {
     };
 
     if (responseForm.resolved_group_type === 'app_group' && requestPluginId) {
-      resolveRequest.resolved_plugin_data = extractRequestedPluginData(responseForm as any);
+      resolveRequest.resolved_plugin_data = extractRequestedPluginData(responseForm);
     }
 
     switch (responseForm.resolved_ownership_ending_at) {
@@ -600,7 +592,7 @@ export default function ReadGroupRequest() {
                   width: 220,
                   height: 220,
                 }}
-                variant={'rounded' as any}>
+                variant="rounded">
                 {groupRequest.status == 'PENDING' ? (
                   <PendingIcon sx={{width: 220, height: 220}} />
                 ) : groupRequest.status == 'APPROVED' ? (

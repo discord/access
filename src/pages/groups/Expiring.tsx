@@ -1,10 +1,6 @@
 import React from 'react';
 import {Link as RouterLink, useSearchParams} from 'react-router-dom';
 
-import Autocomplete from '@mui/material/Autocomplete';
-import Box from '@mui/material/Box';
-import Chip from '@mui/material/Chip';
-import Grid from '@mui/material/Grid';
 import Link from '@mui/material/Link';
 import Paper from '@mui/material/Paper';
 import Table from '@mui/material/Table';
@@ -20,7 +16,6 @@ import TextField from '@mui/material/TextField';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Tooltip from '@mui/material/Tooltip';
-import Typography from '@mui/material/Typography';
 
 import dayjs, {Dayjs} from 'dayjs';
 
@@ -45,6 +40,7 @@ import Started from '../../components/Started';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import {emptyTableRows, displayUserName, perPage} from '../../helpers';
 import TableTopBar, {renderUserOption, TableTopBarAutocomplete} from '../../components/TableTopBar';
+import {useSearchInput} from '../../useSearchInput';
 
 type OrderBy = 'moniker' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -58,7 +54,7 @@ export default function ExpiringGroups() {
   const [userId, setUserId] = React.useState<string | null>(null);
   const [ownerId, setOwnerId] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState<string | null>(null);
-  const [searchInput, setSearchInput] = React.useState('');
+  const [searchInput, setSearchInput] = useSearchInput(searchParams);
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(20);
   const [filterNeedsReview, setFilterNeedsReview] = React.useState<boolean>(true);
@@ -73,9 +69,6 @@ export default function ExpiringGroups() {
     setUserId(searchParams.get('user_id') ?? null);
     setOwnerId(searchParams.get('owner_id') ?? null);
     setSearchQuery(searchParams.get('q') ?? null);
-    if (searchInput == '') {
-      setSearchInput(searchParams.get('q') ?? '');
-    }
     setPage(parseInt(searchParams.get('page') ?? '0', 10));
     setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
     setFilterNeedsReview(searchParams.get('needs_review') !== 'false');
@@ -145,7 +138,7 @@ export default function ExpiringGroups() {
     setPage(0);
   };
 
-  const handleSortChange = (property: OrderBy) => (event: React.MouseEvent<unknown>) => {
+  const handleSortChange = (property: OrderBy) => () => {
     const isAsc = orderBy === property && orderDirection === 'asc';
     setSearchParams((params) => {
       params.set('order_by', property);
