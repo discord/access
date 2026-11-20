@@ -1,0 +1,40 @@
+name: AI review gate tests
+
+# Unit tests for the AI review gate's scripts (.github/ai-review). They use only Node's built-in
+# test runner, so there is nothing to install.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/ai-review/**"
+      - ".github/workflows/ai-review*.yml"
+      - ".claude/**"
+      - "REVIEWING.md"
+  pull_request:
+    paths:
+      - ".github/ai-review/**"
+      - ".github/workflows/ai-review*.yml"
+      - ".claude/**"
+      - "REVIEWING.md"
+
+permissions: {}
+
+jobs:
+  test:
+    name: Test the AI review gate scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Run tests
+        run: node --test ".github/ai-review/*.test.mjs"

@@ -23,6 +23,14 @@ that area:
 - **Syncer or notification-plugin work** → `.claude/access-dev-sync.md` — the sync authority
   model and notification cadence.
 
+`REVIEWING.md` at the repository root is the review policy distilled from this file and the
+companion docs. The AI review gate (`.github/workflows/ai-review.yml`, scripts under
+`.github/ai-review/`) builds its prompt from it, adding a companion doc to the prompt when the
+pull request touches the paths that doc covers (the mapping is `COMPANION_DOCS` in
+`.github/ai-review/runner.mjs`). When a rule here changes, update `REVIEWING.md` in the same
+change, and keep its "Enforced by other checks" list current as deterministic CI checks are added
+so the gate does not re-report what they catch.
+
 ## Stack
 
 **Backend:** FastAPI + Pydantic v2 + **async** SQLAlchemy 2.0 (asyncio) + Alembic
