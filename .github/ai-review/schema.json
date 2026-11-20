@@ -20,7 +20,7 @@
     },
     "risk_areas": {
       "type": "array",
-      "maxItems": 8,
+      "maxItems": 9,
       "items": {
         "type": "string",
         "enum": ["auth", "tags", "routing", "data-filters", "async-orm", "plugin-api", "migration", "audit", "operator-leak"]

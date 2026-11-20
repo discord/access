@@ -147,7 +147,10 @@ async function main() {
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 if (isMain) {
   main().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
+    // Without outputs, the publish job treats the gate as undecided, which fails only an enforced
+    // gate; an advisory gate only warns here too.
+    const enforced = process.env.ENFORCE === 'true';
+    console.error(`::${enforced ? 'error' : 'warning'}::${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = enforced ? 1 : 0;
   });
 }

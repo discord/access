@@ -74,6 +74,8 @@ function parseCodexOutput(stdout) {
  *   environment rather than from its argv.
  * - `combinedPrompt`: whether the agent lacks a system-prompt channel, so the runner sends the
  *   trusted instructions and the untrusted bundle together on stdin.
+ * - `enforcesBudget`: whether `agentCommand` honors `maxBudgetUsd`. Without it, only the proxy's
+ *   request cap bounds spend.
  */
 export const PROVIDERS = Object.freeze({
   anthropic: Object.freeze({
@@ -119,6 +121,7 @@ export const PROVIDERS = Object.freeze({
     ],
     agentModelEnv: false,
     combinedPrompt: false,
+    enforcesBudget: true,
     parseOutput: parseClaudeOutput,
   }),
   openai: Object.freeze({
@@ -154,6 +157,8 @@ export const PROVIDERS = Object.freeze({
     ],
     agentModelEnv: true,
     combinedPrompt: true,
+    // Codex has no spend limit flag.
+    enforcesBudget: false,
     parseOutput: parseCodexOutput,
   }),
 });

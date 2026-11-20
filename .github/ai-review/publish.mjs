@@ -685,7 +685,8 @@ async function main() {
   try {
     ({published} = await publishReview({...pr, review, files, enforced}));
   } catch (error) {
-    refuseStale(error);
+    if (error instanceof StaleReviewError) refuseStale(error);
+    else await postUnavailable(`The review could not be published: ${error.message}`);
     return;
   }
   console.log(
@@ -699,7 +700,9 @@ async function main() {
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 if (isMain) {
   main().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
+    // An advisory gate must not turn red on an infrastructure error, so it only warns.
+    const enforced = process.env.ENFORCE === 'true';
+    console.error(`::${enforced ? 'error' : 'warning'}::${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = enforced ? 1 : 0;
   });
 }

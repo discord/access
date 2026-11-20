@@ -74,6 +74,7 @@ jobs:
       - name: Decide
         id: gate
         env:
+          ENFORCE: ${{ vars.AI_REVIEW_ENFORCE || 'false' }}
           GITHUB_TOKEN: ${{ github.token }}
           HAS_API_KEY: ${{ secrets.AI_REVIEW_API_KEY != '' }}
         run: node .github/ai-review/gate.mjs

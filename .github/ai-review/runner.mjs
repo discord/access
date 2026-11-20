@@ -416,6 +416,25 @@ async function waitForProxy(env) {
   throw new Error('review proxy did not start');
 }
 
+/**
+ * Check that the provider can honor the review's spend limit.
+ *
+ * @param {object} provider - A provider adapter from `getProvider`.
+ * @param {string | undefined} configuredBudget - The raw `AI_REVIEW_MAX_BUDGET_USD` value.
+ * @returns {string | null} A warning to log when the provider cannot enforce a budget and none
+ *   was configured, else null.
+ * @throws {Error} If a budget was configured explicitly and the provider would ignore it.
+ */
+export function checkBudgetSupport(provider, configuredBudget) {
+  if (provider.enforcesBudget) return null;
+  if (configuredBudget) {
+    throw new Error(
+      `the ${provider.name} provider cannot enforce AI_REVIEW_MAX_BUDGET_USD; unset it to run with only the proxy's AI_REVIEW_MAX_REQUESTS cap`,
+    );
+  }
+  return `The ${provider.name} provider cannot enforce a spend limit; only the proxy's request cap bounds this review.`;
+}
+
 /** Parse a positive number from an environment value, using `fallback` when unset. */
 function positiveNumber(name, value, fallback) {
   const parsed = Number(value || fallback);
@@ -435,6 +454,8 @@ async function main() {
   const model = env.AI_REVIEW_MODEL || provider.defaultModel;
   if (!model) throw new Error(`AI_REVIEW_MODEL is required for the ${providerName} provider`);
   const timeoutMs = positiveNumber('AI_REVIEW_TIMEOUT_MS', env.AI_REVIEW_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
+  const budgetWarning = checkBudgetSupport(provider, env.AI_REVIEW_MAX_BUDGET_USD);
+  if (budgetWarning) console.warn(budgetWarning);
   const maxBudgetUsd = positiveNumber('AI_REVIEW_MAX_BUDGET_USD', env.AI_REVIEW_MAX_BUDGET_USD, DEFAULT_MAX_BUDGET_USD);
   const maxRequests = Math.floor(positiveNumber('AI_REVIEW_MAX_REQUESTS', env.AI_REVIEW_MAX_REQUESTS, DEFAULT_MAX_REQUESTS));
 

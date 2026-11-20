@@ -149,7 +149,9 @@ Separate CI jobs already enforce the following, so findings about them are noise
 - Lint, format, and types: `ruff` (including the security, bugbear, async, and logging rules
   such as f-strings in log calls), `ty`, `prettier`, `tsc`, and ESLint.
 - Architecture tests: mutating routes lacking authentication, and operations missing an audit log.
-- Semgrep rules, including direct database writes from routers.
+- Semgrep rules, including explicit session writes from routers (`add`, `delete`, `commit`, and
+  the like). Still report ORM attribute assignments in a router that a later `commit()` or
+  operation `execute()` persists; the rule cannot see those.
 - Plugins importing internal modules (ruff import bans).
 - Changed-line test coverage.
 - Dependency vulnerabilities and licenses.

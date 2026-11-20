@@ -13,6 +13,7 @@ import {
   agentRunArgs,
   buildInstructions,
   buildSubmissionBundle,
+  checkBudgetSupport,
   COMPANION_DOCS,
   companionDocsFor,
   fetchLinkedIssues,
@@ -293,5 +294,20 @@ describe('parseAgentOutput', () => {
     );
     const shaped = JSON.stringify({structured_output: {...review, focus: [{path: 'a', reason: 'sk-proj-aaaaaaaaaaaaaaaaaaaaaaaa'}]}});
     assert.throws(() => parseAgentOutput(PROVIDERS.anthropic, shaped, []), /openai-api-key/u);
+  });
+});
+
+describe('checkBudgetSupport', () => {
+  it('accepts any budget for a provider that enforces one', () => {
+    assert.equal(checkBudgetSupport(PROVIDERS.anthropic, '5'), null);
+  });
+
+  it('refuses an explicit budget the provider would ignore, and warns otherwise', () => {
+    assert.throws(() => checkBudgetSupport(PROVIDERS.openai, '5'), /cannot enforce AI_REVIEW_MAX_BUDGET_USD/u);
+    assert.match(checkBudgetSupport(PROVIDERS.openai, ''), /request cap/u);
+  });
+
+  it('is declared by every provider', () => {
+    for (const [name, provider] of Object.entries(PROVIDERS)) assert.equal(typeof provider.enforcesBudget, 'boolean', name);
   });
 });

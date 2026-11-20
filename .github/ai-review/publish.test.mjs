@@ -59,6 +59,7 @@ describe('schema and publisher stay in sync', () => {
     const item = schema.properties.findings.items;
     assert.deepEqual(item.properties.classification.enum, [...CLASSIFICATIONS.keys()]);
     assert.deepEqual(schema.properties.risk_areas.items.enum, [...RISK_AREAS]);
+    assert.equal(schema.properties.risk_areas.maxItems, RISK_AREAS.length);
     assert.equal(schema.properties.findings.maxItems, 10);
     assert.deepEqual([...item.required].sort(), Object.keys(item.properties).sort());
   });

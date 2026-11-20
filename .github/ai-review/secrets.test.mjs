@@ -24,7 +24,8 @@ describe('findSecretLikeText', () => {
   });
 
   it('passes ordinary review prose', () => {
-    const text = 'Use `can_manage_group(db, user, group)`; the task-runner and sk-learn skip the check.';
+    const text =
+      'Use `can_manage_group(db, user, group)`; the task-runner and sk-learn skip the check. high-risk-authorization-tier-change';
     assert.deepEqual(findSecretLikeText(text), []);
   });
 

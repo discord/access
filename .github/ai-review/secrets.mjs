@@ -8,7 +8,8 @@
 /** Credential formats the gate refuses to publish, keyed by a name safe to log. */
 export const SECRET_PATTERNS = new Map([
   ['anthropic-api-key', /sk-ant-[A-Za-z0-9_-]{16,}/u],
-  ['openai-api-key', /sk-(?!ant-)(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20,}/u],
+  // The lookbehind keeps hyphenated prose such as `high-risk-authorization-...` from matching.
+  ['openai-api-key', /(?<![A-Za-z0-9_-])sk-(?!ant-)(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20,}/u],
   ['github-token', /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{22,})/u],
   ['aws-access-key-id', /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/u],
   ['google-api-key', /\bAIza[0-9A-Za-z_-]{35}\b/u],
