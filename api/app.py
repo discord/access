@@ -534,7 +534,7 @@ def create_app(testing: bool | None = False) -> FastAPI:
                 candidate = (BUILD_DIR / spa_path).resolve()
                 candidate.relative_to(build_dir_resolved)
             except (ValueError, OSError):
-                raise HTTPException(status_code=404, detail="Not Found")
+                raise HTTPException(status_code=404, detail="Not Found") from None
             if candidate.is_file():
                 if spa_path.startswith("assets/"):
                     # Vite content-hashes this directory's filenames, so a
