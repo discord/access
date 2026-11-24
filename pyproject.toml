@@ -68,6 +68,13 @@ test = [
     "faker>=40.31.0,<41",
     "pytest-cov>=7,<8",
 ]
+# GitHub Actions workflow linting, kept in its own group so the workflow-lint
+# CI job can install it alone (`--only-group workflow-lint`).
+workflow-lint = [
+    # Exact pin: zizmor adds audits in minor releases, so a bump can surface
+    # new findings and belongs in its own reviewed change.
+    "zizmor==1.32.0",
+]
 dev = [
     # Lint / format
     "ruff>=0.15.21,<0.18",
@@ -77,6 +84,7 @@ dev = [
     "types-python-dateutil>=2.9.0.20260807,<3",
     "types-cachetools>=7.0.0.20260713,<8",
     { include-group = "test" },
+    { include-group = "workflow-lint" },
     # In-repo example plugin, installed editable (see [tool.uv.sources]) so
     # local dev via `make run-backend` exercises the app-group-lifecycle plugin
     # system. Dev-group only, so it is excluded from the production image
@@ -114,23 +122,58 @@ config = ["*.json"]
 # ----------------------------------------------------------------------
 [tool.ruff]
 line-length = 120
+# Semgrep rule fixtures: deliberately non-conforming snippets with undefined names.
+extend-exclude = ["semgrep"]
 
 [tool.ruff.lint]
 # ruff's default rule set, plus the rules that were its defaults before 0.16. The
 # defaults can change when ruff is upgraded; the extended rules stay checked.
-extend-select = ["E4", "E7", "E9", "F"]
+extend-select = [
+    "E4",
+    "E7",
+    "E9",
+    "F",
+    # Blocking calls inside `async def`; the backend and plugin interface are async end to end.
+    "ASYNC",
+    # flake8-bugbear: likely bugs such as `raise` without `from` inside `except`.
+    "B",
+    # Logging calls take `%s` arguments, not f-strings, so Sentry groups an error by its
+    # uninterpolated message template rather than minting an issue per interpolated value.
+    "G004",
+    # An `asyncio.create_task` result must be kept; the event loop holds only a weak
+    # reference, so an unreferenced fan-out task can be garbage-collected mid-flight.
+    "RUF006",
+    # flake8-bandit security checks.
+    "S",
+    # Banned imports; the list is set per directory (see `examples/plugins/ruff.toml`).
+    "TID251",
+]
+ignore = [
+    # `assert x is not None` narrows a just-loaded Optional row for the type checker.
+    # Access never runs under `python -O`, so these asserts are not stripped.
+    "S101",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test fixtures use fake secrets and non-cryptographic randomness.
+"tests/**" = ["S105", "S106", "S311"]
+# CI scripts that run `git` (and `squawk`) from PATH with an argv list they build
+# themselves; no shell is involved, and S603 flags every such call.
+".github/scripts/squawk_migrations.py" = ["S603", "S607"]
+"scripts/check_operator_strings.py" = ["S607"]
+"scripts/test_check_operator_strings.py" = ["S603", "S607"]
 
 # ----------------------------------------------------------------------
 # pytest — test scope and async config
 # ----------------------------------------------------------------------
 [tool.pytest.ini_options]
-# Both test roots, so an argument-less `pytest` run covers the same ground
-# everywhere: locally, in `make pytest`, and in CI. The example plugins ship
-# their own tests, and leaving them out of the default scope is how they went
-# unrun -- a plugin hook can regress against a host-side change without any
+# Every test root, so an argument-less `pytest` run covers the same ground
+# everywhere: locally, in `make pytest`, and in CI. The repo scripts and the
+# example plugins ship their own tests, and leaving them out of the default
+# scope is how they went unrun -- a plugin hook can regress against a host-side change without any
 # invocation noticing. Anything wanting only the DB-backed suite (the postgres
 # runs) passes `tests` explicitly.
-testpaths = ["tests", "examples/plugins"]
+testpaths = ["tests", "examples/plugins", "scripts"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 asyncio_default_test_loop_scope = "function"
@@ -179,6 +222,10 @@ ignore_whitespace = true
 # ----------------------------------------------------------------------
 [tool.ty.environment]
 python-version = "3.13"
+
+[tool.ty.src]
+# Semgrep rule fixtures: deliberately non-conforming snippets with undefined names.
+exclude = ["semgrep"]
 
 [tool.ty.rules]
 # Several runtime deps ship without type information, so ty can't resolve

@@ -1,0 +1,73 @@
+# Blocks pull requests that add dependencies with known vulnerabilities or with
+# licenses incompatible with Apache-2.0. Policy lives in
+# .github/dependency-review-config.yml.
+#
+# Needs no secrets and only read access, so it runs the same on forked PRs. It
+# writes its report to the job summary rather than a PR comment, since a
+# forked PR's token cannot comment. On a private repository where dependency
+# review is not enabled, the job passes with a notice instead of failing.
+name: Dependency review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-24.04
+    steps:
+      # Checked out only so the action can read the local config file.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Dependency review needs the dependency graph, and on a private
+      # repository GitHub Code Security as well. A private repository without
+      # them gets a 403 or 404 from the comparison API, and the action would
+      # fail every PR, so ask the same API first and skip the review there with
+      # a notice. A public repository always has dependency review, so any
+      # error there (a 403 can also be a rate limit) runs the action, which
+      # fails the check rather than letting the PR through unchecked.
+      - name: Check that dependency review is available
+        id: availability
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_IS_PRIVATE: ${{ github.event.repository.private }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          errors="$RUNNER_TEMP/dependency-graph-compare.err"
+          if gh api --silent "repos/$REPOSITORY/dependency-graph/compare/$BASE_SHA...$HEAD_SHA" 2> "$errors"; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          elif [ "$REPOSITORY_IS_PRIVATE" = "true" ] && grep --quiet --extended-regexp "HTTP (403|404)" "$errors"; then
+            echo "::notice::Skipping dependency review: it is not enabled for this repository. It needs the dependency graph, and GitHub Code Security on a private repository."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            cat "$errors" >&2
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+      - id: review
+        if: ${{ steps.availability.outputs.available == 'true' }}
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          config-file: ./.github/dependency-review-config.yml
+      # The action only reports dependencies with no detected license (null or
+      # NOASSERTION); it does not fail on them. Software with no license grants
+      # no rights to use it, so fail here unless the package is vetted in
+      # allow-dependencies-licenses, which the action leaves out of this list.
+      # Runs even when the review step failed so these packages are still
+      # listed in the log.
+      - name: Fail on dependencies with no license
+        if: ${{ !cancelled() && steps.review.outputs.invalid-license-changes != '' }}
+        env:
+          INVALID_LICENSE_CHANGES: ${{ steps.review.outputs.invalid-license-changes }}
+        run: |
+          unlicensed=$(jq --raw-output '.unlicensed[] | "\(.manifest) » \(.name)@\(.version)"' <<< "$INVALID_LICENSE_CHANGES")
+          if [ -n "$unlicensed" ]; then
+            echo "::error::Dependencies with no detected license. Find a licensed alternative, or vet the package and add it to allow-dependencies-licenses in .github/dependency-review-config.yml:"
+            echo "$unlicensed"
+            exit 1
+          fi
+          echo "Every changed dependency has a detected license."

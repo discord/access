@@ -1,5 +1,5 @@
 import logging
-import random
+import secrets
 import string
 from datetime import datetime
 
@@ -17,8 +17,7 @@ from api.models import (
     OktaUser,
     RoleGroup,
 )
-from api.models.app_group import get_access_owners, get_app_managers
-from api.models.okta_group import get_group_managers
+from api.models.request_reviewers import get_assigned_reviewers
 from api.operations._fan_out import defer_notification
 from api.operations.approve_access_request import ApproveAccessRequest
 from api.operations.reject_access_request import RejectAccessRequest
@@ -78,21 +77,7 @@ class CreateAccessRequest:
         db.session.add(access_request)
         await db.session.commit()
 
-        # Fetch the users to notify
-        approvers = await get_group_managers(requested_group.id)
-
-        # If there are no approvers, try to get the app managers
-        # or if the only approver is the requester, try to get the app managers
-        if (
-            (len(approvers) == 0 and type(requested_group) is AppGroup)
-            or (len(approvers) == 1 and approvers[0].id == requester.id)
-            and type(requested_group) is AppGroup
-        ):
-            approvers = await get_app_managers(requested_group.app_id)
-
-        # If there are still no approvers, try to get the access owners
-        if len(approvers) == 0 or (len(approvers) == 1 and approvers[0].id == requester.id):
-            approvers = await get_access_owners()
+        approvers = await get_assigned_reviewers(access_request)
 
         group = (
             await db.session.scalars(
@@ -170,4 +155,4 @@ class CreateAccessRequest:
 
     # Generate a 20 character alphanumeric ID similar to Okta IDs for users and groups
     def __generate_id(self) -> str:
-        return "".join(random.choices(string.ascii_letters, k=20))
+        return "".join(secrets.choice(string.ascii_letters) for _ in range(20))

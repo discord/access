@@ -1,0 +1,23 @@
+rules:
+  - id: group-deleted-deferred
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Fire `group_deleted` inline with `invoke_app_group_lifecycle_hook`, not through
+      `defer_or_invoke_lifecycle_hook`. A deferred fire is replayed by re-loading the group by
+      id, and a deleted group no longer resolves; `sync_group` sweeps only live groups, so a
+      lost delete is never revisited and the external group stays alive while Access shows the
+      access as revoked. `DeleteGroup` and `ModifyGroupType` are the reference call sites.
+    paths:
+      include:
+        - /api/
+    pattern-either:
+      - patterns:
+          - pattern-either:
+              - pattern: defer_or_invoke_lifecycle_hook($HOOK, ...)
+              - pattern: defer_or_invoke_lifecycle_hook(..., hook_method=$HOOK, ...)
+              - pattern: $MODULE.defer_or_invoke_lifecycle_hook($HOOK, ...)
+              - pattern: $MODULE.defer_or_invoke_lifecycle_hook(..., hook_method=$HOOK, ...)
+          - metavariable-regex:
+              metavariable: $HOOK
+              regex: ^((.*\.)?GROUP_DELETED|["']group_deleted["'])$

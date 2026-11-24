@@ -1,5 +1,5 @@
 import logging
-import random
+import secrets
 import string
 from datetime import datetime
 
@@ -17,8 +17,9 @@ from api.models import (
     RoleGroup,
     Tag,
 )
-from api.models.app_group import get_access_owners, get_app_managers
+from api.models.app_group import get_app_managers
 from api.models.okta_group import is_group_name_taken
+from api.models.request_reviewers import get_assigned_reviewers
 from api.models.tag import coalesce_ended_at
 from api.operations._fan_out import defer_notification
 from api.operations.approve_group_request import ApproveGroupRequest
@@ -97,7 +98,8 @@ class CreateGroupRequest:
 
             if app is None:
                 return None
-            if not self.requested_group_name.startswith(f"App-{app.name}-"):
+            app_group_prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+            if not self.requested_group_name.startswith(app_group_prefix):
                 return None
 
         # Validate tags exist and load them
@@ -164,12 +166,7 @@ class CreateGroupRequest:
                     # already saved, so route it to reviewers like any other.
                     logger.warning("App owner auto-approval of group request %s failed: %s", group_request.id, e)
 
-        # Fetch the users to notify
-        # If app group, notify app managers; otherwise notify access owners
-        if self.requested_app_id is not None:
-            approvers = await get_app_managers(self.requested_app_id)
-        else:
-            approvers = await get_access_owners()
+        approvers = await get_assigned_reviewers(group_request)
 
         # Audit logging
         _ctx = get_request_context()
@@ -249,4 +246,4 @@ class CreateGroupRequest:
 
     def __generate_id(self) -> str:
         """Generate a random 20 character ID like Okta IDs"""
-        return "".join(random.choices(string.ascii_letters + string.digits, k=20))
+        return "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(20))

@@ -27,11 +27,16 @@ updates:
       interval: "weekly"
     ignore:
       - dependency-name: "@rollup/rollup-*"
-      # @sentry/vite-plugin 5.4+ depends on the Sentry CLI, which is licensed
-      # under the source-available FSL from 3.0 on. Stay on 4.x until that
-      # license is approved for use.
+      # The Sentry CLI is licensed under the source-available FSL from 2.58.3
+      # on. @sentry/vite-plugin accepts any 2.x, so package.json pins the CLI
+      # to 2.58.2, the last BSD-3-Clause release, through `overrides`. Stay
+      # there until the FSL is approved for use.
+      - dependency-name: "@sentry/cli"
+        versions: [">=2.58.3"]
+      # @sentry/vite-plugin 5.2+ requires an FSL release of the CLI (2.58.5 or
+      # later), which the pin above excludes.
       - dependency-name: "@sentry/vite-plugin"
-        versions: [">=5"]
+        versions: [">=5.2"]
       # TypeScript 7's npm package doesn't ship the compiler API that
       # @openapi-codegen reaches through tsutils, so `npm run codegen` hangs.
       # Stay below 7 until the codegen stops depending on that API.
@@ -75,17 +80,43 @@ updates:
         update-types:
           - "minor"
           - "patch"
+  # squawk, the migration linter CI installs from hash-pinned wheels.
+  - package-ecosystem: "pip"
+    directory: "/.github/requirements"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
   - package-ecosystem: "github-actions"
     # Workflow files stored in the
     # default location of `.github/workflows`
     directory: "/"
     schedule:
       interval: "weekly"
+    # Workflows pin each action to a commit SHA with a `# vX.Y.Z` comment;
+    # Dependabot bumps both together. The cooldown has the same purpose as uv's.
+    cooldown:
+      default-days: 7
+    # Majors are split out because they can change an action's inputs or
+    # defaults and deserve their own review; minor and patch bumps batch.
     groups:
-      github-action-group:
+      github-actions-major:
         patterns:
           - "*"
+        update-types:
+          - "major"
+      github-actions-minor:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+  # Covers the Dockerfile's base images. Dependabot's docker ecosystem reads
+  # only Dockerfiles and Kubernetes manifests, not `services:` or `container:`
+  # images in workflows, so those digests are bumped by hand.
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7

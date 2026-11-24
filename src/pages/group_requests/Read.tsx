@@ -44,6 +44,7 @@ import {
   tagByIdQuery,
   useApps,
   useGroupRequestById,
+  useGroupRequestReviewers,
   useTags,
   useGroupRequestByIdPut,
 } from '../../api/apiComponents';
@@ -56,6 +57,7 @@ import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailable
 
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import Loading from '../../components/Loading';
+import RequestReviewers from '../../components/RequestReviewers';
 import accessConfig from '../../config/accessConfig';
 import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
 import PluginConfigDisplay from './PluginConfigDisplay';
@@ -222,13 +224,16 @@ export default function ReadGroupRequest() {
     pathParams: {groupRequestId: id ?? ''},
   });
 
-  const groupRequest: GroupRequestDetail = data ?? ({} as GroupRequestDetail);
+  const groupRequest = React.useMemo(() => data ?? ({} as GroupRequestDetail), [data]);
 
   const ownRequest = groupRequest.requester?.id == currentUser.id;
 
   const requestedGroupType = groupRequest.requested_group_type ?? 'okta_group';
   const requestedAppId = groupRequest.requested_app_id ?? null;
-  const requestedTagNames: string[] = groupRequest.requested_group_tags ?? [];
+  const requestedTagNames = React.useMemo(
+    () => groupRequest.requested_group_tags ?? [],
+    [groupRequest.requested_group_tags],
+  );
 
   const [typesSeeded, setTypesSeeded] = React.useState(false);
   React.useEffect(() => {
@@ -322,6 +327,11 @@ export default function ReadGroupRequest() {
   const canApprove = (admin || isAppOwner) && !ownRequest;
   const canResolve = canApprove || ownRequest;
 
+  const {data: reviewers} = useGroupRequestReviewers(
+    {pathParams: {groupRequestId: groupRequest.id}},
+    {enabled: groupRequest.status == 'PENDING' && !canApprove},
+  );
+
   const {data: appSearchData} = useApps({
     queryParams: {page: 1, size: 10, q: appSearchInput},
   });
@@ -351,10 +361,13 @@ export default function ReadGroupRequest() {
     }
   }, [requested.settled, requestedTags, tagsSeeded, requestedTagNames.length]);
 
-  const resolvedTagIds: string[] =
-    Array.isArray(groupRequest.resolved_group_tags) && groupRequest.resolved_group_tags.length > 0
-      ? groupRequest.resolved_group_tags
-      : [];
+  const resolvedTagIds = React.useMemo(
+    () =>
+      Array.isArray(groupRequest.resolved_group_tags) && groupRequest.resolved_group_tags.length > 0
+        ? groupRequest.resolved_group_tags
+        : [],
+    [groupRequest.resolved_group_tags],
+  );
   // Only an approved request has resolved tags to show.
   const resolvedTags = useTagsByIds(groupRequest.status === 'APPROVED' ? resolvedTagIds : []).tags;
 
@@ -1089,13 +1102,20 @@ export default function ReadGroupRequest() {
                             </FormControl>
                           </FormContainer>
                         </Paper>
+                        {ownRequest ? (
+                          <RequestReviewers
+                            reviewers={reviewers}
+                            groupName={groupRequest.requested_group_name}
+                            appName={requestedAppData?.name}
+                          />
+                        ) : null}
                       </Box>
                     ) : (
-                      <Paper sx={{p: 2, my: 2}}>
-                        <Typography variant="body1">
-                          Request is <b>pending</b> and can be reviewed by app owners or Access admins.
-                        </Typography>
-                      </Paper>
+                      <RequestReviewers
+                        reviewers={reviewers}
+                        groupName={groupRequest.requested_group_name}
+                        appName={requestedAppData?.name}
+                      />
                     )
                   ) : (
                     <Paper sx={{p: 2, my: 2}}>

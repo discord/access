@@ -36,6 +36,15 @@ make ty        # uv run ty check .  — don't skip; type annotations are load-be
 Ruff and ty are configured in `pyproject.toml` (`[tool.ruff]`, `[tool.ty.*]`); pytest config is
 in `[tool.pytest.ini_options]` (`asyncio_mode = "auto"`, since the suite is async).
 
+Beyond ruff's defaults, the lint rules enforce several conventions from `.claude/CLAUDE.md`:
+`G004` (parameterized logging, for Sentry grouping), `ASYNC` and `RUF006` (blocking calls in
+`async def`, and unreferenced `asyncio` tasks), `B`, and bandit's `S` checks except `S101`.
+`examples/plugins/ruff.toml` extends the root config and bans plugin imports of
+`api.operations`, `api.services`, `api.database`, and `api.extensions`, which keeps plugins on
+the plugin interface. A suppression is a targeted `# noqa: <code> - <reason>`, never a bare
+`noqa`. Mechanical reformatting commits are listed in `.git-blame-ignore-revs`; to skip them in
+a local `git blame`, run `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
+
 The pytest suite runs against **in-memory SQLite** by default (`sqlite+aiosqlite://`,
 built from the models via `Base.metadata.create_all`, not migrations). To run against Postgres,
 set `TEST_DATABASE_URI`, or use `make pytest-postgres`, which boots a disposable `postgres:16`
@@ -96,6 +105,15 @@ package in `package-lock.json` doesn't support; CI runs it in the `node-lint` jo
 dependency bump raises its own floor, narrow `engines.node` to the versions every package
 supports, then refresh the lockfile's root metadata with the npm version CI pins.
 
+## Visual diff
+
+tsc and vitest don't render pages. Before opening a PR that upgrades a frontend dependency (MUI,
+MUI X, React, React Router, Emotion) or changes layout, theming, or a shared component, run
+`npm run visual-diff`. It renders every page on the branch and on its merge base with
+`origin/main`, then lists the pages whose screenshots changed and the errors only the branch has.
+`scripts/visual-diff/README.md` covers its output, how it isolates the two sides, and what to
+update when pages or models change.
+
 ## The generated API client must not drift
 
 `src/api/` is generated from the backend's OpenAPI spec and is checked in. The
@@ -138,6 +156,21 @@ here), and verifies the newest migration is reversible (`alembic downgrade -1` t
 So a new migration must apply cleanly on both engines and ship a working `downgrade()`.
 Dialect-specific DDL (e.g. Postgres native enum types, which don't exist on SQLite) must guard
 on `op.get_bind().dialect.name`.
+
+On the Postgres leg, CI also renders each migration the PR adds or changes to SQL offline and
+lints it with [squawk](https://squawkhq.com) against `.squawk.toml`. Rules that only guard lock
+duration on large tables, or that restate conventions the models already set, are off, each with
+its reason in that file. What stays on catches DDL that fails against populated tables (which a
+from-empty `upgrade head` never shows) and changes that break the previous release during a
+rolling deploy. To run it locally:
+
+```bash
+uv venv /tmp/squawk && uv pip install --python /tmp/squawk --require-hashes --only-binary :all: --requirement .github/requirements/squawk.txt
+PATH="/tmp/squawk/bin:$PATH" uv run python .github/scripts/squawk_migrations.py --base origin/main
+```
+
+A warning that is understood and accepted is silenced from the migration itself with a
+`# squawk-ignore-file <rule>, ...` comment, so the justification sits beside the code.
 
 ## Okta sandbox
 

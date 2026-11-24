@@ -1,0 +1,29 @@
+# Fails when a tracked file carries an operator-specific string (a GCP project,
+# registry path, service account, CI secret, or a mention of the sponsoring
+# operator) outside the sanctioned docker-image.yml carve-out. The patterns,
+# exclusions, and reasoned allowlist live in scripts/operator_strings.toml; the
+# script's own tests run with the rest of the pytest suite in ci.yml.
+#
+# Needs no secrets and no project dependencies (the script is stdlib-only), so
+# it runs the same on forked PRs.
+name: Operator-specific strings
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  operator-strings:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The runner image's Python 3.12 ships tomllib, which is all the script needs.
+      - name: Check for operator-specific strings
+        run: python3 scripts/check_operator_strings.py --root .
