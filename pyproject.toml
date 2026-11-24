@@ -149,6 +149,11 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Test fixtures use fake secrets and non-cryptographic randomness.
 "tests/**" = ["S105", "S106", "S311"]
+# CI scripts that run `git` (and `squawk`) from PATH with an argv list they build
+# themselves; no shell is involved, and S603 flags every such call.
+".github/scripts/squawk_migrations.py" = ["S603", "S607"]
+"scripts/check_operator_strings.py" = ["S607"]
+"scripts/test_check_operator_strings.py" = ["S603", "S607"]
 
 # ----------------------------------------------------------------------
 # pytest — test scope and async config
