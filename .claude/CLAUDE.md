@@ -516,7 +516,8 @@ add a reviewer who is a member of the requesting role to G. This mirrors
 at the nearest level that has any. The detail pages list the **eligible reviewers by level**
 (`get_eligible_reviewers_by_level`): nearest first, each user once at their nearest level, levels
 with no eligible reviewer left out. The assigned reviewers are therefore listed first, and the
-rest show a requester who to contact to escalate.
+rest show a requester who to contact to escalate. A request for a deleted group has no reviewers;
+deleting a group rejects its pending requests, so it's history, and Access admins don't inherit it.
 
 Close notifications go to the reviewers assigned while the request was open, so an operation that
 changes ownership or deletes a group takes that snapshot (`snapshot_assigned_reviewers`, or

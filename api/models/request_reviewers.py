@@ -18,6 +18,10 @@ G against an enabled `disallow_self_add_*` tag on G. Only a role request can
 do that, when the reviewer is a member of the requesting role. This matches
 `CheckForSelfAdd.execute_for_role`, which blocks that approval.
 
+An access or role request for a deleted group has no reviewers at any level.
+Deleting a group rejects its pending requests, so such a request is history;
+no one is assigned to it, and Access admins don't inherit it.
+
 A request's assigned reviewers are the eligible reviewers at the nearest
 level that has any. Each level is a SQL condition on the request row. So one
 definition answers both "who reviews this request"
@@ -32,7 +36,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
-from sqlalchemy import ColumnElement, ColumnExpressionArgument, and_, exists, func, not_, or_, select
+from sqlalchemy import ColumnElement, ColumnExpressionArgument, and_, exists, func, not_, or_, select, true
 from sqlalchemy.orm import aliased
 
 from api.extensions import db
@@ -170,6 +174,19 @@ def _is_access_admin(_request_cls: RequestModel, reviewer_id: ReviewerId) -> Col
     )
 
 
+def _has_live_group(request_cls: RequestModel) -> ColumnElement[bool]:
+    """The request's group is not deleted; always true for a group request, whose group doesn't exist yet.
+
+    Checked once per request row, outside the per-level conditions, so it
+    adds a single lookup rather than one per candidate reviewer.
+    """
+    if request_cls is GroupRequest:
+        return true()
+    cls = cast(type[AccessRequest] | type[RoleRequest], request_cls)
+    group = aliased(OktaGroup)
+    return _exists((group,), group.id == cls.requested_group_id, group.deleted_at.is_(None))
+
+
 def _owner_levels(request_cls: RequestModel) -> list[tuple[OwnerLevel, _OwnershipCondition]]:
     """The owner levels for a kind of request, nearest first."""
     if request_cls is GroupRequest:
@@ -244,8 +261,9 @@ def is_assigned_reviewer(request_cls: RequestModel, reviewer_id: ReviewerId) -> 
         reviewer_id: A user id, or a user-id column for a correlated query.
 
     Returns:
-        True for rows where the reviewer is eligible at some owner level and
-        no nearer level has an eligible reviewer.
+        True for rows where the reviewer is eligible at some owner level, no
+        nearer level has an eligible reviewer, and the request's group is not
+        deleted.
     """
     clauses: list[ColumnElement[bool]] = []
     no_one_nearer: list[ColumnElement[bool]] = []
@@ -253,7 +271,7 @@ def is_assigned_reviewer(request_cls: RequestModel, reviewer_id: ReviewerId) -> 
         clauses.append(and_(_is_eligible(request_cls, ownership_condition, reviewer_id), *no_one_nearer))
         candidate = aliased(OktaUser)
         no_one_nearer.append(not_(_exists((candidate,), _is_eligible(request_cls, ownership_condition, candidate.id))))
-    return or_(*clauses)
+    return and_(_has_live_group(request_cls), or_(*clauses))
 
 
 async def get_eligible_reviewers_by_level(request: AnyRequest) -> list[OwnerLevelReviewers]:
@@ -282,6 +300,7 @@ async def get_eligible_reviewers_by_level(request: AnyRequest) -> list[OwnerLeve
                 _exists(
                     (request_cls,),
                     request_cls.id == request.id,
+                    _has_live_group(request_cls),
                     _is_eligible(request_cls, ownership_condition, OktaUser.id),
                 )
             )
