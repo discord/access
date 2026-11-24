@@ -82,3 +82,18 @@ allow-dependencies-licenses:
   - pkg:npm/%40openai/codex-linux-x64
   - pkg:npm/%40openai/codex-win32-arm64
   - pkg:npm/%40openai/codex-win32-x64
+  # Proprietary: the Claude Code CLI is licensed under Anthropic's commercial
+  # terms, not an open source license. It is a CI tool, never redistributed with
+  # Access: the AI review gate installs it into a container image built inside
+  # the review job and discarded afterwards, never into the Access image or a
+  # release. An operator who enables the gate runs it under their own agreement
+  # with Anthropic.
+  - pkg:npm/%40anthropic-ai/claude-code
+  - pkg:npm/%40anthropic-ai/claude-code-darwin-arm64
+  - pkg:npm/%40anthropic-ai/claude-code-darwin-x64
+  - pkg:npm/%40anthropic-ai/claude-code-linux-arm64
+  - pkg:npm/%40anthropic-ai/claude-code-linux-arm64-musl
+  - pkg:npm/%40anthropic-ai/claude-code-linux-x64
+  - pkg:npm/%40anthropic-ai/claude-code-linux-x64-musl
+  - pkg:npm/%40anthropic-ai/claude-code-win32-arm64
+  - pkg:npm/%40anthropic-ai/claude-code-win32-x64
