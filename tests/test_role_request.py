@@ -1,6 +1,8 @@
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
@@ -23,6 +25,7 @@ from api.models import (
 from api.operations import (
     ApproveRoleRequest,
     CreateRoleRequest,
+    DeleteGroup,
     ModifyGroupUsers,
     ModifyRoleGroups,
     RejectRoleRequest,
@@ -1722,3 +1725,76 @@ async def test_role_request_assignee_lists_unowned_role_target_for_admin(
     rep = await client.get(list_url, params={"assignee_user_id": admin_id, "status": "PENDING"})
     assert rep.status_code == 200
     assert pending_rr_id in [r["id"] for r in rep.json()["items"]]
+
+
+async def _role_request_for_deleted_group(
+    db: Db, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
+) -> RoleRequest:
+    """Create a pending request from `role_group` (owned by `user`) for `okta_group`, then delete the group (which
+    rejects the request)."""
+    db.session.add(user)
+    db.session.add(role_group)
+    db.session.add(okta_group)
+    await db.session.commit()
+    await ModifyGroupUsers(group=role_group, owners_to_add=[user.id], sync_to_okta=False).execute()
+    role_request = await CreateRoleRequest(
+        requester_user=user,
+        requester_role=role_group,
+        requested_group=okta_group,
+        request_ownership=False,
+        request_reason="test reason",
+    ).execute()
+    assert role_request is not None
+    await DeleteGroup(group=okta_group, sync_to_okta=False).execute()
+    await db.session.refresh(role_request)
+    assert role_request.status == AccessRequestStatus.REJECTED
+    return role_request
+
+
+@pytest.mark.parametrize("approved", [True, False])
+async def test_put_role_request_for_deleted_group_by_non_admin(
+    client: AsyncClient,
+    db: Db,
+    role_group: RoleGroup,
+    okta_group: OktaGroup,
+    user: OktaUser,
+    mock_user: Callable[[Any], None],
+    url_for: Any,
+    approved: bool,
+) -> None:
+    role_request = await _role_request_for_deleted_group(db, role_group, okta_group, user)
+    other_user = OktaUserFactory.build()
+    db.session.add(other_user)
+    await db.session.commit()
+    mock_user(other_user)
+
+    rep = await client.put(
+        url_for("api-role-requests.role_request_by_id_put", role_request_id=role_request.id),
+        json=ResolveRoleRequestBodyFactory.json(approved=approved, reason="test"),
+    )
+
+    assert rep.status_code == 403
+    assert rep.headers["content-type"] == "application/problem+json"
+    assert rep.json()["detail"] == "Current user is not allowed to perform this action"
+
+
+@pytest.mark.parametrize("approved", [True, False])
+async def test_put_role_request_for_deleted_group_by_admin(
+    client: AsyncClient,
+    db: Db,
+    role_group: RoleGroup,
+    okta_group: OktaGroup,
+    user: OktaUser,
+    url_for: Any,
+    approved: bool,
+) -> None:
+    role_request = await _role_request_for_deleted_group(db, role_group, okta_group, user)
+
+    rep = await client.put(
+        url_for("api-role-requests.role_request_by_id_put", role_request_id=role_request.id),
+        json=ResolveRoleRequestBodyFactory.json(approved=approved, reason="test"),
+    )
+
+    assert rep.status_code == 409
+    assert rep.headers["content-type"] == "application/problem+json"
+    assert rep.json()["detail"] == "Role request is not pending"

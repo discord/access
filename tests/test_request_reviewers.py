@@ -837,11 +837,10 @@ async def _permitted_by_resolve_routes(
     return permitted
 
 
-# The access and role resolve routes answer 500 to anyone but the requester for
-# a request whose group is deleted: `can_manage_group` reads the id of the
-# request's active group, which is None. Until the routes handle that, these
-# scenarios check only the "Assigned to Me" direction.
-_RESOLVE_ROUTES_FAIL_FOR = {access_deleted_group_has_no_reviewers}
+# A deleted group's request lists no reviewers, but the resolve routes still
+# authorize Access admins for it: deleting the group rejected the request, so an
+# admin gets 409 and can change nothing.
+_RESOLVE_ROUTES_ALSO_PERMIT = {access_deleted_group_has_no_reviewers: {"admin"}}
 
 
 @pytest.mark.parametrize("build", SCENARIOS, ids=lambda b: b.__name__)
@@ -868,14 +867,13 @@ async def test_reviewer_directions_agree(
         await db.session.refresh(obj)
     for name, user in scenario.users.items():
         assert (name in assigned_names) == await _assigned_via_list(client, url_for, scenario, user), name
-    if build in _RESOLVE_ROUTES_FAIL_FOR:
-        return
     # Each resolve route checks permission before it checks that the request is
     # pending, so on a resolved request it answers 403 to a user it refuses and
     # 409 to one it permits, without approving anything.
     scenario.request.resolved_at = datetime.now(UTC)
     await db.session.commit()
-    assert eligible == await _permitted_by_resolve_routes(app, client, url_for, scenario)
+    also_permitted = _RESOLVE_ROUTES_ALSO_PERMIT.get(build, set())
+    assert eligible | also_permitted == await _permitted_by_resolve_routes(app, client, url_for, scenario)
 
 
 _REVIEWERS_ROUTE = {
