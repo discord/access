@@ -519,9 +519,12 @@ with no eligible reviewer left out. The assigned reviewers are therefore listed 
 rest show a requester who to contact to escalate. A request for a deleted group has no reviewers;
 deleting a group rejects its pending requests, so it's history, and Access admins don't inherit it.
 
-Close notifications go to the reviewers assigned while the request was open, so an operation that
-changes ownership or deletes a group takes that snapshot (`snapshot_assigned_reviewers`, or
-`snapshot_obsolete_request_reviewers` for a group's pending requests) before it makes the change.
+Close notifications go to the reviewers assigned just before whatever closed the request. That
+can differ from who was notified when it opened: if the nearest level with an eligible reviewer
+changes in between, reviewers notified at open may not get the close. An operation that closes
+requests as a side effect of changing ownership or deleting a group takes the snapshot
+(`snapshot_assigned_reviewers`, or `snapshot_obsolete_request_reviewers` for a group's pending
+requests) before it makes the change, so its own change doesn't move who is notified.
 
 Assignment is not authorization. Who may approve or reject is checked by the resolve routes
 (`can_manage_group`, the self-approval guard, `CheckForSelfAdd`, and the group-request
