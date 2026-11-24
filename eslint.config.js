@@ -67,7 +67,7 @@ export default defineConfig(
     },
   },
   {
-    files: ['*.{js,ts}', 'scripts/**/*.js', 'src/config/loadAccessConfig.js'],
+    files: ['*.{js,ts}', 'scripts/**/*.js', 'src/config/loadAccessConfig.js', '.github/ai-review/**/*.mjs'],
     languageOptions: {globals: globals.node},
   },
   eslintConfigPrettier,

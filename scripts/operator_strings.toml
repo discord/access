@@ -105,3 +105,9 @@ paths = ["api/config.py", "tests/*"]
 patterns = ["operator-name"]
 match = 'wumpus@discord\.com'
 reason = "The default user that development-mode auth and the test fixtures act as"
+
+[[allow]]
+paths = [".github/ai-review/secrets.mjs", ".github/ai-review/secrets.test.mjs"]
+patterns = ["operator-name"]
+match = 'discord(app)?\.com/api/|discord-webhook-url'
+reason = "The AI review gate detects leaked webhook URLs, a vendor credential format like its Slack token pattern"
