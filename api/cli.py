@@ -398,6 +398,23 @@ async def cap_role_memberships_command(dry_run: bool) -> None:
     click.echo(f"{'Would cap' if dry_run else 'Capped'} {capped} role membership(s)")
 
 
+@cli.command("fix-app-group-tags")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="If set will run as dry run and not make any changes",
+)
+@_with_app_context
+async def fix_app_group_tags_command(dry_run: bool) -> None:
+    """Make each app group's app-inherited tags match its app's tags."""
+    from api.integrity import fix_app_group_tags
+
+    fixed = await fix_app_group_tags(dry_run=dry_run)
+    click.echo(f"{'Would fix' if dry_run else 'Fixed'} tags on {fixed} app group(s)")
+
+
 @cli.command("notify")
 @click.option(
     "--owner",

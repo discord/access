@@ -4,9 +4,10 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, or_, select, update
 
 from api.extensions import db
-from api.models import OktaGroup, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
+from api.models import AppGroup, OktaGroup, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
 from api.models.tag import effective_constraint
 from api.operations import UnmanageGroup
+from api.operations._app_tag_inheritance import inherit_app_tags
 from api.operations._derived_reason import role_derived_reason
 from api.operations._time_limits import limit_access_conferred_by_roles
 from api.routers._eager import effective_constraint_options
@@ -241,3 +242,31 @@ async def cap_role_memberships(dry_run: bool = False) -> int:
     if not dry_run:
         await db.session.commit()
     return capped
+
+
+async def fix_app_group_tags(dry_run: bool = False) -> int:
+    """Make every app group's app-inherited tags match its app's active tags.
+
+    A repair sweep for app groups whose inherited tags drifted from their app's, such as
+    groups moved between apps before the move carried tags along. Tags the app carries but
+    the group lacks are added, and their time limits shorten access already granted on the
+    group. Safe to re-run: a group whose tags already match is skipped.
+
+    Args:
+        dry_run: Report which groups would change without writing.
+
+    Returns:
+        The number of app groups whose inherited tags differed from their app's.
+    """
+    app_groups = (
+        await db.session.execute(
+            select(AppGroup.id, AppGroup.name, AppGroup.app_id).where(AppGroup.deleted_at.is_(None))
+        )
+    ).all()
+
+    fixed = 0
+    for group_id, group_name, app_id in app_groups:
+        if await inherit_app_tags(group_id, app_id, dry_run=dry_run):
+            fixed += 1
+            logger.info("fix_app_group_tags: group=%s dry_run=%s", group_name, dry_run)
+    return fixed

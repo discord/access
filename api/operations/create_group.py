@@ -1,12 +1,13 @@
 import logging
 from typing import TypedDict, TypeVar, cast
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic, with_polymorphic
 
 from api.context import get_request_context
 from api.extensions import db
-from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
+from api.models import App, AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
+from api.operations._app_tag_inheritance import inherit_app_tags
 from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.plugins.app_group_lifecycle import AppGroupLifecycleHook
 from api.schemas import AuditLogSchema, EventType
@@ -84,28 +85,7 @@ class CreateGroup:
 
         # If this is an app group, add any app tags
         if type(self.group) is AppGroup:
-            app_tag_maps = (
-                await db.session.scalars(
-                    select(AppTagMap)
-                    .where(AppTagMap.app_id == self.group.app_id)
-                    .where(
-                        or_(
-                            AppTagMap.ended_at.is_(None),
-                            AppTagMap.ended_at > func.now(),
-                        )
-                    )
-                )
-            ).all()
-
-            for app_tag_map in app_tag_maps:
-                db.session.add(
-                    OktaGroupTagMap(
-                        tag_id=app_tag_map.tag_id,
-                        group_id=self.group.id,
-                        app_tag_map_id=app_tag_map.id,
-                    )
-                )
-            await db.session.commit()
+            await inherit_app_tags(self.group.id, self.group.app_id)
 
         # Add direct tags
         if len(tags) > 0:
