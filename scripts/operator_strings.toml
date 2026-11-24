@@ -1,0 +1,5 @@
+[[allow]]
+paths = [".github/ai-review/secrets.mjs", ".github/ai-review/secrets.test.mjs"]
+patterns = ["operator-name"]
+match = 'discord(app)?\.com/api/|discord-webhook-url'
+reason = "The AI review gate detects leaked webhook URLs, a vendor credential format like its Slack token pattern"
