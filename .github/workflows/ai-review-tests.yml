@@ -1,6 +1,7 @@
 name: AI review gate tests
 
-# Unit tests for the AI review gate's scripts (.github/ai-review). They use only Node's built-in
+# Unit tests for the AI review gate's scripts (.github/ai-review), plus a check that the agent's
+# proprietary CLI stays out of every manifest but the agent image's. They use only Node's built-in
 # test runner, so there is nothing to install.
 
 on:
@@ -12,12 +13,18 @@ on:
       - ".github/workflows/ai-review*.yml"
       - ".claude/**"
       - "REVIEWING.md"
+      # licenses.test.mjs keeps the agent's proprietary CLI out of every other manifest.
+      - "**/package.json"
+      - "**/package-lock.json"
   pull_request:
     paths:
       - ".github/ai-review/**"
       - ".github/workflows/ai-review*.yml"
       - ".claude/**"
       - "REVIEWING.md"
+      # licenses.test.mjs keeps the agent's proprietary CLI out of every other manifest.
+      - "**/package.json"
+      - "**/package-lock.json"
 
 permissions: {}
 
