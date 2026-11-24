@@ -104,7 +104,22 @@ async def is_access_admin(db: AsyncSession, current_user_id: str) -> bool:
     return (await db.scalar(select(func.count()).select_from(stmt.subquery())) or 0) > 0
 
 
-async def can_manage_group(db: AsyncSession, current_user_id: str, group: OktaGroup) -> bool:
+async def can_manage_group(db: AsyncSession, current_user_id: str, group: OktaGroup | None) -> bool:
+    """Return whether a user may manage a group's members and owners.
+
+    Args:
+        db: The session to query ownership through.
+        current_user_id: The id of the user being authorized.
+        group: The group to manage, or None when the group is gone, as with a request's
+            ``active_requested_group`` after the group is deleted.
+
+    Returns:
+        True for an owner of the group, an owner of the app an app group belongs to, or an
+        Access admin. For a None group only the Access admin tier applies, since a deleted
+        group has no owners.
+    """
+    if group is None:
+        return await is_access_admin(db, current_user_id)
     if await is_group_owner(db, current_user_id, group):
         return True
     if await is_app_owner_group_owner(db, current_user_id, app_group=group):

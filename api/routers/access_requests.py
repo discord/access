@@ -300,6 +300,11 @@ async def put_access_request(
     elif not await can_manage_group(db, current_user_id, ar.active_requested_group):
         raise HTTPException(403, "Current user is not allowed to perform this action")
 
+    # Checked before the reason constraint, which reads the live group: deleting a group rejects
+    # its pending requests, so a request whose group is gone is never pending.
+    if ar.status != AccessRequestStatus.PENDING or ar.resolved_at is not None:
+        raise HTTPException(409, "Access request is not pending")
+
     if body.approved:
         valid, err_message = await CheckForReason(
             group=ar.active_requested_group,
@@ -309,11 +314,6 @@ async def put_access_request(
         ).execute_for_group()
         if not valid:
             raise HTTPException(400, err_message)
-
-    if ar.status != AccessRequestStatus.PENDING or ar.resolved_at is not None:
-        raise HTTPException(409, "Access request is not pending")
-
-    if body.approved:
         if not ar.requested_group.is_managed:
             raise HTTPException(400, "Groups not managed by Access cannot be modified")
         await ApproveAccessRequest(

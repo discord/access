@@ -1,6 +1,8 @@
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
@@ -22,6 +24,7 @@ from api.models import (
 from api.operations import (
     ApproveAccessRequest,
     CreateAccessRequest,
+    DeleteGroup,
     ModifyGroupUsers,
     ModifyRoleGroups,
     RejectAccessRequest,
@@ -1241,3 +1244,63 @@ async def test_reject_access_request_notify_false_suppresses_completion(
 
     assert (await db.session.get(AccessRequest, access_request.id)).status == AccessRequestStatus.REJECTED
     assert completed_spy.call_count == 0
+
+
+async def _access_request_for_deleted_group(db: Db, okta_group: OktaGroup, user: OktaUser) -> AccessRequest:
+    """Create a pending request from `user` for `okta_group`, then delete the group (which rejects the request)."""
+    db.session.add(user)
+    db.session.add(okta_group)
+    await db.session.commit()
+    access_request = await CreateAccessRequest(
+        requester_user=user,
+        requested_group=okta_group,
+        request_ownership=False,
+        request_reason="test reason",
+    ).execute()
+    assert access_request is not None
+    await DeleteGroup(group=okta_group, sync_to_okta=False).execute()
+    await db.session.refresh(access_request)
+    assert access_request.status == AccessRequestStatus.REJECTED
+    return access_request
+
+
+@pytest.mark.parametrize("approved", [True, False])
+async def test_put_access_request_for_deleted_group_by_non_admin(
+    client: AsyncClient,
+    db: Db,
+    okta_group: OktaGroup,
+    user: OktaUser,
+    mock_user: Callable[[Any], None],
+    url_for: Any,
+    approved: bool,
+) -> None:
+    access_request = await _access_request_for_deleted_group(db, okta_group, user)
+    other_user = OktaUserFactory.build()
+    db.session.add(other_user)
+    await db.session.commit()
+    mock_user(other_user)
+
+    rep = await client.put(
+        url_for("api-access-requests.access_request_by_id_put", access_request_id=access_request.id),
+        json=ResolveAccessRequestBodyFactory.json(approved=approved, reason="test"),
+    )
+
+    assert rep.status_code == 403
+    assert rep.headers["content-type"] == "application/problem+json"
+    assert rep.json()["detail"] == "Current user is not allowed to perform this action"
+
+
+@pytest.mark.parametrize("approved", [True, False])
+async def test_put_access_request_for_deleted_group_by_admin(
+    client: AsyncClient, db: Db, okta_group: OktaGroup, user: OktaUser, url_for: Any, approved: bool
+) -> None:
+    access_request = await _access_request_for_deleted_group(db, okta_group, user)
+
+    rep = await client.put(
+        url_for("api-access-requests.access_request_by_id_put", access_request_id=access_request.id),
+        json=ResolveAccessRequestBodyFactory.json(approved=approved, reason="test"),
+    )
+
+    assert rep.status_code == 409
+    assert rep.headers["content-type"] == "application/problem+json"
+    assert rep.json()["detail"] == "Access request is not pending"
