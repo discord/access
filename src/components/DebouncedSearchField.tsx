@@ -26,8 +26,12 @@ export default function DebouncedSearchField({
   sx,
   autoFocus,
 }: DebouncedSearchFieldProps) {
+  // The pending timeout calls whichever callback is current when it fires, so
+  // a parent passing a fresh closure each render doesn't reset the debounce.
   const onSearchChangeRef = React.useRef(onSearchChange);
-  onSearchChangeRef.current = onSearchChange;
+  React.useLayoutEffect(() => {
+    onSearchChangeRef.current = onSearchChange;
+  });
 
   const debounceRef = React.useRef<ReturnType<typeof setTimeout>>(undefined);
   const handleInputChange = React.useCallback(

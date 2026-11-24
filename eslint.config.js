@@ -55,11 +55,15 @@ export default defineConfig(
         tsconfigRootDir: import.meta.dirname,
       },
     },
-    plugins: {'react-hooks': reactHooks},
+    extends: [reactHooks.configs.flat['recommended-latest']],
     rules: {
-      'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'error',
       '@tanstack/query/exhaustive-deps': 'error',
+      // Warnings, not errors: these flag effects that copy search params or
+      // query results into state, and a memo keyed on a joined query-status
+      // string; reworking them changes when that state updates.
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/use-memo': 'warn',
     },
   },
   {

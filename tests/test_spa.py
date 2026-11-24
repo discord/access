@@ -64,6 +64,21 @@ async def test_missing_asset_returns_404_not_the_spa_shell(spa_client: httpx.Asy
     assert "shell" not in resp.text
 
 
+async def test_path_resolving_outside_the_build_dir_returns_404(
+    spa_client: httpx.AsyncClient, stub_build_dir: Path, tmp_path: Path
+) -> None:
+    # A symlink inside the build directory that resolves outside it must not be
+    # served. The path-escape guard raises a 404, which the 404 handler answers
+    # with the SPA shell, as it does for any unknown non-API path.
+    outside = tmp_path / "outside.txt"
+    outside.write_text("not part of the build")
+    (stub_build_dir / "escape.txt").symlink_to(outside)
+
+    resp = await spa_client.get("/escape.txt")
+    assert "not part of the build" not in resp.text
+    assert "shell" in resp.text
+
+
 async def test_unhandled_asset_error_is_not_replaced_with_the_spa_shell(
     stub_build_dir: Path,
 ) -> None:
