@@ -1,6 +1,6 @@
-# Discord Access Slack Notifications Plugin
+# Access Slack Notifications Plugin
 
-This plugin integrates Discord access notifications with Slack, allowing users to receive updates and alerts regarding their access requests and expirations directly in Slack.
+This plugin integrates Access notifications with Slack, allowing users to receive updates and alerts regarding their access requests and expirations directly in Slack.
 
 ## Installation
 
@@ -35,7 +35,7 @@ Verify Slack notifications work as designed.
 The plugin requires the following environment variables to be set:
 
 - `SLACK_BOT_TOKEN`: The token for your Slack bot.
-- `SLACK_ALERTS_CHANNEL`: The channel where alerts will be sent. String name like `#alerts-discord-access`
+- `SLACK_ALERTS_CHANNEL`: The channel where alerts will be sent. String name like `#alerts-access`
 - `CLIENT_ORIGIN_URL`: The base URL for your application.
 
 ## Plugin Structure
