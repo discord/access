@@ -41,7 +41,10 @@ jobs:
         name: Tag Docker image and push to Google Artifact Registry
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         env:
-          ACCESS_CONFIG_OVERRIDE: ${{ secrets.ACCESS_CONFIG_OVERRIDE }}
+          # The override's FRONTEND block is compiled into the JavaScript bundle every user loads,
+          # so it is kept in a repository variable, which can be read back and edited in place.
+          # The secret of the same name is a fallback until the variable exists.
+          ACCESS_CONFIG_OVERRIDE: ${{ vars.ACCESS_CONFIG_OVERRIDE || secrets.ACCESS_CONFIG_OVERRIDE }}
         with:
           push: true
           tags: |
