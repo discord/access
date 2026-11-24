@@ -72,3 +72,13 @@ allow-dependencies-licenses:
   # for the example plugin, which is not published there.
   - pkg:pypi/access
   - pkg:pypi/app-group-lifecycle-audit-logger
+  # Apache-2.0, like @openai/codex. Each platform package is an npm alias for a
+  # build of @openai/codex itself, so the dependency graph, which looks the
+  # alias name up as its own package, finds no license. Installed only into the
+  # AI review gate's CI container.
+  - pkg:npm/%40openai/codex-darwin-arm64
+  - pkg:npm/%40openai/codex-darwin-x64
+  - pkg:npm/%40openai/codex-linux-arm64
+  - pkg:npm/%40openai/codex-linux-x64
+  - pkg:npm/%40openai/codex-win32-arm64
+  - pkg:npm/%40openai/codex-win32-x64
