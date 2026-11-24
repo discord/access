@@ -32,7 +32,7 @@ import dayjs, {Dayjs} from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
-import {displayUserName} from '../../helpers';
+import {displayUserName, requestErrorMessage} from '../../helpers';
 import {approvalUntilDefault, timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {useCurrentUser} from '../../authentication';
@@ -124,9 +124,9 @@ export default function ReadRequest() {
   ) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
-      navigate(0);
+      void navigate(0);
     }
   };
 
@@ -151,7 +151,7 @@ export default function ReadRequest() {
   let requestedUntilAdjusted: string | undefined = undefined;
   if (!(timeLimit == null)) {
     const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-      .filter((key) => Number(key) <= timeLimit!)
+      .filter((key) => Number(key) <= timeLimit)
       .reduce(
         (obj, key) => {
           obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
@@ -572,7 +572,7 @@ export default function ReadRequest() {
                                         label="For how long?"
                                         name="until"
                                         options={labels ?? UNTIL_OPTIONS}
-                                        onChange={(value) => setUntil(value)}
+                                        onChange={(value: string) => setUntil(value)}
                                         required
                                       />
                                     </Grid>

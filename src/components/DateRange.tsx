@@ -26,16 +26,16 @@ function HighlightDay(
     rangeSelected &&
     !props.outsideCurrentMonth &&
     startDate!.isBefore(props.day, 'day') &&
-    props.day.isBefore(endDate!, 'day');
+    props.day.isBefore(endDate, 'day');
 
   // Make sure right start day is selected
-  const start = !props.outsideCurrentMonth && props.day.isSame(startDate!, 'day') && rangeSelected;
+  const start = !props.outsideCurrentMonth && props.day.isSame(startDate, 'day') && rangeSelected;
   // Get the end day so the range highlight can be drawn up to it
-  const end = !props.outsideCurrentMonth && props.day.isSame(endDate!, 'day') && rangeSelected;
+  const end = !props.outsideCurrentMonth && props.day.isSame(endDate, 'day') && rangeSelected;
 
   // The picker's own value is the start date, so the end date is marked selected here to draw
   // the same circle around it.
-  const selected = rest.selected || (rangeSelected && props.day.isSame(endDate!, 'day'));
+  const selected = rest.selected || (rangeSelected && props.day.isSame(endDate, 'day'));
 
   let style = {};
   let dayStyle = {};

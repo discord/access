@@ -88,7 +88,7 @@ export default function TableTopBar({title, link, children}: TableTopBarProps) {
           {title}
         </Typography>
         {link != null && (
-          <IconButton size="small" onClick={() => navigate(link)}>
+          <IconButton size="small" onClick={() => void navigate(link)}>
             <Launch />
           </IconButton>
         )}

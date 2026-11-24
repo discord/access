@@ -175,7 +175,10 @@ function ReportingToCard({user}: ReportingToCardProps) {
               <ListItemAvatar>
                 <UserAvatar name={displayUserName(user.manager)} size={32} variant={'body1'} />
               </ListItemAvatar>
-              <ListItemText primary={displayUserName(user.manager)} secondary={user.manager.profile?.Title ?? '—'} />
+              <ListItemText
+                primary={displayUserName(user.manager)}
+                secondary={(user.manager.profile?.Title as string | undefined) ?? '—'}
+              />
             </ListItem>
           ) : (
             <ListItem alignItems="flex-start" sx={{padding: 0}}>

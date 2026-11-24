@@ -45,7 +45,7 @@ import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import Ending from '../../components/Ending';
 import MarkdownDescription from '../../components/MarkdownDescription';
-import {groupBy, displayGroupType, displayUserName} from '../../helpers';
+import {groupBy, displayGroupType, displayUserName, pluginDataEntry} from '../../helpers';
 import {
   useAppById,
   useAppGroupLifecyclePluginGroupStatusProps,
@@ -161,7 +161,7 @@ export default function ReadGroup() {
 
   const reconcilePending = isPluginStatusPending(
     lifecycleStatusProperties,
-    (group as AppGroupDetail).plugin_data?.[lifecyclePluginId]?.status,
+    pluginDataEntry((group as AppGroupDetail).plugin_data, lifecyclePluginId)?.status,
   );
 
   // Restart the window when the page moves to a different group.
@@ -375,7 +375,7 @@ export default function ReadGroup() {
                       icon={group.type === 'role_group' ? <RoleIcon /> : <GroupIcon />}
                       text={displayGroupType(group)}
                     />
-                    {group.type == 'app_group' && <AppLinkButton group={group as AppGroupDetail} />}
+                    {group.type == 'app_group' && <AppLinkButton group={group} />}
                     {!group.is_managed && <ExternallyManaged group={group} />}
                   </Stack>
                   <Stack
@@ -404,7 +404,7 @@ export default function ReadGroup() {
                           key={'tag' + tagMap.active_tag!.id}
                           label={tagMap.active_tag!.name}
                           color="primary"
-                          onClick={() => navigate(`/tags/${tagMap.active_tag!.name}`)}
+                          onClick={() => void navigate(`/tags/${tagMap.active_tag!.name}`)}
                           variant={tagMap.active_app_tag_mapping ? 'outlined' : 'filled'}
                           icon={<TagIcon />}
                           sx={{
@@ -470,12 +470,8 @@ export default function ReadGroup() {
               <AppGroupLifecyclePluginData
                 entityType="group"
                 pluginId={app.app_group_lifecycle_plugin}
-                currentConfig={
-                  group?.plugin_data ? group.plugin_data[app.app_group_lifecycle_plugin]?.configuration || {} : {}
-                }
-                currentStatus={
-                  group?.plugin_data ? group.plugin_data[app.app_group_lifecycle_plugin]?.status || {} : {}
-                }
+                currentConfig={pluginDataEntry(group?.plugin_data, app.app_group_lifecycle_plugin)?.configuration || {}}
+                currentStatus={pluginDataEntry(group?.plugin_data, app.app_group_lifecycle_plugin)?.status || {}}
               />
             </Grid>
           )}
@@ -794,7 +790,7 @@ export default function ReadGroup() {
                                     label={app.name}
                                     variant="outlined"
                                     color="primary"
-                                    onClick={() => navigate(`/apps/${app.name}`)}
+                                    onClick={() => void navigate(`/apps/${app.name}`)}
                                   />
                                 ) : null}
                                 {users.sort(sortOktaUserGroupMembers).map((user) =>

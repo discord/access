@@ -46,16 +46,19 @@ export default defineConfig(
   },
   {
     files: ['src/**/*.{ts,tsx}'],
+    // typescript-eslint's type-checked rules (floating promises, unsafe `any`,
+    // redundant assertions) read types from the TS project, which covers only
+    // src/. Files outside it keep the untyped `recommended` set above.
+    extends: [tseslint.configs.recommendedTypeChecked, reactHooks.configs.flat['recommended-latest']],
     languageOptions: {
       globals: globals.browser,
-      // Type information for the rules that need it, such as
+      // Type information for the type-checked rules and for
       // @tanstack/query/no-void-query-fn.
       parserOptions: {
         projectService: true,
         tsconfigRootDir: import.meta.dirname,
       },
     },
-    extends: [reactHooks.configs.flat['recommended-latest']],
     rules: {
       'react-hooks/exhaustive-deps': 'error',
       '@tanstack/query/exhaustive-deps': 'error',

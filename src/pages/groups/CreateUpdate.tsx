@@ -43,6 +43,7 @@ import {
 import {canManageGroup, isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
+import {requestErrorMessage, pluginDataEntry} from '../../helpers';
 
 interface GroupButtonProps {
   defaultGroupType: 'okta_group' | 'app_group' | 'role_group';
@@ -116,11 +117,9 @@ function GroupDialog(props: GroupDialogProps) {
   // does not, so its detail is fetched for the plugin id.
   const pickedAppId = selectedApp != null && selectedApp.id !== initialApp?.id ? selectedApp.id : null;
   const {data: pickedAppDetail} = useAppById({pathParams: {appId: pickedAppId ?? ''}}, {enabled: pickedAppId != null});
+  const appWithPluginId: AppDetail | AppIdRef | null | undefined = pickedAppId != null ? pickedAppDetail : selectedApp;
   const appGroupLifecyclePluginId =
-    groupType === 'app_group'
-      ? ((pickedAppId != null ? pickedAppDetail : (selectedApp as AppDetail | AppIdRef | null))
-          ?.app_group_lifecycle_plugin ?? null)
-      : null;
+    groupType === 'app_group' ? (appWithPluginId?.app_group_lifecycle_plugin ?? null) : null;
 
   const isAllowedToConfigureAppGroupLifecyclePlugin =
     isAccessAdmin(props.currentUser) || isAppOwnerGroupOwner(props.currentUser, selectedApp?.id ?? '');
@@ -128,15 +127,15 @@ function GroupDialog(props: GroupDialogProps) {
   const complete = (completedGroup: GroupDetail | undefined, error: GroupsCreateError | GroupByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(false);
       if ((props.group?.name ?? '') == (completedGroup?.name ?? '')) {
-        navigate(0);
+        void navigate(0);
       } else if (completedGroup?.type == 'app_group' && props.app != null) {
-        navigate(0);
+        void navigate(0);
       } else {
-        navigate('/groups/' + encodeURIComponent(completedGroup?.name ?? ''));
+        void navigate('/groups/' + encodeURIComponent(completedGroup?.name ?? ''));
       }
     }
   };
@@ -253,7 +252,7 @@ function GroupDialog(props: GroupDialogProps) {
               label="Type"
               name="type"
               options={GROUP_TYPE_OPTIONS}
-              onChange={(value) => setGroupType(value)}
+              onChange={(value: 'okta_group' | 'app_group' | 'role_group') => setGroupType(value)}
               // `readOnly`, not `disabled`: react-hook-form omits a disabled field from the
               // submitted data, and rhf-mui forwards `SelectElement`'s `disabled` into
               // `useController`. The API discriminates the group body on `type`, so dropping it
@@ -280,7 +279,7 @@ function GroupDialog(props: GroupDialogProps) {
                 // page of results matches nothing and the field renders blank, and a search in
                 // flight has no options at all, so the value reads as empty, the input resets,
                 // and the reset starts another search -- a loop that outran the backend.
-                transform={{input: (app) => app ?? null}}
+                transform={{input: (app?: (typeof appSearchOptions)[number] | null) => app ?? null}}
                 autocompleteProps={{
                   // `readOnly`, not `disabled`: react-hook-form clears a disabled field's value, and
                   // rhf-mui forwards `autocompleteProps.disabled` into `useController`, so disabling
@@ -406,9 +405,8 @@ function GroupDialog(props: GroupDialogProps) {
               selectedPluginId={appGroupLifecyclePluginId}
               appId={selectedApp?.id}
               currentConfig={
-                appGroupLifecyclePluginId && (props.group as AppGroupDetail | undefined)?.plugin_data
-                  ? (props.group as AppGroupDetail).plugin_data![appGroupLifecyclePluginId]?.configuration || {}
-                  : {}
+                pluginDataEntry((props.group as AppGroupDetail | undefined)?.plugin_data, appGroupLifecyclePluginId)
+                  ?.configuration || {}
               }
               isExistingEntity={props.group != null}
             />

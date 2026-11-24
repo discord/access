@@ -32,7 +32,7 @@ const USER = {
   active_group_ownerships: [],
 } as unknown as OktaUserDetail;
 
-const constraintsAskedFor = vi.fn();
+const constraintsAskedFor = vi.fn<(ids: string[]) => void>();
 // The owner-side limit the app's tag imposes, as the reader would report it.
 const OWNER_LIMIT_SECONDS = 7776000;
 let reportLimit = true;

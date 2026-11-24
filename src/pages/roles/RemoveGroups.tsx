@@ -11,6 +11,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 
 import {useRoleMembersByIdPut, RoleMembersByIdPutError} from '../../api/apiComponents';
 import {GroupDetail, RoleGroupDetail, RoleMember, RoleMembersSummary} from '../../api/apiSchemas';
+import {requestErrorMessage} from '../../helpers';
 
 export interface RemoveGroupsDialogParameters {
   group: GroupDetail;
@@ -37,10 +38,10 @@ export default function RemoveGroupsDialog(props: RemoveGroupsDialogProps) {
   const complete = (completedUsersChange: RoleMembersSummary | undefined, error: RoleMembersByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(false);
-      navigate(0);
+      void navigate(0);
     }
   };
 

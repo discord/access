@@ -14,6 +14,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import {useGroupByIdDelete, GroupByIdDeleteError} from '../../api/apiComponents';
 import {GroupDetail, AppGroupDetail, DeleteMessage, OktaUserDetail} from '../../api/apiSchemas';
 import {canManageGroup} from '../../authorization';
+import {requestErrorMessage} from '../../helpers';
 
 interface GroupDialogProps {
   setOpen(open: boolean): void;
@@ -35,18 +36,18 @@ function GroupDialog(props: GroupDialogProps) {
   const complete = (deletedGroup: DeleteMessage | undefined, error: GroupByIdDeleteError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(false);
       switch (props.group.type) {
         case 'app_group':
-          navigate('/apps/' + encodeURIComponent((props.group as AppGroupDetail).app?.name ?? ''));
+          void navigate('/apps/' + encodeURIComponent((props.group as AppGroupDetail).app?.name ?? ''));
           break;
         case 'role_group':
-          navigate('/roles/');
+          void navigate('/roles/');
           break;
         default:
-          navigate('/groups/');
+          void navigate('/groups/');
           break;
       }
     }

@@ -8,17 +8,20 @@ import {apiFetch} from './apiFetcher';
 // between "repeated key" and "comma-joined value" has been observable.
 
 function stubFetch() {
-  const spy = vi.fn(
-    async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      new Response('{}', {status: 200, headers: {'Content-Type': 'application/json'}}),
+  const spy = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+    Promise.resolve(new Response('{}', {status: 200, headers: {'Content-Type': 'application/json'}})),
   );
   vi.stubGlobal('fetch', spy);
-  window.fetch = spy as unknown as typeof window.fetch;
+  window.fetch = spy;
   return spy;
 }
 
 function calledUrl(spy: ReturnType<typeof stubFetch>): string {
-  return String(spy.mock.calls[0][0]);
+  const url = spy.mock.calls[0][0];
+  if (typeof url !== 'string') {
+    throw new Error('expected a string URL');
+  }
+  return url;
 }
 
 describe('apiFetch query parameters', () => {

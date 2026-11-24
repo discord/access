@@ -30,7 +30,7 @@ import {useTheme} from '@mui/material';
 
 import dayjs, {Dayjs} from 'dayjs';
 
-import {displayUserName} from '../../helpers';
+import {displayUserName, requestErrorMessage} from '../../helpers';
 import {timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
@@ -94,7 +94,7 @@ const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntri
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id: id, label: label}));
 
 interface BulkRenewalDialogProps {
-  setOpen(open: boolean): void;
+  setOpen: (open: boolean) => void;
   rows: OktaUserGroupMemberDetail[];
   select?: number;
 }
@@ -140,7 +140,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   });
 
   // Custom cell renderer for the ToggleButtonGroup
-  const renderToggleButtons = (params: GridRenderCellParams) => {
+  const renderToggleButtons = (params: GridRenderCellParams<Data>) => {
     const handleToggleChange = (event: React.MouseEvent<HTMLElement>, newValue: string | null) => {
       const rowId = params.row.id;
       const currentValue = toggleStates[rowId] || '';
@@ -288,7 +288,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 
   const complete = (completedUsersChange: GroupMembersSummary | undefined, error: GroupMembersByIdPutError | null) => {
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
       setGroupUpdatesErrored((prevValue) => prevValue + 1);
     } else {
       setGroupUpdatesCompleted((prevValue) => prevValue + 1);
@@ -306,7 +306,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
           setGroupUpdatesErrored(0);
         } else {
           setOpen(false);
-          navigate(0);
+          void navigate(0);
         }
       }
     }
@@ -325,7 +325,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     ) {
       setSubmitting(false);
       props.setOpen(false);
-      navigate(0);
+      void navigate(0);
       return;
     }
 
@@ -506,7 +506,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 }
 
 interface BulkRenewalButtonProps {
-  setOpen(open: boolean): void;
+  setOpen: (open: boolean) => void;
   bulk: boolean;
   rereview?: boolean;
 }

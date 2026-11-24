@@ -25,9 +25,10 @@ import {FormContainer, AutocompleteElement} from 'react-hook-form-mui';
 import {useGroups, useGroupByIdPut, GroupByIdPutError, GroupByIdPutRequestBody} from '../../api/apiComponents';
 import {GroupDetail, OktaUserDetail, TagDetail, AppGroupDetail} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
+import {requestErrorMessage} from '../../helpers';
 
 interface AddGroupsButtonProps {
-  setOpen(open: boolean): void;
+  setOpen: (open: boolean) => void;
 }
 
 function AddGroupsButton(props: AddGroupsButtonProps) {
@@ -41,7 +42,7 @@ function AddGroupsButton(props: AddGroupsButtonProps) {
 interface AddGroupsDialogProps {
   currentUser: OktaUserDetail;
   tag: TagDetail;
-  setOpen(open: boolean): void;
+  setOpen: (open: boolean) => void;
 }
 
 const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
@@ -74,7 +75,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
 
   const complete = (completedGroup: GroupDetail | undefined, error: GroupByIdPutError | null) => {
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
       setGroupUpdatesErrored((prevValue) => prevValue + 1);
     } else {
       setGroupUpdatesCompleted((prevValue) => prevValue + 1);
@@ -92,7 +93,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
           setGroupUpdatesErrored(0);
         } else {
           setOpen(false);
-          navigate(0);
+          void navigate(0);
         }
       }
     }

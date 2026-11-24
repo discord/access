@@ -68,7 +68,7 @@ describe('useHelpRegionId', () => {
         <TwoKeys />
       </>,
     );
-    const [first, second] = screen.getAllByTestId('ids').map((node) => node.textContent!.split(' '));
+    const [first, second] = screen.getAllByTestId('ids').map((node) => node.textContent.split(' '));
     // Distinct within an instance, and no id shared across instances.
     expect(first[0]).not.toBe(first[1]);
     expect(new Set([...first, ...second]).size).toBe(4);

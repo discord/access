@@ -2,10 +2,11 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import {GroupByIdPutVariables, GroupsCreateVariables} from '../../api/apiComponents';
 import {AppDetail, GroupDetail, OktaUserDetail} from '../../api/apiSchemas';
 
-const createMutate = vi.fn();
-const updateMutate = vi.fn();
+const createMutate = vi.fn<(variables: GroupsCreateVariables) => void>();
+const updateMutate = vi.fn<(variables: GroupByIdPutVariables) => void>();
 // What GET /api/apps answers (`AppSummary`s) and GET /api/apps/{id} answers (`AppDetail`s, keyed
 // by id). A test that picks an app in the App field sets both.
 let appSearchItems: unknown[] = [];
@@ -130,7 +131,7 @@ describe('editing an app owner group', () => {
     expect(updateMutate).toHaveBeenCalledTimes(1);
     const body = updateMutate.mock.calls[0][0].body;
     expect(body).toMatchObject({type: 'app_group', description: 'Owners of the sandbox'});
-    expect(body.name).toBeUndefined();
+    expect(body?.name).toBeUndefined();
   });
 
   it('submits an edited description', async () => {

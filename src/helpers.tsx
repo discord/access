@@ -4,6 +4,7 @@ import {
   TagSummary,
   OktaGroupTagMapDetail,
   OktaUserGroupMemberDetail,
+  ProblemDetail,
 } from './api/apiSchemas';
 
 // The nested group shapes the helpers below operate on all carry a `type`
@@ -15,6 +16,74 @@ type GroupTypeLike = {type?: string | null};
 // type" — that lets the slimmer `GroupRefForMembership` (which carries no
 // `active_group_tags`) be passed too; it simply contributes no tags.
 type GroupWithTags = {id: string; active_group_tags?: OktaGroupTagMapDetail[] | null};
+
+/**
+ * The message to show for a failed API call.
+ *
+ * The fetcher flattens every error response to a string `payload`, but the
+ * generated `*Error` types also admit the raw problem-detail body, so this
+ * reads `detail` (then `title`) when handed one.
+ *
+ * @param error - the `error` a generated query or mutation hook reports.
+ * @returns the human-readable message.
+ */
+export function requestErrorMessage(error: {payload: string | ProblemDetail}): string {
+  const {payload} = error;
+  return typeof payload === 'string' ? payload : (payload.detail ?? payload.title ?? 'Unexpected error');
+}
+
+/**
+ * The configuration and status an app-group-lifecycle plugin keeps for one
+ * app, group, or group request, stored under the plugin's id in `plugin_data`.
+ */
+export type PluginDataEntry = {
+  configuration?: Record<string, unknown>;
+  status?: Record<string, unknown>;
+};
+
+/**
+ * One plugin's entry in a `plugin_data` map.
+ *
+ * The generated client types `plugin_data` as an open map of `any`; this
+ * gives the entry the shape the backend writes.
+ *
+ * @param pluginData - an app's, group's, or group request's `plugin_data`.
+ * @param pluginId - the app-group-lifecycle plugin's id.
+ * @returns the plugin's entry, or `undefined` when there is no data or no plugin id.
+ */
+export function pluginDataEntry(
+  pluginData: Record<string, unknown> | null | undefined,
+  pluginId: string | null | undefined,
+): PluginDataEntry | undefined {
+  if (pluginData == null || !pluginId) {
+    return undefined;
+  }
+  return pluginData[pluginId] as PluginDataEntry | undefined;
+}
+
+/**
+ * Display text for a value from an app-group-lifecycle plugin's configuration or status data.
+ *
+ * Plugins declare text, number, boolean, and date properties, so values are
+ * normally primitives and render as `String` would. A value outside that
+ * schema is shown as JSON rather than `[object Object]`.
+ *
+ * @param value - the stored value; callers handle `null` and `undefined` themselves.
+ * @returns the text to render.
+ */
+export function formatPluginValue(value: unknown): string {
+  switch (typeof value) {
+    case 'string':
+    case 'number':
+    case 'boolean':
+    case 'bigint':
+    case 'symbol':
+    case 'undefined':
+      return String(value);
+    default:
+      return JSON.stringify(value);
+  }
+}
 
 export const perPage: number[] = [5, 10, 20, 50, 200, 1000];
 
@@ -99,7 +168,7 @@ function checkBooleanTag(tags: TagSummary[] | undefined, targetTag: string) {
 
   return tags.reduce((out: boolean, curr: TagSummary) => {
     if (curr.enabled && curr.constraints && Object.keys(curr.constraints).includes(targetTag)) {
-      return out || curr.constraints![targetTag];
+      return out || (curr.constraints[targetTag] as boolean);
     } else return out;
   }, false);
 }
@@ -111,7 +180,8 @@ function minTagTime(tags: TagSummary[], owner: boolean) {
     );
     return timeLimited.length > 0
       ? timeLimited.reduce((prev, curr) => {
-          return prev < curr.constraints!['owner_time_limit'] ? prev : curr.constraints!['owner_time_limit'];
+          const limit = curr.constraints!['owner_time_limit'] as number;
+          return prev < limit ? prev : limit;
         }, Number.MAX_VALUE)
       : null;
   } else {
@@ -120,7 +190,8 @@ function minTagTime(tags: TagSummary[], owner: boolean) {
     );
     return timeLimited.length > 0
       ? timeLimited.reduce((prev, curr) => {
-          return prev < curr.constraints!['member_time_limit'] ? prev : curr.constraints!['member_time_limit'];
+          const limit = curr.constraints!['member_time_limit'] as number;
+          return prev < limit ? prev : limit;
         }, Number.MAX_VALUE)
       : null;
   }
