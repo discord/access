@@ -28,7 +28,7 @@ import {isAccessAdmin} from '../../authorization';
 import {requestErrorMessage} from '../../helpers';
 
 interface AddGroupsButtonProps {
-  setOpen(open: boolean): void;
+  setOpen: (open: boolean) => void;
 }
 
 function AddGroupsButton(props: AddGroupsButtonProps) {
@@ -42,7 +42,7 @@ function AddGroupsButton(props: AddGroupsButtonProps) {
 interface AddGroupsDialogProps {
   currentUser: OktaUserDetail;
   tag: TagDetail;
-  setOpen(open: boolean): void;
+  setOpen: (open: boolean) => void;
 }
 
 const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {

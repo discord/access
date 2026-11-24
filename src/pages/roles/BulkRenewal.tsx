@@ -98,7 +98,7 @@ const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntri
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id: id, label: label}));
 
 interface BulkRenewalDialogProps {
-  setOpen(open: boolean): void;
+  setOpen: (open: boolean) => void;
   rows: RoleGroupMapDetail[];
   select?: number;
 }
@@ -623,7 +623,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 }
 
 interface BulkRenewalButtonProps {
-  setOpen(open: boolean): void;
+  setOpen: (open: boolean) => void;
   bulk: boolean;
   rereview?: boolean;
 }

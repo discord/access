@@ -28,7 +28,7 @@ import {isAccessAdmin} from '../../authorization';
 import {requestErrorMessage} from '../../helpers';
 
 interface AddAppsButtonProps {
-  setOpen(open: boolean): void;
+  setOpen: (open: boolean) => void;
 }
 
 function AddAppsButton(props: AddAppsButtonProps) {
@@ -42,7 +42,7 @@ function AddAppsButton(props: AddAppsButtonProps) {
 interface AddAppsDialogProps {
   currentUser: OktaUserDetail;
   tag: TagDetail;
-  setOpen(open: boolean): void;
+  setOpen: (open: boolean) => void;
 }
 
 function AddAppsDialog(props: AddAppsDialogProps) {

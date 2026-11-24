@@ -45,7 +45,7 @@ dayjs.extend(IsSameOrBefore);
 
 interface AddRolesButtonProps {
   owner: boolean;
-  setOpen(open: boolean): void;
+  setOpen: (open: boolean) => void;
 }
 
 function AddRolesButton(props: AddRolesButtonProps) {
@@ -60,7 +60,7 @@ interface AddRolesDialogProps {
   currentUser: OktaUserDetail;
   owner: boolean;
   group: GroupDetail;
-  setOpen(open: boolean): void;
+  setOpen: (open: boolean) => void;
 }
 
 interface AddRolesForm {
