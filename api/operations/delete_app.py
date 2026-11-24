@@ -4,8 +4,9 @@ from sqlalchemy import func, or_, select, update
 
 from api.context import get_request_context
 from api.extensions import db
-from api.models import App, AppGroup, AppTagMap, OktaUser
+from api.models import AccessRequestStatus, App, AppGroup, AppTagMap, GroupRequest, OktaUser
 from api.operations.delete_group import DeleteGroup
+from api.operations.reject_group_request import RejectGroupRequest
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -56,6 +57,25 @@ class DeleteApp:
 
         app.deleted_at = func.now()
         await db.session.commit()
+
+        # Reject all pending requests for a new group in this app. This runs before the app's
+        # groups are deleted: RejectGroupRequest authorizes an app owner, and picks the app owners
+        # its notification goes to, through the app's live owner group. Once that group is gone it
+        # skips an app owner's rejection without raising.
+        obsolete_group_requests = (
+            await db.session.scalars(
+                select(GroupRequest)
+                .where(GroupRequest.requested_app_id == app.id)
+                .where(GroupRequest.status == AccessRequestStatus.PENDING)
+                .where(GroupRequest.resolved_at.is_(None))
+            )
+        ).all()
+        for obsolete_group_request in obsolete_group_requests:
+            await RejectGroupRequest(
+                group_request=obsolete_group_request,
+                rejection_reason="Closed because the requested app was deleted",
+                current_user_id=current_user_id,
+            ).execute()
 
         # Delete all associated Okta App Groups and end their membership. The
         # owners group goes last: its owners are the app owners, whom requests
