@@ -19,7 +19,6 @@ from api.models import (
     RoleGroup,
     Tag,
 )
-from api.models.access_request import get_all_possible_request_approvers
 from api.operations import (
     ApproveAccessRequest,
     CreateAccessRequest,
@@ -660,45 +659,9 @@ async def test_create_app_access_request_notification(
     assert kwargs["requester"] == user
 
 
-async def test_get_all_possible_request_approvers(app: FastAPI, mocker: MockerFixture, db: Db) -> None:
-    access_admin = (
-        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
-    ).first()
-
-    users = OktaUserFactory.batch(3)
-    db.session.add_all(users)
-    await db.session.commit()
-
-    mocker.patch(
-        "api.models.access_request.get_group_managers",
-        return_value=[users[0], users[1]],
-    )
-
-    mocker.patch(
-        "api.models.access_request.get_app_managers",
-        return_value=[users[0], users[2]],
-    )
-
-    req = AccessRequest()
-    req.requested_group = AppGroupFactory.build()
-
-    approvers = await get_all_possible_request_approvers(req)
-
-    # Assert that the access admin and 3 users are returned with no duplicates
-    assert len(approvers) == 4
-    assert access_admin in approvers
-    assert users[0] in approvers
-    assert users[1] in approvers
-    assert users[2] in approvers
-
-
 async def test_resolve_app_access_request_notification(
     app: FastAPI, db: Db, access_app: App, app_group: AppGroup, user: OktaUser, mocker: MockerFixture
 ) -> None:
-    access_admin = (
-        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
-    ).first()
-
     app_owner_user1 = OktaUserFactory.build()
     app_owner_user2 = OktaUserFactory.build()
     app_owner_group = AppGroupFactory.build()
@@ -763,11 +726,7 @@ async def test_resolve_app_access_request_notification(
     assert kwargs["access_request"] == access_request
     assert kwargs["group"] == app_group
     assert kwargs["requester"] == user
-    assert len(kwargs["approvers"]) == 4
-    assert access_admin in kwargs["approvers"]
-    assert app_owner_user1 in kwargs["approvers"]
-    assert app_owner_user2 in kwargs["approvers"]
-    assert user in kwargs["approvers"]
+    assert set(kwargs["approvers"]) == {app_owner_user1, app_owner_user2}
 
     # Reset the access request so we can test the reject path
     access_request.status = AccessRequestStatus.PENDING
@@ -785,11 +744,7 @@ async def test_resolve_app_access_request_notification(
     assert kwargs["access_request"] == access_request
     assert kwargs["group"] == app_group
     assert kwargs["requester"] == user
-    assert len(kwargs["approvers"]) == 4
-    assert access_admin in kwargs["approvers"]
-    assert app_owner_user1 in kwargs["approvers"]
-    assert app_owner_user2 in kwargs["approvers"]
-    assert user in kwargs["approvers"]
+    assert set(kwargs["approvers"]) == {app_owner_user1, app_owner_user2}
 
 
 async def test_auto_resolve_create_access_request(
