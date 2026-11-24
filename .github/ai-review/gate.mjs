@@ -46,7 +46,7 @@ function isBot(user) {
  * - `pass`: there is nothing to review (a draft, a closed pull request, or a bot author); the
  *   check passes.
  * - `awaiting-label`: the author lacks triage access, so the review waits for the `ai-review`
- *   label; the check fails when the gate is enforced.
+ *   label; the check fails until it is added.
  * - `ignore`: the event says nothing about the pull request's contents (another label, or an
  *   `ai-review` label from someone without triage access); the run reports under a different
  *   check name so it cannot overwrite an earlier result.
@@ -147,10 +147,8 @@ async function main() {
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 if (isMain) {
   main().catch((error) => {
-    // Without outputs, the publish job treats the gate as undecided, which fails only an enforced
-    // gate; an advisory gate only warns here too.
-    const enforced = process.env.ENFORCE === 'true';
-    console.error(`::${enforced ? 'error' : 'warning'}::${error instanceof Error ? error.message : String(error)}`);
-    process.exitCode = enforced ? 1 : 0;
+    // Without outputs, the publish job treats the gate as undecided and fails the check.
+    console.error(`::error::${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
   });
 }

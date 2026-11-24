@@ -236,16 +236,14 @@ function plural(count, singular, pluralForm = `${singular}s`) {
  * @param {string} repository - `owner/name`.
  * @param {string} baseSha
  * @param {string} headSha
- * @param {boolean} enforced - Whether blockers fail the check.
  * @returns {string} Markdown, starting with `MARKER`.
  */
-export function formatComment(review, repository, baseSha, headSha, enforced) {
+export function formatComment(review, repository, baseSha, headSha) {
   const blockers = review.findings.filter((finding) => finding.severity === 'blocker');
   const rejected = review.rejected.length;
   let status;
-  if (rejected && enforced) status = `Review invalid: ${plural(rejected, 'finding')} failed validation`;
-  else if (blockers.length && enforced) status = `Changes required: ${plural(blockers.length, 'blocker')}`;
-  else if (blockers.length) status = `Advisory mode: ${plural(blockers.length, 'blocker')} would fail the gate`;
+  if (rejected) status = `Review invalid: ${plural(rejected, 'finding')} failed validation`;
+  else if (blockers.length) status = `Changes required: ${plural(blockers.length, 'blocker')}`;
   else status = review.findings.length ? `No blockers; ${plural(review.findings.length, 'advisory finding')}` : 'No findings';
 
   const lines = [MARKER, '## AI review', '', `**${status}.**`, `Reviewed commit \`${headSha}\`.`];
@@ -275,14 +273,9 @@ export function formatComment(review, repository, baseSha, headSha, enforced) {
   }
   if (!review.spec_available) lines.push('', 'No linked issue or stated requirements were available to check against.');
 
-  lines.push(
-    '',
-    enforced
-      ? 'Blockers above fail this check. Push a fix to run the review again.'
-      : 'The gate is advisory: findings never fail the check. Set the repository variable `AI_REVIEW_ENFORCE=true` to make blockers fail it.',
-  );
+  lines.push('', 'Blockers above fail this check. Push a fix to run the review again.');
   if (rejected) {
-    lines.push('', `<sub>${enforced ? 'The gate failed because' : 'Ignored'} ${plural(rejected, 'finding')} whose location or fields did not pass validation.</sub>`);
+    lines.push('', `<sub>The check failed because ${plural(rejected, 'finding')} did not pass location or field validation.</sub>`);
   }
   lines.push('', '<sub>Automated review. A maintainer still reviews every pull request.</sub>');
   return lines.join('\n');
@@ -306,12 +299,11 @@ export function formatInlineComment(finding) {
  * Render the notice posted when no review could be produced.
  *
  * @param {string} reason - Why the review is unavailable. Withheld if it looks like a credential.
- * @param {boolean} enforced - Whether the gate fails when no review is available.
  * @param {string} [headSha] - The commit the failed review was for, shown so an edited notice
  *   says which push it describes.
  * @returns {string} Markdown that starts with `MARKER` and carries `UNAVAILABLE_MARKER`.
  */
-export function formatUnavailable(reason, enforced, headSha = '') {
+export function formatUnavailable(reason, headSha = '') {
   const safeReason = findSecretLikeText(reason).length
     ? 'The failure message contained credential-shaped text and was withheld; see the workflow log.'
     : sanitize(reason, 500);
@@ -320,7 +312,7 @@ export function formatUnavailable(reason, enforced, headSha = '') {
     UNAVAILABLE_MARKER,
     '## AI review',
     '',
-    enforced ? '**Review unavailable. The gate failed.**' : '**Review unavailable. The gate was left open.**',
+    '**Review unavailable. The check failed.**',
     '',
     safeReason,
     ...(headSha ? ['', `Commit: ${headSha.slice(0, 12)}`] : []),
@@ -350,11 +342,10 @@ export function riskLabelChanges(current, riskAreas) {
  * @param {object} review - Output of `validateReview`.
  * @param {string} baseSha - The base the review analyzed.
  * @param {string} headSha - The head the review analyzed.
- * @param {boolean} enforced - Part of the fingerprint because it changes the rendered summary.
  * @returns {string} An HTML comment.
  */
-export function reviewFingerprint(review, baseSha, headSha, enforced) {
-  const digest = createHash('sha256').update(JSON.stringify({review, baseSha, headSha, enforced})).digest('hex');
+export function reviewFingerprint(review, baseSha, headSha) {
+  const digest = createHash('sha256').update(JSON.stringify({review, baseSha, headSha})).digest('hex');
   return `<!-- access-ai-review-result:${digest} -->`;
 }
 
@@ -558,15 +549,14 @@ async function cleanUpSuperseded(pr, publishedId) {
  * @param {string} options.headSha - The head the review analyzed.
  * @param {object} options.review - Output of `validateReview`.
  * @param {object[]} options.files - The pull request's files.
- * @param {boolean} options.enforced
  * @returns {Promise<{published: boolean}>} `published` is false when an identical review was
  *   already posted for this head.
  * @throws {StaleReviewError} If the pull request moved since the review ran.
  */
-export async function publishReview({github, repository, pullNumber, baseSha, headSha, review, files, enforced}) {
+export async function publishReview({github, repository, pullNumber, baseSha, headSha, review, files}) {
   const pr = {github, repository, pullNumber, baseSha, headSha};
   await assertUnmoved(pr);
-  const fingerprint = reviewFingerprint(review, baseSha, headSha, enforced);
+  const fingerprint = reviewFingerprint(review, baseSha, headSha);
   const reviews = await recentReviews(pr);
   const existing = reviews.findLast(
     (previous) => isOwnBot(previous.author) && previous.commit?.oid === headSha && previous.body?.includes(fingerprint),
@@ -579,7 +569,7 @@ export async function publishReview({github, repository, pullNumber, baseSha, he
       body: JSON.stringify({
         commit_id: headSha,
         event: 'COMMENT',
-        body: `${formatComment(review, repository, baseSha, headSha, enforced)}\n\n${fingerprint}`,
+        body: `${formatComment(review, repository, baseSha, headSha)}\n\n${fingerprint}`,
         comments: reviewComments(review.findings, files),
       }),
     });
@@ -604,14 +594,13 @@ export async function publishReview({github, repository, pullNumber, baseSha, he
  * @param {string} options.baseSha - The base the failed review was for.
  * @param {string} options.headSha - The head the failed review was for.
  * @param {string} options.reason - Passed to `formatUnavailable`.
- * @param {boolean} options.enforced
  * @returns {Promise<{updated: boolean}>} `updated` is true when an existing notice was edited.
  * @throws {StaleReviewError} If the pull request moved since the review ran; nothing is posted.
  */
-export async function postUnavailableNotice({github, repository, pullNumber, baseSha, headSha, reason, enforced}) {
+export async function postUnavailableNotice({github, repository, pullNumber, baseSha, headSha, reason}) {
   const pr = {github, repository, pullNumber, baseSha, headSha};
   await assertUnmoved(pr);
-  const body = JSON.stringify({body: formatUnavailable(reason, enforced, headSha)});
+  const body = JSON.stringify({body: formatUnavailable(reason, headSha)});
   const latest = (await visibleUnavailableNotices(pr)).at(-1);
   if (latest) {
     await github.request(`/repos/${repository}/issues/comments/${latest.databaseId}`, {method: 'PATCH', body});
@@ -625,17 +614,16 @@ export async function postUnavailableNotice({github, repository, pullNumber, bas
  * The publisher's result for a run where no review ran.
  *
  * @param {string | undefined} check - The gate's `check` output; empty when the gate job failed.
- * @param {boolean} enforced
- * @returns {{fail: boolean, message: string}} `fail` is true only for an enforced gate whose
- *   review is still owed: one awaiting the label, or one whose gate never decided.
+ * @returns {{fail: boolean, message: string}} `fail` is true while a review is still owed: one
+ *   awaiting the label, or one whose gate never decided.
  */
-export function unreviewedOutcome(check, enforced) {
+export function unreviewedOutcome(check) {
   if (check === 'pass' || check === 'ignore') return {fail: false, message: `Nothing to review (${check}).`};
   const message =
     check === 'awaiting-label'
       ? 'The author lacks triage access, so the review waits for someone with triage access to add the ai-review label.'
       : 'The gate job did not decide whether to review; see its log.';
-  return {fail: enforced, message: `${message}${enforced ? ' Failing the gate.' : ''}`};
+  return {fail: true, message: `${message} Failing the check.`};
 }
 
 /** Publish the review job's result, or the notice explaining why there is none. */
@@ -644,9 +632,8 @@ async function main() {
   const repository = env.GITHUB_REPOSITORY;
   const pullNumber = Number(env.PR_NUMBER);
   const {BASE_SHA: baseSha, HEAD_SHA: headSha, REVIEW_FILE: reviewFile, GITHUB_TOKEN: token, CHECK: check} = env;
-  const enforced = env.ENFORCE === 'true';
   if (check !== 'review') {
-    const {fail, message} = unreviewedOutcome(check, enforced);
+    const {fail, message} = unreviewedOutcome(check);
     console.log(message);
     if (fail) process.exitCode = 1;
     return;
@@ -656,16 +643,16 @@ async function main() {
   }
   const pr = {github: createGitHub(token), repository, pullNumber, baseSha, headSha};
   // A newer push starts its own review, and a labeled run can be requested again, so a stale run
-  // posts nothing. It still fails an enforced gate, which the newer run then decides.
+  // posts nothing. It still fails the check, which the newer run then decides.
   const refuseStale = (error) => {
     if (!(error instanceof StaleReviewError)) throw error;
     console.warn(`Not publishing: ${error.message}`);
-    if (enforced) process.exitCode = 1;
+    process.exitCode = 1;
   };
   const postUnavailable = async (reason) => {
-    console.warn(`${reason} ${enforced ? 'Failing the gate.' : 'Leaving the gate open.'}`);
-    if (enforced) process.exitCode = 1;
-    await postUnavailableNotice({...pr, reason, enforced}).catch(refuseStale);
+    console.warn(`${reason} Failing the check.`);
+    process.exitCode = 1;
+    await postUnavailableNotice({...pr, reason}).catch(refuseStale);
   };
 
   if (!fs.existsSync(reviewFile)) {
@@ -683,7 +670,7 @@ async function main() {
   }
   let published;
   try {
-    ({published} = await publishReview({...pr, review, files, enforced}));
+    ({published} = await publishReview({...pr, review, files}));
   } catch (error) {
     if (error instanceof StaleReviewError) refuseStale(error);
     else await postUnavailable(`The review could not be published: ${error.message}`);
@@ -694,15 +681,13 @@ async function main() {
   );
   for (const reason of review.rejected) console.warn(`Rejected ${reason}`);
   const blockers = review.findings.filter((finding) => finding.severity === 'blocker');
-  if (enforced && (blockers.length || review.rejected.length)) process.exitCode = 1;
+  if (blockers.length || review.rejected.length) process.exitCode = 1;
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 if (isMain) {
   main().catch((error) => {
-    // An advisory gate must not turn red on an infrastructure error, so it only warns.
-    const enforced = process.env.ENFORCE === 'true';
-    console.error(`::${enforced ? 'error' : 'warning'}::${error instanceof Error ? error.message : String(error)}`);
-    process.exitCode = enforced ? 1 : 0;
+    console.error(`::error::${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
   });
 }

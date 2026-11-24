@@ -1,7 +1,7 @@
 name: AI review
 
-# An AI review of each pull request against REVIEWING.md, posted as an advisory pull request
-# review. It lightens human review; it does not replace it.
+# An AI review of each pull request against REVIEWING.md, posted as a pull request review. It
+# lightens human review; it does not replace it.
 #
 # Trust model:
 #   - Policy (prompt, schema, REVIEWING.md, and every script) comes from the base commit
@@ -18,16 +18,17 @@ name: AI review
 # and bots are skipped. Without the AI_REVIEW_API_KEY secret, every run is a silent no-op, so forks
 # and other operators are unaffected.
 #
-# The check: the publish job always reports when the gate makes a decision about the pull
-# request's contents, so a required check never passes merely because it was skipped. It passes
-# for drafts and bots, fails an enforced gate while an untrusted author's pull request awaits the
-# label, and otherwise reports the review. Events that say nothing about the contents (another
-# label, or an `ai-review` label from someone without triage access) report under a different
-# name, so they cannot overwrite an earlier result.
+# The check, "AI review gate": it fails on blockers, on findings that fail validation, when no
+# review could be produced, and while an untrusted author's pull request awaits the label. It
+# passes for drafts and bots. Whether a failure blocks merging is the repository's choice: require
+# the check in a branch ruleset to make it blocking, or leave it unrequired to keep it advisory.
+# The publish job always reports when the gate makes a decision about the pull request's contents,
+# so a required check never passes merely because it was skipped. Events that say nothing about
+# the contents (another label, or an `ai-review` label from someone without triage access) report
+# under a different name, so they cannot overwrite an earlier result.
 #
 # Configuration (repository variables): AI_REVIEW_PROVIDER (anthropic or openai, default
-# anthropic), AI_REVIEW_MODEL, AI_REVIEW_MAX_BUDGET_USD, and AI_REVIEW_ENFORCE (true makes blockers
-# fail the check; the default is advisory).
+# anthropic), AI_REVIEW_MODEL, and AI_REVIEW_MAX_BUDGET_USD.
 
 on:
   # pull_request_target is required: the model credential is not available to pull_request runs
@@ -74,7 +75,6 @@ jobs:
       - name: Decide
         id: gate
         env:
-          ENFORCE: ${{ vars.AI_REVIEW_ENFORCE || 'false' }}
           GITHUB_TOKEN: ${{ github.token }}
           HAS_API_KEY: ${{ secrets.AI_REVIEW_API_KEY != '' }}
         run: node .github/ai-review/gate.mjs
@@ -146,11 +146,10 @@ jobs:
 
   publish:
     name: >-
-      ${{ needs.gate.outputs.check == 'ignore' && 'AI review (event ignored)'
-      || vars.AI_REVIEW_ENFORCE == 'true' && 'AI review gate' || 'AI review (advisory)' }}
+      ${{ needs.gate.outputs.check == 'ignore' && 'AI review (event ignored)' || 'AI review gate' }}
     needs: [gate, review]
-    # Also runs when the gate job failed (its check output is then empty), so an enforced gate
-    # fails rather than passing as skipped.
+    # Also runs when the gate job failed (its check output is then empty), so the check fails
+    # rather than passing as skipped.
     if: >-
       always() &&
       needs.gate.outputs.check != 'disabled' &&
@@ -181,7 +180,6 @@ jobs:
           node-version: "24"
       - name: Publish the review
         env:
-          ENFORCE: ${{ vars.AI_REVIEW_ENFORCE || 'false' }}
           GITHUB_TOKEN: ${{ github.token }}
           REVIEW_BASE64: ${{ needs.review.outputs.review-base64 }}
           REVIEW_ERROR_BASE64: ${{ needs.review.outputs.review-error-base64 }}

@@ -194,14 +194,13 @@ describe('formatting', () => {
     files,
   );
 
-  it('leads with where reviewers should focus and states advisory mode', () => {
-    const body = formatComment(review, REPO, BASE, HEAD, false);
+  it('leads with where reviewers should focus and states the result', () => {
+    const body = formatComment(review, REPO, BASE, HEAD);
     assert.ok(body.startsWith(MARKER));
     assert.match(body, /### Where reviewers should focus\n\n- `api\/routers\/groups.py`: changes the authorization/u);
-    assert.match(body, /Advisory mode: 1 blocker would fail the gate/u);
+    assert.match(body, /Changes required: 1 blocker/u);
     assert.match(body, /`risk:auth`/u);
     assert.match(body, /blob\/a{40}\/api\/routers\/groups.py#L11/u);
-    assert.match(formatComment(review, REPO, BASE, HEAD, true), /Changes required: 1 blocker/u);
   });
 
   it('renders a suggestion block inline', () => {
@@ -211,15 +210,15 @@ describe('formatting', () => {
   });
 
   it('marks the unavailable notice and names its commit', () => {
-    const body = formatUnavailable('agent timed out', false, HEAD);
+    const body = formatUnavailable('agent timed out', HEAD);
     assert.ok(body.startsWith(MARKER));
     assert.ok(body.includes(UNAVAILABLE_MARKER));
     assert.ok(body.endsWith(`Commit: ${HEAD.slice(0, 12)}`));
   });
 
   it('withholds credential-shaped failure reasons', () => {
-    assert.match(formatUnavailable('upstream said sk-ant-api03-abcdefghijklmnopqrstuvwx', false), /withheld/u);
-    assert.match(formatUnavailable('agent timed out', true), /gate failed[\s\S]*agent timed out/u);
+    assert.match(formatUnavailable('upstream said sk-ant-api03-abcdefghijklmnopqrstuvwx'), /withheld/u);
+    assert.match(formatUnavailable('agent timed out'), /check failed[\s\S]*agent timed out/u);
   });
 });
 
@@ -259,7 +258,7 @@ function fakeGitHub({head = HEAD, reviews = [], threads = [], comments = []} = {
 
 describe('publishReview', () => {
   const review = validateReview(rawReview({risk_areas: ['auth'], findings: [finding()]}), files);
-  const options = {repository: REPO, pullNumber: 7, baseSha: BASE, headSha: HEAD, review, files, enforced: false};
+  const options = {repository: REPO, pullNumber: 7, baseSha: BASE, headSha: HEAD, review, files};
   const bot = {login: 'github-actions', __typename: 'Bot'};
 
   it('refuses to publish when the head moved', async () => {
@@ -284,7 +283,7 @@ describe('publishReview', () => {
     assert.equal(post.body.commit_id, HEAD);
     assert.equal(post.body.event, 'COMMENT');
     assert.equal(post.body.comments.length, 1);
-    assert.ok(post.body.body.includes(reviewFingerprint(review, BASE, HEAD, false)));
+    assert.ok(post.body.body.includes(reviewFingerprint(review, BASE, HEAD)));
     const labelAdd = github.calls.find((call) => call.route?.endsWith('/issues/7/labels'));
     assert.deepEqual(labelAdd.body, {labels: ['risk:auth']});
     assert.ok(github.calls.some((call) => call.method === 'DELETE' && call.route?.endsWith('/labels/risk%3Amigration')));
@@ -299,7 +298,7 @@ describe('publishReview', () => {
   });
 
   it('does not post a review that is already published for this head', async () => {
-    const fingerprint = reviewFingerprint(review, BASE, HEAD, false);
+    const fingerprint = reviewFingerprint(review, BASE, HEAD);
     const github = fakeGitHub({reviews: [{id: 'SAME', body: `${MARKER}\n${fingerprint}`, author: bot, commit: {oid: HEAD}}]});
     assert.deepEqual(await publishReview({github, ...options}), {published: false});
     assert.ok(!github.calls.some((call) => call.method === 'POST'));
@@ -327,7 +326,7 @@ describe('publishReview', () => {
 });
 
 describe('postUnavailableNotice', () => {
-  const options = {repository: REPO, pullNumber: 7, baseSha: BASE, headSha: HEAD, reason: 'agent timed out', enforced: false};
+  const options = {repository: REPO, pullNumber: 7, baseSha: BASE, headSha: HEAD, reason: 'agent timed out'};
   const bot = {login: 'github-actions', __typename: 'Bot'};
 
   it('posts a notice when none is visible', async () => {
@@ -353,11 +352,8 @@ describe('postUnavailableNotice', () => {
 });
 
 describe('unreviewedOutcome', () => {
-  it('fails an enforced gate only while a review is owed', () => {
-    assert.equal(unreviewedOutcome('awaiting-label', true).fail, true);
-    assert.equal(unreviewedOutcome('awaiting-label', false).fail, false);
-    for (const check of ['pass', 'ignore']) assert.equal(unreviewedOutcome(check, true).fail, false, check);
-    assert.equal(unreviewedOutcome('', true).fail, true);
-    assert.equal(unreviewedOutcome(undefined, false).fail, false);
+  it('fails only while a review is owed', () => {
+    for (const check of ['awaiting-label', '', undefined]) assert.equal(unreviewedOutcome(check).fail, true, check);
+    for (const check of ['pass', 'ignore']) assert.equal(unreviewedOutcome(check).fail, false, check);
   });
 });
