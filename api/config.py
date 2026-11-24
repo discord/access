@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 from typing import Any, Final, Literal, cast
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Sentinel for "no maximum age": disables the age-based expiration sweep for a
@@ -84,6 +84,13 @@ class Settings(BaseSettings):
     OKTA_USE_GROUP_OWNERS_API: bool = False
     CURRENT_OKTA_USER_EMAIL: str = "wumpus@discord.com"
     OKTA_GROUP_PROFILE_CUSTOM_ATTR: str | None = None
+    # Whether a native Okta group with no group rules and no value for
+    # OKTA_GROUP_PROFILE_CUSTOM_ATTR is managed by Access. True (the default)
+    # keeps the historical opt-out behavior. False makes management opt-in:
+    # only groups whose custom attribute is explicitly true are managed, and
+    # groups Access creates get the attribute set to true. Requires
+    # OKTA_GROUP_PROFILE_CUSTOM_ATTR.
+    OKTA_GROUP_MANAGED_BY_DEFAULT: bool = True
 
     # Database
     SQLALCHEMY_DATABASE_URI: str | None = Field(default_factory=lambda: os.getenv("DATABASE_URI"))
@@ -150,6 +157,17 @@ class Settings(BaseSettings):
                 "a value of 0 or less would close every pending request on the next sync"
             )
         return v
+
+    @model_validator(mode="after")
+    def _require_custom_attr_for_opt_in(self) -> Settings:
+        # Opt-in management without a custom attribute would leave no group
+        # managed at all, silently turning Access into a read-only mirror.
+        if not self.OKTA_GROUP_MANAGED_BY_DEFAULT and not self.OKTA_GROUP_PROFILE_CUSTOM_ATTR:
+            raise ValueError(
+                "OKTA_GROUP_MANAGED_BY_DEFAULT=false requires OKTA_GROUP_PROFILE_CUSTOM_ATTR "
+                "to name the Okta group profile attribute that opts a group in"
+            )
+        return self
 
     # Cloudflare Access
     CLOUDFLARE_APPLICATION_AUDIENCE: str | None = None
@@ -390,6 +408,7 @@ OKTA_API_TOKEN = settings.OKTA_API_TOKEN
 OKTA_USE_GROUP_OWNERS_API = settings.OKTA_USE_GROUP_OWNERS_API
 CURRENT_OKTA_USER_EMAIL = settings.CURRENT_OKTA_USER_EMAIL
 OKTA_GROUP_PROFILE_CUSTOM_ATTR = settings.OKTA_GROUP_PROFILE_CUSTOM_ATTR
+OKTA_GROUP_MANAGED_BY_DEFAULT = settings.OKTA_GROUP_MANAGED_BY_DEFAULT
 SQLALCHEMY_DATABASE_URI = settings.SQLALCHEMY_DATABASE_URI
 SQLALCHEMY_TRACK_MODIFICATIONS = settings.SQLALCHEMY_TRACK_MODIFICATIONS
 SQLALCHEMY_ECHO = settings.SQLALCHEMY_ECHO
