@@ -58,7 +58,7 @@ import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailable
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import Loading from '../../components/Loading';
 import RequestReviewers from '../../components/RequestReviewers';
-import accessConfig from '../../config/accessConfig';
+import accessConfig, {defaultRequestAccessTime} from '../../config/accessConfig';
 import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
 import PluginConfigDisplay from './PluginConfigDisplay';
 import TagsField, {inheritedAppTags} from './TagsField';
@@ -101,8 +101,8 @@ function OwnershipEndingField({ownershipTimeLimit, constraintsBlocked, setOwners
     // the chosen tags forbid from being briefly clickable.
     if (ownershipTimeLimit == null) {
       return constraintsBlocked
-        ? [[], accessConfig.DEFAULT_ACCESS_TIME]
-        : [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
+        ? [[], defaultRequestAccessTime(true)]
+        : [UNTIL_OPTIONS, defaultRequestAccessTime(true)];
     }
     const [lastId, filtered] = filterUntilLabels(ownershipTimeLimit);
     return [filtered, lastId];

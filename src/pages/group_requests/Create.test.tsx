@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 
 import {AppDetail, OktaUserDetail} from '../../api/apiSchemas';
+import accessConfig from '../../config/accessConfig';
 
 const APP_NAME = 'HammerAndChiselZendeskSandbox';
 const APP_TAG = {id: 'sox-tag-00000000000', name: 'SOX', constraints: {owner_time_limit: 7776000}};
@@ -81,10 +82,13 @@ vi.mock('../../api/apiComponents', () => ({
 
 import CreateRequest from './Create';
 
+const BUILT_OWNERSHIP_DEFAULT = accessConfig.DEFAULT_OWNERSHIP_ACCESS_TIME;
+
 beforeEach(() => {
   createMutate.mockClear();
   constraintsAskedFor.mockClear();
   reportLimit = true;
+  accessConfig.DEFAULT_OWNERSHIP_ACCESS_TIME = BUILT_OWNERSHIP_DEFAULT;
 });
 
 const renderDialog = () => render(<CreateRequest currentUser={USER} open setOpen={vi.fn()} />);
@@ -131,6 +135,23 @@ describe('tags a requested app group would inherit', () => {
     const offered = screen.getAllByRole('option').map((option) => option.textContent);
     expect(offered).not.toContain('Indefinite');
     expect(offered).toContain('90 Days');
+  });
+});
+
+describe('the requested ownership length', () => {
+  it('starts on the configured ownership default', async () => {
+    accessConfig.DEFAULT_OWNERSHIP_ACCESS_TIME = 'indefinite';
+    reportLimit = false;
+    renderDialog();
+    const select = await screen.findByRole('combobox', {name: 'Requested ownership length'});
+    expect(select).toHaveTextContent('Indefinite');
+  });
+
+  it('starts on the longest duration a tag limit allows', async () => {
+    accessConfig.DEFAULT_OWNERSHIP_ACCESS_TIME = 'indefinite';
+    await openDialogAndPickApp();
+    const select = await screen.findByRole('combobox', {name: 'Requested ownership length'});
+    await waitFor(() => expect(select).toHaveTextContent('90 Days'));
   });
 });
 

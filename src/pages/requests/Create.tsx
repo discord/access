@@ -44,7 +44,7 @@ import {
 import {canManageGroup, isAccessAdmin} from '../../authorization';
 import {carriedConstraints, timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
-import accessConfig, {requireRequestReasons} from '../../config/accessConfig';
+import accessConfig, {defaultRequestAccessTime, requireRequestReasons} from '../../config/accessConfig';
 import {requestErrorMessage} from '../../helpers';
 
 dayjs.extend(IsSameOrBefore);
@@ -222,7 +222,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   // Seeded unrestricted; the effect below narrows both once the applicable
   // constraints arrive, including on first render for a group passed in as a
   // prop.
-  const [until, setUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
+  const [until, setUntil] = React.useState(defaultRequestAccessTime(props.owner ?? false));
   const [labels, setLabels] = React.useState<Array<Record<string, string>>>(UNTIL_OPTIONS);
 
   // Owned here rather than by `FormContainer` so the constraint effect below
@@ -230,7 +230,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const formContext = useForm<CreateRequestForm>({
     defaultValues: {
       group: props.group,
-      until: accessConfig.DEFAULT_ACCESS_TIME,
+      until: defaultRequestAccessTime(props.owner ?? false),
       ownerOrMember: props.owner != null ? (props.owner ? 'owner' : 'member') : undefined,
     },
   });
@@ -270,13 +270,25 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const constraints = useConstraintsForGroups([selectedGroup?.id]);
   const timeLimit = constraints.timeLimit(owner);
 
+  // Ownership and membership can start on different durations, so switching
+  // between them moves the field to the new kind's default. Picking another
+  // group keeps the requester's choice unless a tag limit no longer allows it.
+  const ownerForUntil = React.useRef(owner);
+
   React.useEffect(() => {
     // Never widen on an untrustworthy answer; see `blocked` in constraints.ts.
     if (constraints.blocked) {
       return;
     }
+    const ownerChanged = ownerForUntil.current !== owner;
+    ownerForUntil.current = owner;
     if (timeLimit == null) {
       setLabels(UNTIL_OPTIONS);
+      if (ownerChanged) {
+        const defaultUntil = defaultRequestAccessTime(owner);
+        setUntil(defaultUntil);
+        formContext.setValue('until', defaultUntil);
+      }
       return;
     }
     const [filteredUntil, filteredLabels] = filterUntilLabels(timeLimit);
@@ -288,7 +300,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     // renders blank and a submit sends a length the backend then shortens
     // without saying so.
     formContext.setValue('until', filteredUntil);
-  }, [timeLimit, constraints.blocked, formContext]);
+  }, [timeLimit, constraints.blocked, formContext, owner]);
 
   const submit = (requestForm: CreateRequestForm) => {
     setSubmitting(true);

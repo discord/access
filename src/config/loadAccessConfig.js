@@ -8,6 +8,7 @@ import path from 'path';
 
 const ACCESS_TIME_LABELS = 'ACCESS_TIME_LABELS';
 const DEFAULT_ACCESS_TIME = 'DEFAULT_ACCESS_TIME';
+const DEFAULT_OWNERSHIP_ACCESS_TIME = 'DEFAULT_OWNERSHIP_ACCESS_TIME';
 const FRONTEND = 'FRONTEND';
 const NAME_VALIDATION_PATTERN = 'NAME_VALIDATION_PATTERN';
 const NAME_VALIDATION_ERROR = 'NAME_VALIDATION_ERROR';
@@ -51,6 +52,28 @@ function validateConfig(accessConfig) {
       throw new AccessConfigValidationError(`${DEFAULT_ACCESS_TIME} must be a valid key in ${ACCESS_TIME_LABELS}`);
     }
   }
+
+  // Unlike DEFAULT_ACCESS_TIME, this may be 'indefinite'. 'custom' opens a date picker
+  // rather than naming a duration, so it cannot be a default.
+  if (DEFAULT_OWNERSHIP_ACCESS_TIME in accessConfig) {
+    const defaultOwnershipAccessTime = String(getConfig(accessConfig, DEFAULT_OWNERSHIP_ACCESS_TIME));
+    if (
+      defaultOwnershipAccessTime === 'custom' ||
+      !Object.hasOwn(getConfig(accessConfig, ACCESS_TIME_LABELS), defaultOwnershipAccessTime)
+    ) {
+      throw new AccessConfigValidationError(
+        `${DEFAULT_OWNERSHIP_ACCESS_TIME} must be 'indefinite' or a number of seconds that is a key in ${ACCESS_TIME_LABELS}`,
+      );
+    }
+  }
+}
+
+// An operator who sets only DEFAULT_ACCESS_TIME keeps it as the ownership default too.
+function applyDerivedDefaults(accessConfig) {
+  if (!(DEFAULT_OWNERSHIP_ACCESS_TIME in accessConfig) && DEFAULT_ACCESS_TIME in accessConfig) {
+    accessConfig[DEFAULT_OWNERSHIP_ACCESS_TIME] = accessConfig[DEFAULT_ACCESS_TIME];
+  }
+  return accessConfig;
 }
 
 function validate_override_config(overrideConfig) {
@@ -91,6 +114,7 @@ export function loadAccessConfig() {
   try {
     let accessConfig = loadDefaultConfig();
     accessConfig = loadOverrideConfig(accessConfig);
+    accessConfig = applyDerivedDefaults(accessConfig);
 
     validateConfig(accessConfig);
 

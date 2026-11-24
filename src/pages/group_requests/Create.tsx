@@ -41,7 +41,7 @@ import {
   TagListItem,
 } from '../../api/apiSchemas';
 import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
-import accessConfig, {requireDescriptions} from '../../config/accessConfig';
+import accessConfig, {defaultRequestAccessTime, requireDescriptions} from '../../config/accessConfig';
 import {requestErrorMessage} from '../../helpers';
 
 dayjs.extend(IsSameOrBefore);
@@ -75,7 +75,7 @@ function OwnershipLengthField({
     // list rather than re-offering the full one keeps a duration the tags forbid
     // from being briefly clickable.
     if (timeLimit == null) {
-      return blocked ? [[], accessConfig.DEFAULT_ACCESS_TIME] : [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
+      return blocked ? [[], defaultRequestAccessTime(true)] : [UNTIL_OPTIONS, defaultRequestAccessTime(true)];
     }
     const [lastId, filtered] = filterUntilLabels(timeLimit);
     return [filtered, lastId];
@@ -198,7 +198,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [nameInput, setNameInput] = React.useState('');
   const [selectedTags, setSelectedTags] = React.useState<Array<TagListItem>>([]);
-  const [ownershipUntil, setOwnershipUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
+  const [ownershipUntil, setOwnershipUntil] = React.useState(defaultRequestAccessTime(true));
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -349,7 +349,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
 
   return (
     <FormContainer<CreateGroupRequestForm>
-      defaultValues={{type: 'okta_group', ownershipUntil: '1209600'}}
+      defaultValues={{type: 'okta_group', ownershipUntil: defaultRequestAccessTime(true)}}
       onSuccess={(formData) => submit(formData)}>
       <DialogTitle> Create Group Request</DialogTitle>
       <DialogContent>
