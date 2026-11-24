@@ -3,6 +3,7 @@ import logging
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import selectin_polymorphic
 
+from api.context import get_request_context
 from api.extensions import db
 from api.models import (
     AppGroup,
@@ -19,6 +20,7 @@ from api.operations._obsolete_requests import (
 )
 from api.operations.reject_access_request import RejectAccessRequest
 from api.operations.reject_role_request import RejectRoleRequest
+from api.schemas import AuditLogSchema, EventType
 
 logger = logging.getLogger(__name__)
 
@@ -39,18 +41,20 @@ class UnmanageGroup:
         ).first()
         assert group is not None
 
-        current_user_id = getattr(
-            (
-                await db.session.scalars(
-                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
-                )
-            ).first(),
-            "id",
-            None,
-        )
+        current_user = (
+            await db.session.scalars(
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+            )
+        ).first()
+        current_user_id = getattr(current_user, "id", None)
+        current_user_email = getattr(current_user, "email", None)
 
         if group.is_managed:
             return
+
+        # The commits below expire the ORM rows, so the audit log is built
+        # from plain-data snapshots taken before each update.
+        audited_group = {"id": group.id, "name": group.name, "type": group.type}
 
         # Capture assigned reviewers before unmanaging changes ownership; see `snapshot_assigned_reviewers`.
         access_reviewers: dict[str, list[OktaUser]] = {}
@@ -73,7 +77,12 @@ class UnmanageGroup:
             .where(OktaUserGroupMember.role_group_map_id.isnot(None))
         )
 
+        memberships_ended: list[dict[str, str]] = []
+        ownerships_ended: list[dict[str, str]] = []
         for active_access_via_role in (await db.session.scalars(active_access_via_roles_query)).all():
+            (ownerships_ended if active_access_via_role.is_owner else memberships_ended).append(
+                {"user_id": active_access_via_role.user_id, "group_id": active_access_via_role.group_id}
+            )
             logger.info(
                 "User %s has invalid %s to unmanaged group %s via role",
                 active_access_via_role.user_id,
@@ -104,7 +113,12 @@ class UnmanageGroup:
             .where(RoleGroupMap.group_id == group.id)
         )
 
+        role_memberships_ended: list[dict[str, str]] = []
+        role_ownerships_ended: list[dict[str, str]] = []
         for active_role_assignment in (await db.session.scalars(active_role_assignments_query)).all():
+            (role_ownerships_ended if active_role_assignment.is_owner else role_memberships_ended).append(
+                {"role_group_id": active_role_assignment.role_group_id, "group_id": active_role_assignment.group_id}
+            )
             logger.info(
                 "Role %s has invalid %s to unmanaged group %s",
                 active_role_assignment.role_group_id,
@@ -121,6 +135,28 @@ class UnmanageGroup:
                 .execution_options(synchronize_session="fetch")
             )
             await db.session.commit()
+
+        # The integrity check reruns this operation on every unmanaged group, so
+        # log only when this run ended something.
+        ended_anything = memberships_ended or ownerships_ended or role_memberships_ended or role_ownerships_ended
+        if ended_anything and not dry_run:
+            _ctx = get_request_context()
+            logging.getLogger("access.audit").info(
+                AuditLogSchema().dumps(
+                    {
+                        "event_type": EventType.group_unmanage,
+                        "user_agent": _ctx.user_agent if _ctx else None,
+                        "ip": _ctx.ip if _ctx else None,
+                        "current_user_id": current_user_id,
+                        "current_user_email": current_user_email,
+                        "group": audited_group,
+                        "memberships_ended": memberships_ended,
+                        "ownerships_ended": ownerships_ended,
+                        "role_memberships_ended": role_memberships_ended,
+                        "role_ownerships_ended": role_ownerships_ended,
+                    }
+                )
+            )
 
         # If this groups is a RoleGroup, do not remove the groups associated with the role
         # Unmanaged roles can still be associated with groups
