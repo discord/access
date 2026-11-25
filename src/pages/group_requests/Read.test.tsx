@@ -77,8 +77,7 @@ const NAMING_REQUEST = {
 
 let groupRequest: GroupRequestDetail = PENDING_APP_GROUP_REQUEST;
 
-vi.mock('react-router-dom', async () => {
-  const React = await import('react');
+vi.mock('react-router-dom', () => {
   return {
     useNavigate: () => vi.fn(),
     useParams: () => ({id: PENDING_APP_GROUP_REQUEST.id}),
@@ -319,7 +318,7 @@ describe('a request naming owners and members', () => {
       ...NAMING_REQUEST,
       requested_owner_user_ids: [OWNER_USER.id, 'deleted-user-000000'],
       requested_owner_role_ids: [MEMBER_ROLE.id],
-    } as unknown as GroupRequestDetail;
+    };
     renderPage();
 
     const approve = await screen.findByRole('button', {name: /Approve/});
@@ -364,7 +363,7 @@ describe('a request naming owners and members', () => {
   });
 
   it('sends only the list whose picker the approver changed', async () => {
-    groupRequest = {...NAMING_REQUEST, requested_owner_role_ids: [MEMBER_ROLE.id]} as unknown as GroupRequestDetail;
+    groupRequest = {...NAMING_REQUEST, requested_owner_role_ids: [MEMBER_ROLE.id]};
     renderPage();
 
     const approve = await screen.findByRole('button', {name: /Approve/});
@@ -386,7 +385,7 @@ describe('a request naming owners and members', () => {
       requested_group_type: 'role_group',
       requested_group_name: 'Role-Support',
       requested_app_id: null,
-    } as unknown as GroupRequestDetail;
+    };
     currentUser = {
       ...APP_OWNER,
       active_group_memberships: [

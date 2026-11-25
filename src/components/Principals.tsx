@@ -138,7 +138,7 @@ export function PrincipalsField(props: PrincipalsFieldProps) {
         <Grid size={6}>
           <Autocomplete
             multiple
-            options={(roleSearchData?.items ?? []) as RoleOption[]}
+            options={roleSearchData?.items ?? []}
             value={props.roles}
             disabled={props.rolesDisallowed && !rolesError}
             filterOptions={(x) => x}

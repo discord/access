@@ -50,9 +50,7 @@ import {
 } from '../../api/apiComponents';
 import {
   AppDetail,
-  AppGroupForAppDetail,
   GroupRequestDetail,
-  OktaUserGroupMemberDetail,
   OktaUserSummary,
   ResolveGroupRequestBody,
   TagDetail,
@@ -115,7 +113,7 @@ interface AccessEndingFieldProps {
 }
 
 function AccessEndingField({name, label, timeLimit, constraintsBlocked, setUntil}: AccessEndingFieldProps) {
-  const {control, setValue} = useFormContext();
+  const {control, setValue} = useFormContext<ResolveRequestForm>();
 
   const [availableUntilOptions, defaultUntilId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
     // While the tag-mode answer is in flight the limit reads as null. Holding
@@ -158,7 +156,7 @@ function AccessEndingField({name, label, timeLimit, constraintsBlocked, setUntil
             label={label}
             onChange={(e) => {
               field.onChange(e);
-              setUntil(e.target.value as string);
+              setUntil(e.target.value);
             }}>
             {availableUntilOptions.map(({id, label}) => (
               <MenuItem key={id} value={id}>

@@ -3,6 +3,7 @@ import {render, screen, waitFor, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 
+import {GroupRequestsCreateVariables} from '../../api/apiComponents';
 import {AppDetail, OktaUserDetail} from '../../api/apiSchemas';
 
 const APP_NAME = 'HammerAndChiselZendeskSandbox';
@@ -19,7 +20,7 @@ const APP = {
 // How the Tags field spells an inherited tag.
 const INHERITED_CHIP = `${APP_TAG.name} (${APP_NAME})`;
 
-const createMutate = vi.fn();
+const createMutate = vi.fn<(variables: GroupRequestsCreateVariables) => void>();
 const EXISTING_GROUPS = [
   {id: 'existing-group-000000', type: 'okta_group', name: 'Platform-Admins'},
   {id: 'existing-role-0000000', type: 'role_group', name: 'Role-Platform-Engineers'},
@@ -194,7 +195,7 @@ describe('naming owners and members', () => {
       requested_member_user_ids: [],
       requested_member_role_ids: [MEMBER_ROLE.id],
     });
-    expect(body.requested_membership_ending_at).toEqual(expect.any(String));
+    expect(body?.requested_membership_ending_at).toEqual(expect.any(String));
   });
 
   it('sends no owners and no membership end date when none are named', async () => {
@@ -206,9 +207,9 @@ describe('naming owners and members', () => {
 
     await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(1));
     const body = createMutate.mock.calls[0][0].body;
-    expect(body.requested_owner_user_ids).toEqual([]);
-    expect(body.requested_owner_role_ids).toEqual([]);
-    expect(body.requested_membership_ending_at).toBeUndefined();
+    expect(body?.requested_owner_user_ids).toEqual([]);
+    expect(body?.requested_owner_role_ids).toEqual([]);
+    expect(body?.requested_membership_ending_at).toBeUndefined();
   });
 });
 

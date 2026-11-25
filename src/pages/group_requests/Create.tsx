@@ -38,7 +38,6 @@ import {
   AppSummary,
   OktaUserDetail,
   OktaUserSummary,
-  GroupDetail,
   GroupRequestDetail,
   GroupSummary,
   TagListItem,
@@ -74,7 +73,7 @@ function AccessLengthField({
   blocked: boolean;
   onChange: (value: string) => void;
 }) {
-  const {control, setValue} = useFormContext();
+  const {control, setValue} = useFormContext<CreateGroupRequestForm>();
   const selected = useWatch({control, name});
 
   const [options, defaultId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
@@ -102,7 +101,7 @@ function AccessLengthField({
       label={label}
       name={name}
       options={options}
-      onChange={(value) => onChange(value)}
+      onChange={(value: string) => onChange(value)}
       required
     />
   );
