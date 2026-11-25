@@ -58,7 +58,7 @@ import {
 } from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
-import {displayUserName, requestErrorMessage, pluginDataEntry} from '../../helpers';
+import {requestErrorMessage, pluginDataEntry} from '../../helpers';
 import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import DepartedPrincipalsWarning, {departedIds, departedLabel} from '../../components/DepartedPrincipalsWarning';

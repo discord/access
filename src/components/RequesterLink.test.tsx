@@ -1,8 +1,10 @@
+import type {ComponentProps} from 'react';
 import {render, screen} from '@testing-library/react';
 import {MemoryRouter} from 'react-router-dom';
 import {describe, expect, it} from 'vitest';
 
 import RequesterLink, {requesterName} from './RequesterLink';
+import {ServicePrincipalDetail} from '../api/apiSchemas';
 
 const USER = {id: 'u1', email: 'Ada@Example.com', first_name: 'Ada', last_name: 'Lovelace', display_name: 'Ada L'};
 const SERVICE = {
@@ -11,9 +13,9 @@ const SERVICE = {
   provider: 'cloudflare',
   created_at: null,
   updated_at: null,
-} as any;
+} as ServicePrincipalDetail;
 
-const renderLink = (props: any) =>
+const renderLink = (props: ComponentProps<typeof RequesterLink>) =>
   render(
     <MemoryRouter>
       <RequesterLink {...props} />
@@ -46,7 +48,7 @@ describe('RequesterLink', () => {
   });
 
   it('names whichever requester is set', () => {
-    expect(requesterName(USER as any, null)).toBe('Ada L');
+    expect(requesterName(USER, null)).toBe('Ada L');
     expect(requesterName(null, SERVICE)).toBe('Deploy Bot');
   });
 });
