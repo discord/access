@@ -1317,6 +1317,41 @@ class TestPluginValidation:
         assert response.status_code == 400, response.text
         assert "unregistered_plugin" in str(response.json())
 
+    async def test_assigning_unregistered_plugin_without_plugin_data_returns_400(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
+        """With no plugin_data in the body there is no config to validate, but the new
+        plugin id must still name a registered plugin."""
+        test_app = AppFactory.build(name="TestApp18")
+
+        db.session.add(test_app)
+        await db.session.commit()
+
+        url = url_for("api-apps.app_by_id", app_id=test_app.id)
+        response = await client.put(url, json={"app_group_lifecycle_plugin": "unregistered_plugin"})
+        assert response.status_code == 400, response.text
+        assert "unregistered_plugin" in response.json()["detail"]
+
+        await db.session.refresh(test_app)
+        assert test_app.app_group_lifecycle_plugin is None
+
+    async def test_resending_unchanged_unregistered_stored_plugin_is_allowed(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
+        """The edit form sends the app's stored plugin id on every save, so an app whose
+        plugin was dropped from the deployment stays editable."""
+        test_app = AppFactory.build(name="TestApp19", app_group_lifecycle_plugin="unregistered_plugin")
+
+        db.session.add(test_app)
+        await db.session.commit()
+
+        url = url_for("api-apps.app_by_id", app_id=test_app.id)
+        response = await client.put(
+            url, json={"description": "Edited", "app_group_lifecycle_plugin": "unregistered_plugin"}
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["description"] == "Edited"
+
     async def test_app_config_with_misconfigured_registered_plugin_returns_500(
         self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
@@ -4221,6 +4256,151 @@ class TestPostGroupPluginValidation:
         # Distinguishes the deliberate clean-500 path from an unhandled exception (which would also
         # be a 500, but without this message).
         assert "Misconfigured app group lifecycle plugin" in response.text
+
+
+class TestPostAppPluginConfig:
+    """POST /api/apps applies, validates, and gates an initial app group lifecycle plugin."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_okta(self, mocker: MockerFixture) -> None:
+        from okta.models.group import Group as OktaGroupModel
+
+        mocker.patch.object(okta, "create_group", return_value=OktaGroupModel.from_dict({"id": "test-okta-id-app"}))
+        mocker.patch.object(okta, "add_user_to_group")
+        mocker.patch.object(okta, "add_owner_to_group")
+
+    @staticmethod
+    async def _app_named(db: Db, name: str) -> App | None:
+        return (await db.session.scalars(select(App).where(App.name == name).where(App.deleted_at.is_(None)))).first()
+
+    async def test_create_app_with_valid_plugin_config(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
+    ) -> None:
+        import json
+        import logging
+
+        from api.schemas import EventType
+
+        caplog.set_level(logging.INFO)
+        configuration = {"enabled": True, "category": "valid_id"}
+
+        response = await client.post(
+            url_for("api-apps.apps"),
+            json={
+                "name": "PluginApp",
+                "app_group_lifecycle_plugin": DummyPlugin.ID,
+                "plugin_data": {DummyPlugin.ID: {"configuration": configuration}},
+            },
+        )
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["app_group_lifecycle_plugin"] == DummyPlugin.ID
+        assert body["plugin_data"][DummyPlugin.ID]["configuration"] == configuration
+
+        created = await self._app_named(db, "PluginApp")
+        assert created is not None
+        assert created.app_group_lifecycle_plugin == DummyPlugin.ID
+        assert created.plugin_data[DummyPlugin.ID]["configuration"] == configuration
+
+        # The owner group is created under an app that already has the plugin, so the
+        # plugin hears about it.
+        owner_group = (
+            await db.session.scalars(
+                select(AppGroup).where(AppGroup.app_id == created.id).where(AppGroup.is_owner.is_(True))
+            )
+        ).one()
+        assert test_plugin.group_created_calls == [owner_group.id]
+
+        create_logs = [
+            json.loads(record.message) for record in caplog.records if EventType.app_create.value in record.message
+        ]
+        assert len(create_logs) == 1
+        assert create_logs[0]["app"]["app_group_lifecycle_plugin"] == DummyPlugin.ID
+        assert create_logs[0]["app"]["plugin_data"][DummyPlugin.ID]["configuration"] == configuration
+
+    async def test_create_app_with_invalid_plugin_config_returns_400(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
+        response = await client.post(
+            url_for("api-apps.apps"),
+            json={
+                "name": "InvalidConfigApp",
+                "app_group_lifecycle_plugin": DummyPlugin.ID,
+                # Missing 'enabled', which DummyPlugin requires.
+                "plugin_data": {DummyPlugin.ID: {"configuration": {"category": "some_id"}}},
+            },
+        )
+        assert response.status_code == 400, response.text
+        assert "enabled" in response.json()["detail"]
+        assert await self._app_named(db, "InvalidConfigApp") is None
+
+    async def test_create_app_with_unknown_plugin_returns_400(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
+        response = await client.post(
+            url_for("api-apps.apps"),
+            json={
+                "name": "UnknownPluginApp",
+                "app_group_lifecycle_plugin": "unregistered_plugin",
+                "plugin_data": {"unregistered_plugin": {"configuration": {"enabled": True}}},
+            },
+        )
+        assert response.status_code == 400, response.text
+        assert "unregistered_plugin" in response.json()["detail"]
+        assert await self._app_named(db, "UnknownPluginApp") is None
+
+    async def test_create_app_with_unknown_plugin_and_no_plugin_data_returns_400(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
+        response = await client.post(
+            url_for("api-apps.apps"),
+            json={"name": "UnknownPluginNoDataApp", "app_group_lifecycle_plugin": "unregistered_plugin"},
+        )
+        assert response.status_code == 400, response.text
+        assert await self._app_named(db, "UnknownPluginNoDataApp") is None
+
+    async def test_create_app_without_plugin_fields(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
+        response = await client.post(url_for("api-apps.apps"), json={"name": "NoPluginApp"})
+        assert response.status_code == 201, response.text
+        assert response.json()["app_group_lifecycle_plugin"] is None
+
+        created = await self._app_named(db, "NoPluginApp")
+        assert created is not None
+        assert created.app_group_lifecycle_plugin is None
+        assert not created.plugin_data
+        assert test_plugin.group_created_calls == []
+
+    async def test_app_creator_cannot_configure_plugin_on_create(
+        self,
+        client: AsyncClient,
+        db: Db,
+        app: FastAPI,
+        test_plugin: DummyPlugin,
+        mocker: MockerFixture,
+        url_for: Any,
+    ) -> None:
+        app_creator = OktaUserFactory.build()
+        db.session.add(app_creator)
+        await db.session.commit()
+        mocker.patch.object(settings, "APP_CREATOR_ID", app_creator.id)
+        app.state.current_user_email = app_creator.email
+
+        response = await client.post(
+            url_for("api-apps.apps"),
+            json={
+                "name": "CreatorPluginApp",
+                "app_group_lifecycle_plugin": DummyPlugin.ID,
+                "plugin_data": {DummyPlugin.ID: {"configuration": {"enabled": True}}},
+            },
+        )
+        assert response.status_code == 403, response.text
+        assert await self._app_named(db, "CreatorPluginApp") is None
+
+        # The same creator can still create an app without plugin config.
+        response = await client.post(url_for("api-apps.apps"), json={"name": "CreatorApp"})
+        assert response.status_code == 201, response.text
 
 
 def test_validate_group_config_rejects_immutable_change_on_update(test_plugin: DummyPlugin) -> None:

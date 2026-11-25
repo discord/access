@@ -1,7 +1,8 @@
+import copy
 import logging
 import secrets
 import string
-from typing import TypedDict, cast
+from typing import Any, TypedDict, cast
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import with_polymorphic
@@ -15,6 +16,7 @@ from api.operations.modify_group_details import ModifyGroupDetails
 from api.operations.modify_group_type import ModifyGroupType
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_role_groups import ModifyRoleGroups
+from api.plugins.app_group_lifecycle import validate_app_group_lifecycle_plugin_app_config
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -24,6 +26,26 @@ class AppDict(TypedDict):
 
 
 class CreateApp:
+    """Create an app with its owner group, any additional app groups, and its tags.
+
+    Args:
+        app: The app to create, as a model or a name/description dict.
+        tags: Ids of tags to apply to the app and all of its app groups.
+        owner_id: Id of the user made a member and owner of the app's owner group.
+        owner_role_ids: Ids of roles made members and owners of the app's owner group.
+        additional_app_groups: App groups to create alongside the owner group.
+        app_group_lifecycle_plugin: Id of the app group lifecycle plugin to configure on the
+            app, or None for no plugin.
+        plugin_data: The app's initial plugin_data, validated against
+            `app_group_lifecycle_plugin`'s app-level configuration schema.
+        current_user_id: Id of the user creating the app, for audit fields.
+
+    Raises (from `execute`):
+        ValueError: If `plugin_data` is malformed or fails the plugin's validation.
+        AppGroupLifecyclePluginFilteringError: If `app_group_lifecycle_plugin` names no
+            registered plugin, or the plugin's validation hook misbehaves.
+    """
+
     def __init__(
         self,
         *,
@@ -32,6 +54,8 @@ class CreateApp:
         owner_id: str | None = None,
         owner_role_ids: list[str] | None = None,
         additional_app_groups: list[AppGroup] | list[GroupDict] | None = None,
+        app_group_lifecycle_plugin: str | None = None,
+        plugin_data: dict[str, Any] | None = None,
         current_user_id: str | None = None,
     ):
         id = self.__generate_id()
@@ -69,9 +93,26 @@ class CreateApp:
                 if name == self.owner_group_name:
                     continue
                 self.additional_app_groups.append(AppGroup(is_owner=False, name=name, description=description))
+        self.app_group_lifecycle_plugin = app_group_lifecycle_plugin
+        # Deep-copied so the app doesn't share nested dicts with the caller's payload,
+        # which plugin hooks writing status could otherwise mutate.
+        self.plugin_data = copy.deepcopy(plugin_data) if plugin_data is not None else None
         self.current_user_id = current_user_id
 
     async def execute(self) -> App:
+        # Validated whenever a plugin is chosen, even with no plugin_data, so an unknown
+        # plugin id or a plugin whose required config is missing is rejected before
+        # anything is written.
+        if self.app_group_lifecycle_plugin is not None:
+            plugin_errors = validate_app_group_lifecycle_plugin_app_config(
+                self.plugin_data or {}, self.app_group_lifecycle_plugin
+            )
+            if plugin_errors:
+                raise ValueError(f"plugin_data: {plugin_errors}")
+            self.app.app_group_lifecycle_plugin = self.app_group_lifecycle_plugin
+        if self.plugin_data is not None:
+            self.app.plugin_data = self.plugin_data
+
         tag_ids = [
             tag.id
             for tag in (

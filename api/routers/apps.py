@@ -167,12 +167,24 @@ async def post_app(
     db: DbSession,
     current_user_id: str = Depends(require_access_admin_or_app_creator),
 ) -> AppDetail:
+    from api.auth.permissions import is_access_admin
     from api.models import AppGroup as _AppGroup
     from api.models import OktaUser, RoleGroup
     from api.operations import CreateApp
     from api.operations.create_group import GroupDict
+    from api.plugins.app_group_lifecycle import (
+        AppGroupLifecyclePluginFilteringError,
+        raise_http_for_plugin_filtering_error,
+    )
 
     description = body.description if body.description is not None else ""
+
+    # App creators may create apps, but configuring a plugin is the same Access-admin-only
+    # action it is on PUT.
+    if (body.app_group_lifecycle_plugin is not None or body.plugin_data is not None) and not await is_access_admin(
+        db, current_user_id
+    ):
+        raise HTTPException(403, "Only Access owners are allowed to configure plugins at the app level")
 
     # Reject duplicates by name.
     existing = (
@@ -255,14 +267,23 @@ async def post_app(
     ]
 
     app_obj = App(name=name, description=description)
-    created = await CreateApp(
-        app=app_obj,
-        owner_id=owner_id,
-        owner_role_ids=owner_role_ids,
-        additional_app_groups=initial_additional_app_groups,
-        tags=body.tags_to_add or [],
-        current_user_id=current_user_id,
-    ).execute()
+    # CreateApp validates plugin_data against the chosen plugin: a ValueError is bad input,
+    # while a filtering error splits 400/500 by whether the plugin id is merely unknown.
+    try:
+        created = await CreateApp(
+            app=app_obj,
+            owner_id=owner_id,
+            owner_role_ids=owner_role_ids,
+            additional_app_groups=initial_additional_app_groups,
+            tags=body.tags_to_add or [],
+            app_group_lifecycle_plugin=body.app_group_lifecycle_plugin,
+            plugin_data=body.plugin_data,
+            current_user_id=current_user_id,
+        ).execute()
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except AppGroupLifecyclePluginFilteringError as e:
+        raise_http_for_plugin_filtering_error(e)
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).
     created_id = created.id
@@ -285,7 +306,11 @@ async def put_app(
     from api.models import AppGroup as _AppGroup
     from api.models.app_group import app_owners_group_description
     from api.operations import ModifyAppTags, ModifyGroupDetails
-    from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data, validate_app_plugin_config_or_raise
+    from api.plugins.app_group_lifecycle import (
+        get_app_group_lifecycle_plugins,
+        merge_app_lifecycle_plugin_data,
+        validate_app_plugin_config_or_raise,
+    )
 
     fields_set = body.model_fields_set
     description = (body.description if body.description is not None else "") if "description" in fields_set else None
@@ -302,6 +327,15 @@ async def put_app(
     )
     if "plugin_data" in fields_set:
         validate_app_plugin_config_or_raise(body.plugin_data or {}, new_plugin_id)
+    elif (
+        new_plugin_id is not None
+        and new_plugin_id != app_obj.app_group_lifecycle_plugin
+        and new_plugin_id not in [plugin.id for plugin in get_app_group_lifecycle_plugins()]
+    ):
+        # With no plugin_data to validate, still refuse to point the app at a plugin no
+        # one registered. An unchanged stored id is left alone so an app whose plugin
+        # was dropped from the deployment can still be edited.
+        raise HTTPException(400, f"The plugin {new_plugin_id} is not known")
 
     # Plugin config changes require access admin.
     new_plugin = (
