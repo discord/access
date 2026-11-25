@@ -12,14 +12,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import joinedload, selectinload
 
 from api.auth.dependencies import CurrentUserId
 from api.auth.permissions import is_access_admin, require_access_admin
 from api.database import DbSession
-from api.models import ServicePrincipal, ServicePrincipalOwner
+from api.models import ServicePrincipal
 from api.operations import CreateServicePrincipal, DeleteServicePrincipal, ModifyServicePrincipal
 from api.pagination import Page, validated
+from api.routers._eager import service_principal_options
 from api.schemas import DeleteMessage
 from api.schemas.service_principals import (
     CreateServicePrincipalBody,
@@ -32,12 +32,7 @@ router = APIRouter(prefix="/api/service-principals", tags=["service-principals"]
 
 
 def _load_options() -> tuple:
-    return (
-        selectinload(ServicePrincipal.owners).options(
-            joinedload(ServicePrincipalOwner.active_user),
-            joinedload(ServicePrincipalOwner.active_role_group),
-        ),
-    )
+    return service_principal_options()
 
 
 async def _load(db: DbSession, service_principal_id: str) -> ServicePrincipal | None:

@@ -91,6 +91,7 @@ from api.routers._eager import (
     polymorphic_group_options,
     role_group_map_options,
     role_group_map_options_for_own_group,
+    service_principal_options,
     user_group_member_options,
 )
 from api.schemas import (
@@ -327,6 +328,8 @@ def _group_request_load_options() -> tuple:
     return (
         joinedload(GroupRequest.requester),
         joinedload(GroupRequest.active_requester),
+        joinedload(GroupRequest.requester_service_principal).options(*service_principal_options()),
+        joinedload(GroupRequest.resolver_service_principal).options(*service_principal_options()),
         joinedload(GroupRequest.resolver),
         joinedload(GroupRequest.active_resolver),
         joinedload(GroupRequest.approved_group),
@@ -982,8 +985,8 @@ def _register_group_request_tools(mcp: MCPServer) -> None:
         title="List group requests",
         description=(
             "List group requests (a user requesting creation of a new group, "
-            "role, or app group). Filter by 'status', 'requester_user_id' (use "
-            "'@me'), 'requested_group_type' (okta_group/role_group/app_group), "
+            "role, or app group). Filter by 'status', 'requester_user_id' (a user or "
+            "service principal id, or '@me'), 'requested_group_type' (okta_group/role_group/app_group), "
             "'requested_app_id'. Requires the 'read_all' scope."
         ),
         annotations=_READ_ANNOTATIONS,
@@ -1007,10 +1010,13 @@ def _register_group_request_tools(mcp: MCPServer) -> None:
         if status:
             query = query.where(GroupRequest.status == status)
         if requester_user_id:
-            if requester_user_id == "@me":
-                query = query.where(GroupRequest.requester_user_id == current_user_id)
-            else:
-                query = query.where(GroupRequest.requester_user_id == requester_user_id)
+            requester_id = current_user_id if requester_user_id == "@me" else requester_user_id
+            query = query.where(
+                or_(
+                    GroupRequest.requester_user_id == requester_id,
+                    GroupRequest.requester_service_principal_id == requester_id,
+                )
+            )
         if requested_group_type:
             query = query.where(GroupRequest.requested_group_type == requested_group_type)
         if requested_app_id:

@@ -1,16 +1,18 @@
 import logging
 
-from sqlalchemy import func
+from sqlalchemy import func, select
 
 from api.exceptions import ResourceGoneError
 from api.extensions import db
-from api.models import ServicePrincipal
+from api.models import AccessRequestStatus, GroupRequest, ServicePrincipal
 from api.operations._service_principals import audit_log_entry, audit_snapshot, load_active_service_principal
+from api.operations.reject_group_request import RejectGroupRequest
 from api.schemas import EventType
 
 
 class DeleteServicePrincipal:
-    """Soft-delete a service principal, so its credential no longer authenticates as it.
+    """Soft-delete a service principal, so its credential no longer authenticates, and
+    reject its pending requests.
 
     Args:
         service_principal: The service principal or its id.
@@ -35,3 +37,17 @@ class DeleteServicePrincipal:
         logging.getLogger("access.audit").info(
             await audit_log_entry(EventType.service_principal_delete, self.current_user_id, snapshot)
         )
+
+        # Its pending requests could never be approved now, so close them.
+        reason = "Closed because the requesting service principal was deleted"
+        for group_request in (
+            await db.session.scalars(
+                select(GroupRequest)
+                .where(GroupRequest.requester_service_principal_id == self.service_principal_id)
+                .where(GroupRequest.status == AccessRequestStatus.PENDING)
+                .where(GroupRequest.resolved_at.is_(None))
+            )
+        ).all():
+            await RejectGroupRequest(
+                group_request=group_request, rejection_reason=reason, current_user_id=self.current_user_id
+            ).execute()
