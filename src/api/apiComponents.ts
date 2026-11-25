@@ -23,7 +23,12 @@ export type HealthCheckError = Fetcher.ErrorWrapper<{
 export type HealthCheckVariables = ApiContext['fetcherOptions'];
 
 export const fetchHealthCheck = (variables: HealthCheckVariables, signal?: AbortSignal) =>
-  apiFetch<void, HealthCheckError, undefined, {}, {}, {}>({url: '/api/healthz', method: 'get', ...variables, signal});
+  apiFetch<void, HealthCheckError, undefined, {}, {}, {}>({
+    url: '/api/healthz',
+    method: 'get',
+    ...variables,
+    signal,
+  });
 
 export function healthCheckQuery(variables: HealthCheckVariables): {
   queryKey: reactQuery.QueryKey;
@@ -305,7 +310,12 @@ export const fetchAccessRequestByIdPut = (variables: AccessRequestByIdPutVariabl
     {},
     {},
     AccessRequestByIdPutPathParams
-  >({url: '/api/requests/{accessRequestId}', method: 'put', ...variables, signal});
+  >({
+    url: '/api/requests/{accessRequestId}',
+    method: 'put',
+    ...variables,
+    signal,
+  });
 
 export const useAccessRequestByIdPut = (
   options?: Omit<
@@ -637,7 +647,12 @@ export const fetchAppRequestByIdPut = (variables: AppRequestByIdPutVariables, si
     {},
     {},
     AppRequestByIdPutPathParams
-  >({url: '/api/app-requests/{appRequestId}', method: 'put', ...variables, signal});
+  >({
+    url: '/api/app-requests/{appRequestId}',
+    method: 'put',
+    ...variables,
+    signal,
+  });
 
 export const useAppRequestByIdPut = (
   options?: Omit<
@@ -1685,7 +1700,12 @@ export const fetchGroupRequestByIdPut = (variables: GroupRequestByIdPutVariables
     {},
     {},
     GroupRequestByIdPutPathParams
-  >({url: '/api/group-requests/{groupRequestId}', method: 'put', ...variables, signal});
+  >({
+    url: '/api/group-requests/{groupRequestId}',
+    method: 'put',
+    ...variables,
+    signal,
+  });
 
 export const useGroupRequestByIdPut = (
   options?: Omit<
@@ -2251,7 +2271,12 @@ export const fetchGroupMembersByIdPut = (variables: GroupMembersByIdPutVariables
     {},
     {},
     GroupMembersByIdPutPathParams
-  >({url: '/api/groups/{groupId}/members', method: 'put', ...variables, signal});
+  >({
+    url: '/api/groups/{groupId}/members',
+    method: 'put',
+    ...variables,
+    signal,
+  });
 
 export const useGroupMembersByIdPut = (
   options?: Omit<
@@ -2327,7 +2352,12 @@ export const fetchGroupMemberDetailsById = (variables: GroupMemberDetailsByIdVar
     {},
     GroupMemberDetailsByIdQueryParams,
     GroupMemberDetailsByIdPathParams
-  >({url: '/api/groups/{groupId}/member-details', method: 'get', ...variables, signal});
+  >({
+    url: '/api/groups/{groupId}/member-details',
+    method: 'get',
+    ...variables,
+    signal,
+  });
 
 /**
  * Paginated, fully-hydrated active membership rows for a group. `owner=true`
@@ -2552,7 +2582,12 @@ export const fetchAppGroupLifecyclePluginAppConfigProps = (
     {},
     {},
     AppGroupLifecyclePluginAppConfigPropsPathParams
-  >({url: '/api/plugins/app-group-lifecycle/{pluginId}/app-config-props', method: 'get', ...variables, signal});
+  >({
+    url: '/api/plugins/app-group-lifecycle/{pluginId}/app-config-props',
+    method: 'get',
+    ...variables,
+    signal,
+  });
 
 export function appGroupLifecyclePluginAppConfigPropsQuery(variables: AppGroupLifecyclePluginAppConfigPropsVariables): {
   queryKey: reactQuery.QueryKey;
@@ -2659,7 +2694,12 @@ export const fetchAppGroupLifecyclePluginGroupConfigProps = (
     {},
     AppGroupLifecyclePluginGroupConfigPropsQueryParams,
     AppGroupLifecyclePluginGroupConfigPropsPathParams
-  >({url: '/api/plugins/app-group-lifecycle/{pluginId}/group-config-props', method: 'get', ...variables, signal});
+  >({
+    url: '/api/plugins/app-group-lifecycle/{pluginId}/group-config-props',
+    method: 'get',
+    ...variables,
+    signal,
+  });
 
 export function appGroupLifecyclePluginGroupConfigPropsQuery(
   variables: AppGroupLifecyclePluginGroupConfigPropsVariables,
@@ -2763,7 +2803,12 @@ export const fetchAppGroupLifecyclePluginAppStatusProps = (
     {},
     {},
     AppGroupLifecyclePluginAppStatusPropsPathParams
-  >({url: '/api/plugins/app-group-lifecycle/{pluginId}/app-status-props', method: 'get', ...variables, signal});
+  >({
+    url: '/api/plugins/app-group-lifecycle/{pluginId}/app-status-props',
+    method: 'get',
+    ...variables,
+    signal,
+  });
 
 export function appGroupLifecyclePluginAppStatusPropsQuery(variables: AppGroupLifecyclePluginAppStatusPropsVariables): {
   queryKey: reactQuery.QueryKey;
@@ -2865,7 +2910,12 @@ export const fetchAppGroupLifecyclePluginGroupStatusProps = (
     {},
     {},
     AppGroupLifecyclePluginGroupStatusPropsPathParams
-  >({url: '/api/plugins/app-group-lifecycle/{pluginId}/group-status-props', method: 'get', ...variables, signal});
+  >({
+    url: '/api/plugins/app-group-lifecycle/{pluginId}/group-status-props',
+    method: 'get',
+    ...variables,
+    signal,
+  });
 
 export function appGroupLifecyclePluginGroupStatusPropsQuery(
   variables: AppGroupLifecyclePluginGroupStatusPropsVariables,
@@ -3172,7 +3222,12 @@ export const fetchRoleRequestByIdPut = (variables: RoleRequestByIdPutVariables, 
     {},
     {},
     RoleRequestByIdPutPathParams
-  >({url: '/api/role-requests/{roleRequestId}', method: 'put', ...variables, signal});
+  >({
+    url: '/api/role-requests/{roleRequestId}',
+    method: 'put',
+    ...variables,
+    signal,
+  });
 
 export const useRoleRequestByIdPut = (
   options?: Omit<
@@ -3610,7 +3665,12 @@ export const fetchRoleMembersByIdPut = (variables: RoleMembersByIdPutVariables, 
     {},
     {},
     RoleMembersByIdPutPathParams
-  >({url: '/api/roles/{roleId}/members', method: 'put', ...variables, signal});
+  >({
+    url: '/api/roles/{roleId}/members',
+    method: 'put',
+    ...variables,
+    signal,
+  });
 
 export const useRoleMembersByIdPut = (
   options?: Omit<
@@ -3785,7 +3845,12 @@ export const fetchServicePrincipalById = (variables: ServicePrincipalByIdVariabl
     {},
     {},
     ServicePrincipalByIdPathParams
-  >({url: '/api/service-principals/{servicePrincipalId}', method: 'get', ...variables, signal});
+  >({
+    url: '/api/service-principals/{servicePrincipalId}',
+    method: 'get',
+    ...variables,
+    signal,
+  });
 
 export function servicePrincipalByIdQuery(variables: ServicePrincipalByIdVariables): {
   queryKey: reactQuery.QueryKey;
@@ -3863,7 +3928,12 @@ export const fetchServicePrincipalByIdPut = (variables: ServicePrincipalByIdPutV
     {},
     {},
     ServicePrincipalByIdPutPathParams
-  >({url: '/api/service-principals/{servicePrincipalId}', method: 'put', ...variables, signal});
+  >({
+    url: '/api/service-principals/{servicePrincipalId}',
+    method: 'put',
+    ...variables,
+    signal,
+  });
 
 export const useServicePrincipalByIdPut = (
   options?: Omit<
@@ -3908,7 +3978,12 @@ export const fetchServicePrincipalByIdDelete = (variables: ServicePrincipalByIdD
     {},
     {},
     ServicePrincipalByIdDeletePathParams
-  >({url: '/api/service-principals/{servicePrincipalId}', method: 'delete', ...variables, signal});
+  >({
+    url: '/api/service-principals/{servicePrincipalId}',
+    method: 'delete',
+    ...variables,
+    signal,
+  });
 
 export const useServicePrincipalByIdDelete = (
   options?: Omit<
