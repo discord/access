@@ -1,10 +1,12 @@
 from api.operations.approve_access_request import ApproveAccessRequest
 from api.operations.approve_app_request import ApproveAppRequest
+from api.operations.approve_deletion_request import ApproveDeletionRequest
 from api.operations.approve_group_request import ApproveGroupRequest
 from api.operations.approve_role_request import ApproveRoleRequest
 from api.operations.create_access_request import CreateAccessRequest
 from api.operations.create_app import CreateApp
 from api.operations.create_app_request import CreateAppRequest
+from api.operations.create_deletion_request import CreateDeletionRequest
 from api.operations.create_group import CreateGroup
 from api.operations.create_group_request import CreateGroupRequest
 from api.operations.create_role_request import CreateRoleRequest
@@ -27,6 +29,7 @@ from api.operations.modify_service_principal import ModifyServicePrincipal
 from api.operations.prune_redundant_direct_access import AccessTarget, PruneRedundantDirectAccess
 from api.operations.reject_access_request import RejectAccessRequest
 from api.operations.reject_app_request import RejectAppRequest
+from api.operations.reject_deletion_request import RejectDeletionRequest
 from api.operations.reject_group_request import RejectGroupRequest
 from api.operations.reject_role_request import RejectRoleRequest
 from api.operations.unmanage_group import UnmanageGroup
@@ -36,11 +39,13 @@ __all__ = [
     "AccessTarget",
     "ApproveAccessRequest",
     "ApproveAppRequest",
+    "ApproveDeletionRequest",
     "ApproveGroupRequest",
     "ApproveRoleRequest",
     "CreateAccessRequest",
     "CreateApp",
     "CreateAppRequest",
+    "CreateDeletionRequest",
     "CreateGroup",
     "CreateGroupRequest",
     "CreateRoleRequest",
@@ -63,6 +68,7 @@ __all__ = [
     "PruneRedundantDirectAccess",
     "RejectAccessRequest",
     "RejectAppRequest",
+    "RejectDeletionRequest",
     "RejectGroupRequest",
     "RejectRoleRequest",
     "UnmanageGroup",

@@ -470,6 +470,7 @@ def create_app(testing: bool | None = False) -> FastAPI:
         audit,
         bugs,
         constraints,
+        deletion_requests,
         group_requests,
         groups,
         health,
@@ -488,6 +489,7 @@ def create_app(testing: bool | None = False) -> FastAPI:
     app.include_router(audit.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(bugs.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(constraints.router, responses=DEFAULT_ERROR_RESPONSES)
+    app.include_router(deletion_requests.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(group_requests.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(groups.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(plugins.router, responses=DEFAULT_ERROR_RESPONSES)

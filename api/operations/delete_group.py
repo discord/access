@@ -23,6 +23,7 @@ from api.operations._obsolete_requests import (
     snapshot_obsolete_request_reviewers,
 )
 from api.operations.reject_access_request import RejectAccessRequest
+from api.operations.reject_deletion_request import reject_pending_deletion_requests
 from api.operations.reject_role_request import RejectRoleRequest
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecycleHook,
@@ -34,8 +35,17 @@ from api.services import okta
 
 
 class DeleteGroup:
-    def __init__(self, *, group: OktaGroup | str, sync_to_okta: bool = True, current_user_id: str | None = None):
+    def __init__(
+        self,
+        *,
+        group: OktaGroup | str,
+        sync_to_okta: bool = True,
+        current_user_id: str | None = None,
+        deletion_request_id: str | None = None,
+    ):
         self.group_id = group if isinstance(group, str) else group.id
+        # The deletion request this delete carries out, which its approval resolves.
+        self.deletion_request_id = deletion_request_id
 
         self.sync_to_okta = sync_to_okta
 
@@ -322,5 +332,8 @@ class DeleteGroup:
             group=group,
             members=lifecycle_hook_members,
         )
+
+        # Any other request to delete this group can no longer be carried out.
+        await reject_pending_deletion_requests(group_id=self.group_id, except_id=self.deletion_request_id)
 
         await defer_or_drain_fan_out(okta_tasks, f"DeleteGroup for group {self.group_id}")
