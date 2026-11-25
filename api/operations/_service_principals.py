@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import secrets
 import string
 from typing import Any
@@ -102,13 +101,25 @@ def audit_snapshot(service_principal: ServicePrincipal) -> dict[str, Any]:
     }
 
 
-async def emit_audit_log(
+async def audit_log_entry(
     event_type: EventType,
     current_user_id: str | None,
     service_principal: dict[str, Any],
     old_service_principal: dict[str, Any] | None = None,
-) -> None:
-    """Emit the audit log entry for a service principal change."""
+) -> str:
+    """Build the serialized audit log entry for a service principal change.
+
+    Each operation writes the entry to the `access.audit` logger itself.
+
+    Args:
+        event_type: The change being logged.
+        current_user_id: The acting user's id, if any.
+        service_principal: The principal's snapshot after the change.
+        old_service_principal: Its snapshot before the change, for modifications.
+
+    Returns:
+        The entry, serialized by `AuditLogSchema`.
+    """
     actor = (
         (
             await db.session.scalars(
@@ -129,4 +140,4 @@ async def emit_audit_log(
     }
     if old_service_principal is not None:
         payload["old_service_principal"] = old_service_principal
-    logging.getLogger("access.audit").info(AuditLogSchema().dumps(payload))
+    return AuditLogSchema().dumps(payload)

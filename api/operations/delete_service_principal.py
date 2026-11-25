@@ -1,9 +1,11 @@
+import logging
+
 from sqlalchemy import func
 
 from api.exceptions import ResourceGoneError
 from api.extensions import db
 from api.models import ServicePrincipal
-from api.operations._service_principals import audit_snapshot, emit_audit_log, load_active_service_principal
+from api.operations._service_principals import audit_log_entry, audit_snapshot, load_active_service_principal
 from api.schemas import EventType
 
 
@@ -30,4 +32,6 @@ class DeleteServicePrincipal:
         snapshot = audit_snapshot(service_principal)
         service_principal.deleted_at = func.now()
         await db.session.commit()
-        await emit_audit_log(EventType.service_principal_delete, self.current_user_id, snapshot)
+        logging.getLogger("access.audit").info(
+            await audit_log_entry(EventType.service_principal_delete, self.current_user_id, snapshot)
+        )

@@ -1,11 +1,13 @@
+import logging
+
 from api.exceptions import InvalidRequestError, ResourceGoneError
 from api.extensions import db
 from api.models import ServicePrincipal
 from api.operations._active_ids import require_active_role_ids, require_active_user_ids
 from api.operations._service_principals import (
+    audit_log_entry,
     audit_snapshot,
     commit_subject_change,
-    emit_audit_log,
     ensure_subject_available,
     load_active_service_principal,
     owner_rows,
@@ -81,10 +83,12 @@ class ModifyServicePrincipal:
         db.session.expire_all()
         modified = await load_active_service_principal(service_principal_id)
         assert modified is not None
-        await emit_audit_log(
-            EventType.service_principal_modify,
-            self.current_user_id,
-            audit_snapshot(modified),
-            old_service_principal=old,
+        logging.getLogger("access.audit").info(
+            await audit_log_entry(
+                EventType.service_principal_modify,
+                self.current_user_id,
+                audit_snapshot(modified),
+                old_service_principal=old,
+            )
         )
         return modified

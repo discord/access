@@ -1,11 +1,13 @@
+import logging
+
 from api.exceptions import InvalidRequestError
 from api.extensions import db
 from api.models import ServicePrincipal, ServicePrincipalProvider
 from api.operations._active_ids import require_active_role_ids, require_active_user_ids
 from api.operations._service_principals import (
+    audit_log_entry,
     audit_snapshot,
     commit_subject_change,
-    emit_audit_log,
     ensure_subject_available,
     generate_service_principal_id,
     load_active_service_principal,
@@ -67,5 +69,7 @@ class CreateServicePrincipal:
 
         created = await load_active_service_principal(service_principal.id)
         assert created is not None
-        await emit_audit_log(EventType.service_principal_create, self.current_user_id, audit_snapshot(created))
+        logging.getLogger("access.audit").info(
+            await audit_log_entry(EventType.service_principal_create, self.current_user_id, audit_snapshot(created))
+        )
         return created
