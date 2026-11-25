@@ -58,7 +58,7 @@ describe('CreateUpdateServicePrincipal', () => {
     expect(create).toBeDisabled();
     expect(screen.getByText('Name at least one owning user or role.')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByLabelText('Owner users'));
+    await userEvent.click(screen.getByLabelText('Owners: users'));
     await userEvent.click(await screen.findByText('Olive Owner'));
     expect(create).toBeEnabled();
     await userEvent.click(create);
