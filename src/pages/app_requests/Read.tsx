@@ -33,12 +33,7 @@ import dayjs, {Dayjs} from 'dayjs';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import RelativeTime from 'dayjs/plugin/relativeTime';
 
-import {
-  AppRequestByIdPutError,
-  AppRequestByIdPutVariables,
-  useAppRequestById,
-  useAppRequestByIdPut,
-} from '../../api/apiComponents';
+import {AppRequestByIdPutError, useAppRequestById, useAppRequestByIdPut} from '../../api/apiComponents';
 import {AppRequestDetail, ResolveAppRequestBody} from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {canApproveAppRequest} from '../../authorization';
@@ -52,6 +47,7 @@ import {AccessEndingField, untilIdFor, useTagsByIds} from '../group_requests/Rea
 import ServicePrincipalOwners from '../../components/ServicePrincipalOwners';
 import ChangeTitle from '../../tab-title';
 import NotFound from '../NotFound';
+import {requestErrorMessage} from '../../helpers';
 
 dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
@@ -209,17 +205,12 @@ export default function ReadAppRequest() {
   const appOwnerCount = appOwners.userIds.length + appOwners.roleIds.length;
   const noAppOwnerActive = appOwnerCount > 0 && departedCount(appOwners) === appOwnerCount;
 
-  const complete = (
-    completedRequest: AppRequestDetail | undefined,
-    error: AppRequestByIdPutError | null,
-    variables: AppRequestByIdPutVariables,
-    context: any,
-  ) => {
+  const complete = (completedRequest: AppRequestDetail | undefined, error: AppRequestByIdPutError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
-      navigate(0);
+      void navigate(0);
     }
   };
 
@@ -314,7 +305,7 @@ export default function ReadAppRequest() {
                   width: 220,
                   height: 220,
                 }}
-                variant={'rounded' as any}>
+                variant={'rounded'}>
                 {appRequest.status == 'PENDING' ? (
                   <PendingIcon sx={{width: 220, height: 220}} />
                 ) : appRequest.status == 'APPROVED' ? (

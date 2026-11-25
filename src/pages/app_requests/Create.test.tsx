@@ -3,9 +3,10 @@ import {render, screen, waitFor, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 
+import {AppRequestsCreateVariables} from '../../api/apiComponents';
 import {OktaUserDetail} from '../../api/apiSchemas';
 
-const createMutate = vi.fn();
+const createMutate = vi.fn<(variables: AppRequestsCreateVariables) => void>();
 
 const USER = {
   id: 'user-000000000000000',
@@ -128,8 +129,8 @@ describe('requesting an app', () => {
         },
       ],
     });
-    expect(body.requested_ownership_ending_at).toEqual(expect.any(String));
-    expect(body.requested_membership_ending_at).toEqual(expect.any(String));
+    expect(body?.requested_ownership_ending_at).toEqual(expect.any(String));
+    expect(body?.requested_membership_ending_at).toEqual(expect.any(String));
   });
 
   it('asks for a membership length only once a group names members', async () => {
@@ -150,9 +151,9 @@ describe('requesting an app', () => {
 
     await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(1));
     const body = createMutate.mock.calls[0][0].body;
-    expect(body.requested_owner_user_ids).toEqual([]);
-    expect(body.requested_app_groups).toEqual([]);
-    expect(body.requested_membership_ending_at).toBeUndefined();
+    expect(body?.requested_owner_user_ids).toEqual([]);
+    expect(body?.requested_app_groups).toEqual([]);
+    expect(body?.requested_membership_ending_at).toBeUndefined();
   });
 
   it('shows the app prefix on each group', async () => {
@@ -172,7 +173,7 @@ describe('requesting an app', () => {
     await userEvent.click(screen.getByRole('button', {name: 'Submit'}));
 
     await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(1));
-    expect(createMutate.mock.calls[0][0].body.requested_app_groups).toEqual([]);
+    expect(createMutate.mock.calls[0][0].body?.requested_app_groups).toEqual([]);
   });
 });
 

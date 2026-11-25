@@ -1,12 +1,14 @@
+import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {render, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 
+import {AppRequestByIdPutVariables} from '../../api/apiComponents';
 import {AppRequestDetail, OktaUserDetail} from '../../api/apiSchemas';
 import {ACCESS_APP_RESERVED_NAME} from '../../authorization';
 
-const resolveMutate = vi.fn();
+const resolveMutate = vi.fn<(variables: AppRequestByIdPutVariables) => void>();
 
 const REQUESTER = {id: 'requester-0000000000', email: 'requester@example.com'};
 const OWNER_USER = {id: 'owner-user-00000000', email: 'Owner@example.com', display_name: 'Olive Owner'};
@@ -40,12 +42,11 @@ const PENDING_REQUEST = {
 
 let appRequest: AppRequestDetail = PENDING_REQUEST;
 
-vi.mock('react-router-dom', async () => {
-  const React = await import('react');
+vi.mock('react-router-dom', () => {
   return {
     useNavigate: () => vi.fn(),
     useParams: () => ({id: PENDING_REQUEST.id}),
-    Link: ({children}: {children?: React.ReactNode}) => children,
+    Link: ({children}: {children?: ReactNode}) => children,
   };
 });
 
@@ -83,7 +84,7 @@ vi.mock('../../constraints', () => {
 vi.mock('../../api/apiComponents', () => ({
   tagByIdQuery: (variables: {pathParams: {tagId: string}}) => ({
     queryKey: ['tag', variables.pathParams.tagId],
-    queryFn: async () => ({id: variables.pathParams.tagId, name: variables.pathParams.tagId}),
+    queryFn: () => Promise.resolve({id: variables.pathParams.tagId, name: variables.pathParams.tagId}),
   }),
   useAppRequestById: () => ({data: appRequest, isError: false, isLoading: false}),
   useAppRequestByIdPut: () => ({mutate: resolveMutate}),
@@ -105,7 +106,7 @@ beforeEach(() => {
 });
 
 describe('the requested details', () => {
-  it('lists the app owners and each initial group with its members', async () => {
+  it('lists the app owners and each initial group with its members', () => {
     renderPage();
 
     expect(screen.getByText('App-Support-Desk-Agents')).toBeInTheDocument();
@@ -116,11 +117,11 @@ describe('the requested details', () => {
     expect(screen.getByText(/Membership Ending:/)).toBeInTheDocument();
   });
 
-  it('counts named owners who are no longer active as departed', async () => {
+  it('counts named owners who are no longer active as departed', () => {
     appRequest = {
       ...PENDING_REQUEST,
       requested_owner_user_ids: [OWNER_USER.id, 'gone-user-000000000'],
-    } as unknown as AppRequestDetail;
+    };
     renderPage();
 
     expect(screen.getByText(OWNER_USER.display_name)).toBeInTheDocument();
@@ -137,7 +138,7 @@ describe('a pending request naming principals no longer active', () => {
     ],
   } as unknown as AppRequestDetail;
 
-  it('warns an Access admin where they are named and that approval skips them', async () => {
+  it('warns an Access admin where they are named and that approval skips them', () => {
     appRequest = DEPARTED_REQUEST;
     renderPage();
 
@@ -149,11 +150,11 @@ describe('a pending request naming principals no longer active', () => {
     expect(screen.getByRole('button', {name: /Reject/})).toBeEnabled();
   });
 
-  it('cannot be approved when no app owner is still active', async () => {
+  it('cannot be approved when no app owner is still active', () => {
     appRequest = {
       ...DEPARTED_REQUEST,
       requested_owner_user_ids: ['gone-user-000000000'],
-    } as unknown as AppRequestDetail;
+    };
     renderPage();
 
     expect(screen.getByText(/At least one app owner must still be active/)).toBeInTheDocument();
@@ -161,7 +162,7 @@ describe('a pending request naming principals no longer active', () => {
     expect(screen.getByRole('button', {name: /Reject/})).toBeEnabled();
   });
 
-  it('shows no warning to a user who cannot approve it', async () => {
+  it('shows no warning to a user who cannot approve it', () => {
     appRequest = DEPARTED_REQUEST;
     currentUser = OTHER_USER;
     renderPage();
@@ -171,7 +172,7 @@ describe('a pending request naming principals no longer active', () => {
 });
 
 describe('an Access admin reviewing a pending request', () => {
-  it('can approve or reject it', async () => {
+  it('can approve or reject it', () => {
     renderPage();
 
     expect(screen.getByRole('button', {name: /Approve/})).toBeInTheDocument();
@@ -186,11 +187,11 @@ describe('an Access admin reviewing a pending request', () => {
     await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
     const call = resolveMutate.mock.calls[0][0];
     expect(call.pathParams).toEqual({appRequestId: PENDING_REQUEST.id});
-    expect(call.body.resolved_ownership_ending_at).toEqual(expect.any(String));
-    expect(call.body.resolved_membership_ending_at).toEqual(expect.any(String));
+    expect(call.body?.resolved_ownership_ending_at).toEqual(expect.any(String));
+    expect(call.body?.resolved_membership_ending_at).toEqual(expect.any(String));
   });
 
-  it.each([
+  it.each<[string, 'resolved_ownership_ending_at' | 'resolved_membership_ending_at']>([
     ['Ownership Ending At', 'resolved_ownership_ending_at'],
     ['Membership Ending At', 'resolved_membership_ending_at'],
   ])('offers %s no longer than requested, nor Indefinite', async (label, field) => {
@@ -201,7 +202,7 @@ describe('an Access admin reviewing a pending request', () => {
       created_at: new Date(Date.now() - 2 * 86400 * 1000).toISOString(),
       requested_ownership_ending_at: requestedEndingAt,
       requested_membership_ending_at: requestedEndingAt,
-    } as unknown as AppRequestDetail;
+    };
     renderPage();
 
     await userEvent.click(screen.getByRole('combobox', {name: label}));
@@ -211,8 +212,8 @@ describe('an Access admin reviewing a pending request', () => {
     await userEvent.click(screen.getByRole('button', {name: /Approve/}));
 
     await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
-    const endingAt = resolveMutate.mock.calls[0][0].body[field];
-    expect(new Date(endingAt).getTime()).toBeLessThanOrEqual(new Date(requestedEndingAt).getTime());
+    const endingAt = resolveMutate.mock.calls[0][0].body?.[field];
+    expect(new Date(endingAt ?? '').getTime()).toBeLessThanOrEqual(new Date(requestedEndingAt).getTime());
   });
 
   it('offers Indefinite and longer durations when the request has no end date', async () => {
@@ -220,7 +221,7 @@ describe('an Access admin reviewing a pending request', () => {
       ...PENDING_REQUEST,
       requested_ownership_ending_at: null,
       requested_membership_ending_at: null,
-    } as unknown as AppRequestDetail;
+    };
     renderPage();
 
     await userEvent.click(screen.getByRole('combobox', {name: /Ownership Ending At/}));
@@ -229,24 +230,24 @@ describe('an Access admin reviewing a pending request', () => {
     await userEvent.click(screen.getByRole('button', {name: /Approve/}));
 
     await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
-    const endingAt = resolveMutate.mock.calls[0][0].body.resolved_ownership_ending_at;
-    expect(new Date(endingAt).getTime()).toBeGreaterThan(Date.now() + 89 * 86400 * 1000);
+    const endingAt = resolveMutate.mock.calls[0][0].body?.resolved_ownership_ending_at;
+    expect(new Date(endingAt ?? '').getTime()).toBeGreaterThan(Date.now() + 89 * 86400 * 1000);
   });
 
   it('sends nothing when the request asked for indefinite ownership and it is kept', async () => {
-    appRequest = {...PENDING_REQUEST, requested_ownership_ending_at: null} as unknown as AppRequestDetail;
+    appRequest = {...PENDING_REQUEST, requested_ownership_ending_at: null};
     renderPage();
 
     await userEvent.click(screen.getByRole('button', {name: /Approve/}));
 
     await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
-    expect(resolveMutate.mock.calls[0][0].body.resolved_ownership_ending_at).toBeUndefined();
+    expect(resolveMutate.mock.calls[0][0].body?.resolved_ownership_ending_at).toBeUndefined();
   });
 });
 
 describe('the requester viewing their own pending request', () => {
   it('can withdraw it but not approve it, even as an Access admin', async () => {
-    currentUser = {...ADMIN, id: REQUESTER.id} as unknown as OktaUserDetail;
+    currentUser = {...ADMIN, id: REQUESTER.id};
     renderPage();
 
     expect(screen.queryByRole('button', {name: /Approve/})).not.toBeInTheDocument();
@@ -254,12 +255,12 @@ describe('the requester viewing their own pending request', () => {
 
     await userEvent.click(screen.getByRole('button', {name: /Withdraw/}));
     await waitFor(() => expect(resolveMutate).toHaveBeenCalledTimes(1));
-    expect(resolveMutate.mock.calls[0][0].body.resolved_ownership_ending_at).toBeUndefined();
+    expect(resolveMutate.mock.calls[0][0].body?.resolved_ownership_ending_at).toBeUndefined();
   });
 });
 
 describe('another user viewing a pending request', () => {
-  it('cannot act on it', async () => {
+  it('cannot act on it', () => {
     currentUser = OTHER_USER;
     renderPage();
 
@@ -270,14 +271,14 @@ describe('another user viewing a pending request', () => {
 });
 
 describe('an approved request', () => {
-  it('links to the created app and shows no form', async () => {
+  it('links to the created app and shows no form', () => {
     appRequest = {
       ...PENDING_REQUEST,
       status: 'APPROVED',
       resolved_at: '2026-09-02T00:00:00Z',
       resolver: {id: ADMIN.id, email: ADMIN.email},
       resolved_ownership_ending_at: '2026-09-10T00:00:00Z',
-    } as unknown as AppRequestDetail;
+    };
     renderPage();
 
     expect(screen.getByText(/approved the request and created app/)).toBeInTheDocument();
@@ -286,7 +287,7 @@ describe('an approved request', () => {
 });
 
 describe('a request its service principal withdrew', () => {
-  it('names the service principal as the resolver', async () => {
+  it('names the service principal as the resolver', () => {
     appRequest = {
       ...PENDING_REQUEST,
       status: 'REJECTED',

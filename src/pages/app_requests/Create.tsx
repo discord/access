@@ -25,13 +25,7 @@ import RemoveIcon from '@mui/icons-material/Delete';
 import {FormContainer, TextFieldElement} from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 
-import {
-  useAppRequestsCreate,
-  useApps,
-  useTags,
-  AppRequestsCreateError,
-  AppRequestsCreateVariables,
-} from '../../api/apiComponents';
+import {useAppRequestsCreate, useApps, useTags, AppRequestsCreateError} from '../../api/apiComponents';
 import {
   AppRequestDetail,
   AppSummary,
@@ -45,6 +39,7 @@ import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 import TagsField from '../group_requests/TagsField';
 import {PrincipalsField, RoleOption} from '../../components/Principals';
 import {AccessLengthField, endingAt} from '../group_requests/Create';
+import {requestErrorMessage} from '../../helpers';
 
 dayjs.extend(IsSameOrBefore);
 
@@ -202,18 +197,13 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
-  const complete = (
-    completedRequest: AppRequestDetail | undefined,
-    error: AppRequestsCreateError | null,
-    variables: AppRequestsCreateVariables,
-    context: any,
-  ) => {
+  const complete = (completedRequest: AppRequestDetail | undefined, error: AppRequestsCreateError | null) => {
     setSubmitting(false);
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
     } else {
       props.setOpen(false);
-      navigate('/app-requests/' + encodeURIComponent(completedRequest?.id ?? ''));
+      void navigate('/app-requests/' + encodeURIComponent(completedRequest?.id ?? ''));
     }
   };
 
