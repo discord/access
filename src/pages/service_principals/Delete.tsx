@@ -14,9 +14,10 @@ import DeleteIcon from '@mui/icons-material/DeleteForever';
 import {useServicePrincipalByIdDelete} from '../../api/apiComponents';
 import {OktaUserDetail, ServicePrincipalDetail} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
+import {requestErrorMessage} from '../../helpers';
 
 interface DeleteDialogProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   servicePrincipal: ServicePrincipalDetail;
 }
 
@@ -27,10 +28,10 @@ function DeleteDialog(props: DeleteDialogProps) {
   const deleteServicePrincipal = useServicePrincipalByIdDelete({
     onSettled: (data, error) => {
       if (error != null) {
-        setRequestError(error.payload.toString());
+        setRequestError(requestErrorMessage(error));
       } else {
         props.setOpen(false);
-        navigate('/service-principals');
+        void navigate('/service-principals');
       }
     },
   });

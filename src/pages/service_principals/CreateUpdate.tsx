@@ -15,15 +15,22 @@ import FormControl from '@mui/material/FormControl';
 import IconButton from '@mui/material/IconButton';
 import TextField from '@mui/material/TextField';
 
-import {useRoles, useServicePrincipalByIdPut, useServicePrincipalsCreate, useUsers} from '../../api/apiComponents';
+import {
+  ServicePrincipalByIdPutError,
+  ServicePrincipalsCreateError,
+  useRoles,
+  useServicePrincipalByIdPut,
+  useServicePrincipalsCreate,
+  useUsers,
+} from '../../api/apiComponents';
 import {OktaUserDetail, OktaUserSummary, RoleGroupListItem, ServicePrincipalDetail} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
-import {displayUserName} from '../../helpers';
+import {displayUserName, requestErrorMessage} from '../../helpers';
 
 type RoleOption = Pick<RoleGroupListItem, 'id' | 'name'>;
 
 interface ServicePrincipalDialogProps {
-  setOpen(open: boolean): any;
+  setOpen(open: boolean): void;
   servicePrincipal?: ServicePrincipalDetail;
 }
 
@@ -46,16 +53,19 @@ function ServicePrincipalDialog(props: ServicePrincipalDialogProps) {
   const {data: userSearchData} = useUsers({queryParams: {page: 1, size: 10, q: userSearchInput}});
   const {data: roleSearchData} = useRoles({queryParams: {page: 1, size: 10, q: roleSearchInput}});
 
-  const onSettled = (result: ServicePrincipalDetail | undefined, error: {payload: any} | null) => {
+  const onSettled = (
+    result: ServicePrincipalDetail | undefined,
+    error: ServicePrincipalsCreateError | ServicePrincipalByIdPutError | null,
+  ) => {
     if (error != null) {
-      setRequestError(error.payload.toString());
+      setRequestError(requestErrorMessage(error));
       return;
     }
     props.setOpen(false);
     if (existing != null) {
-      navigate(0);
+      void navigate(0);
     } else {
-      navigate('/service-principals/' + encodeURIComponent(result?.id ?? ''));
+      void navigate('/service-principals/' + encodeURIComponent(result?.id ?? ''));
     }
   };
   const create = useServicePrincipalsCreate({onSettled});
@@ -128,7 +138,7 @@ function ServicePrincipalDialog(props: ServicePrincipalDialogProps) {
           <FormControl margin="normal" fullWidth>
             <Autocomplete
               multiple
-              options={(roleSearchData?.items ?? []) as RoleOption[]}
+              options={roleSearchData?.items ?? []}
               value={ownerRoles}
               filterOptions={(x) => x}
               isOptionEqualToValue={(option, value) => option.id == value.id}

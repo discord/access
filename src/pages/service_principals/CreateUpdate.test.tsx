@@ -44,7 +44,7 @@ beforeEach(() => createMutate.mockClear());
 
 describe('CreateUpdateServicePrincipal', () => {
   it('is hidden from non-admins', () => {
-    renderDialog({id: 'u2', email: 'user@example.com'} as OktaUserDetail);
+    renderDialog({id: 'u2', email: 'user@example.com'});
     expect(screen.queryByRole('button', {name: /Create Service Principal/})).toBeNull();
   });
 

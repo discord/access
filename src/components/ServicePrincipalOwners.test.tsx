@@ -3,8 +3,9 @@ import {MemoryRouter} from 'react-router-dom';
 import {describe, expect, it} from 'vitest';
 
 import ServicePrincipalOwners from './ServicePrincipalOwners';
+import {ServicePrincipalOwnerDetail} from '../api/apiSchemas';
 
-const renderOwners = (owners: any[]) =>
+const renderOwners = (owners: ServicePrincipalOwnerDetail[]) =>
   render(
     <MemoryRouter>
       <ServicePrincipalOwners owners={owners} />
