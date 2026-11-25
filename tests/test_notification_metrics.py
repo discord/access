@@ -22,6 +22,8 @@ HOOKS: list[tuple[NotificationHook, str, dict[str, str] | None]] = [
     (NotificationHook.ACCESS_ROLE_REQUEST_COMPLETED, "notifications.role_request_completed.sent", None),
     (NotificationHook.ACCESS_GROUP_REQUEST_CREATED, "notifications.group_request_created.sent", None),
     (NotificationHook.ACCESS_GROUP_REQUEST_COMPLETED, "notifications.group_request_completed.sent", None),
+    (NotificationHook.ACCESS_APP_REQUEST_CREATED, "notifications.app_request_created.sent", None),
+    (NotificationHook.ACCESS_APP_REQUEST_COMPLETED, "notifications.app_request_completed.sent", None),
 ]
 
 
