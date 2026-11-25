@@ -60,7 +60,6 @@ import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import {requestErrorMessage, pluginDataEntry} from '../../helpers';
 import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
-import {AccessEndingField, resolvedEndingAt, untilIdFor} from '../../components/AccessLength';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import DepartedPrincipalsWarning, {departedIds, departedLabel} from '../../components/DepartedPrincipalsWarning';
 
@@ -115,7 +114,6 @@ interface AccessEndingFieldProps {
   setUntil: (v: string | null) => void;
 }
 
-/** An approver's end-date select, offering only the durations `timeLimit` allows. */
 export function AccessEndingField({name, label, timeLimit, constraintsBlocked, setUntil}: AccessEndingFieldProps) {
   const {control, setValue} = useFormContext<ResolveRequestForm>();
 
@@ -673,17 +671,42 @@ export default function ReadGroupRequest() {
       resolveRequest.resolved_member_role_ids = ids(principalsTouched.memberRoles, memberRoles);
     }
 
-    resolveRequest.resolved_ownership_ending_at = resolvedEndingAt(
-      responseForm.resolved_ownership_ending_at,
-      responseForm.resolved_ownership_ending_at_custom,
-      groupRequest.requested_ownership_ending_at,
-    );
+    switch (responseForm.resolved_ownership_ending_at) {
+      case 'indefinite':
+      case undefined:
+        break;
+      case 'custom':
+        if (responseForm.resolved_ownership_ending_at_custom) {
+          resolveRequest.resolved_ownership_ending_at = dayjs(
+            responseForm.resolved_ownership_ending_at_custom,
+          ).toISOString();
+        }
+        break;
+      default:
+        resolveRequest.resolved_ownership_ending_at = dayjs()
+          .add(parseInt(responseForm.resolved_ownership_ending_at, 10), 'seconds')
+          .toISOString();
+        break;
+    }
+
     if (namesMembers) {
-      resolveRequest.resolved_membership_ending_at = resolvedEndingAt(
-        responseForm.resolved_membership_ending_at,
-        responseForm.resolved_membership_ending_at_custom,
-        groupRequest.requested_membership_ending_at,
-      );
+      switch (responseForm.resolved_membership_ending_at) {
+        case 'indefinite':
+        case undefined:
+          break;
+        case 'custom':
+          if (responseForm.resolved_membership_ending_at_custom) {
+            resolveRequest.resolved_membership_ending_at = dayjs(
+              responseForm.resolved_membership_ending_at_custom,
+            ).toISOString();
+          }
+          break;
+        default:
+          resolveRequest.resolved_membership_ending_at = dayjs()
+            .add(parseInt(responseForm.resolved_membership_ending_at, 10), 'seconds')
+            .toISOString();
+          break;
+      }
     }
 
     putResolveRequest.mutate({
